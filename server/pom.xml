@@ -10,11 +10,11 @@
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
+        <quarkus.platform.group-id>io.quarkus</quarkus.platform.group-id>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
-        <quarkus.platform.version>3.34.5</quarkus.platform.version>
-        <kafka.clients.version>4.0.2</kafka.clients.version> <!-- 3.9.0 -->
-        <neo4j.driver.version>6.0.3</neo4j.driver.version> <!-- 5.26.0 -->
+        <quarkus.platform.version>3.37.0</quarkus.platform.version>
+        <kafka.clients.version>4.3.0</kafka.clients.version> <!-- 3.9.0 -->
+        <neo4j.driver.version>6.2.0</neo4j.driver.version> <!-- 5.26.0 -->
         <skipITs>true</skipITs>
     </properties>
 
