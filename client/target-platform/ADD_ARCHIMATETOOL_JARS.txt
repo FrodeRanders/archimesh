@@ -1,0 +1,2 @@
+You need ./plugins/com.archimatetool.editor.jar and ./plugins/com.archimatetool.model.jar from an Archi installation, copied or soft-linked.
+
