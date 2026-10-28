@@ -232,12 +232,16 @@ The current client implementation does not yet include reconnect jitter. This
 is a known operational gap for production deployments with many concurrent
 clients.
 
-\subsubsection{Kafka single-partition requirement}
+\subsubsection{Kafka keyed ordering}
 
-Each model's ops topic must have exactly one partition to preserve total
-order. If multiple partitions are used, the total order guarantee breaks and
-clients can receive operations in different orders, producing divergent state.
-This is a hard constraint, not a recommendation.
+Three shared topics carry operations, locks and presence. Every record is
+keyed by model id, keeping each model in one partition per topic while
+partition counts remain stable. One partition per topic is sufficient for
+local development, giving three application partitions regardless of model
+count. Larger fixed counts distribute throughput; do not resize during live
+publication without draining and coordinating a cutover. Models share
+partition capacity, and events in different topics have no common order.
+The old per-model topic layout is no longer consumed.
 
 If Kafka publication fails, the committed payload remains pending in Neo4j
 and is retried by the delivery worker. The submitting client may already have

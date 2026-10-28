@@ -28,9 +28,9 @@ class LocalInfraIntegrationTest {
         assumeLocalInfraEnabled();
 
         String bootstrapServers = env("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092");
-        String topicPrefix = "archimesh.model";
+        String topicPrefix = env("KAFKA_TOPIC_PREFIX", "archimesh.model");
         String modelId = "itest-" + UUID.randomUUID().toString().substring(0, 8);
-        String topic = topicPrefix + "." + modelId + ".ops";
+        String topic = topicPrefix + ".ops";
 
         KafkaPublisherImpl publisher = new KafkaPublisherImpl();
         publisher.bootstrapServers = bootstrapServers;

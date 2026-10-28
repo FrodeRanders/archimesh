@@ -158,11 +158,12 @@ Maintainer invariants:
 - `CreateViewObject` and `UpdateViewObjectOpaque` now use LWW merge for geometry fields
   (`x`, `y`, `width`, `height`) using tuple `(lamport, clientId)`.
 - Kafka publisher emits JSON payloads to:
-    - `archimesh.model.<modelId>.ops`
-    - `archimesh.model.<modelId>.locks`
-    - `archimesh.model.<modelId>.presence`
-- Kafka consumer subscribes to `archimesh.model.*.ops` and emits websocket `OpsBroadcast`.
-- Kafka consumer also subscribes to `locks` and `presence` topics and emits websocket `LockEvent` / `PresenceBroadcast`.
+    - `archimesh.model.ops`
+    - `archimesh.model.locks`
+    - `archimesh.model.presence`
+- All records use `modelId` as their key, including locks/presence whose payloads need not contain model identity. With one partition per topic, every model shares three application partitions. Fixed larger partition counts also retain ordering per model and topic.
+- Kafka consumer subscribes to those exact three topics and uses the key to select model sessions, emitting websocket `OpsBroadcast`, `LockEvent` or `PresenceBroadcast`. Conflicting payload identity is rejected.
+- This replaces the old per-model topics without compatibility routing. Provision fresh shared topics before starting the upgraded server; see [Kafka setup, retention and reset](../kafka/kafka.md). Do not change partition counts during live publishing.
 
 ## Durable operation delivery
 

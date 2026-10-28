@@ -6,38 +6,40 @@ batches, lock events and presence events.
 
 \subsection{Topic layout}
 
-Three topic kinds exist per model:
+All models share three topics. Partition use is independent of model count:
 
-\begin{longtable}{p{46mm}p{54mm}p{54mm}}
+\begin{longtable}{p{70mm}p{50mm}p{34mm}}
 \toprule
-Topic pattern & Content & Partitioning \\
+Topic & Content & Record key \\
 \midrule
-\code{archimesh.model.<modelId>.ops} & Committed op batches &
-  Exactly 1 partition (required) \\
-\code{archimesh.model.<modelId>.locks} & Lock acquire/release/expire &
-  1 partition \\
-\code{archimesh.model.<modelId>.presence} & Cursor/selection broadcasts &
-  1 partition (or keyed by sessionId) \\
+\code{archimesh.model.ops} & Committed op batches & \code{modelId} \\
+\code{archimesh.model.locks} & Lock events & \code{modelId} \\
+\code{archimesh.model.presence} & Cursor/selection broadcasts & \code{modelId} \\
 \bottomrule
 \end{longtable}
 
-The topic prefix is configurable via \code{KAFKA\_TOPIC\_PREFIX} (default
-\code{archimesh.model}).
+The prefix is configurable via \code{KAFKA\_TOPIC\_PREFIX} (default
+\code{archimesh.model}). One partition per topic gives three application
+partitions total, plus any broker-internal partitions. Adding a model does
+not create topics or partitions. This layout replaces the old per-model
+topics without compatibility routing; use a fresh Kafka start.
 
-\subsection{Single-partition requirement}
+\subsection{Keyed ordering and capacity}
 
-Each model's ops topic \textbf{must} have exactly one partition. This is a
-hard constraint, not a recommendation. Multiple partitions would allow
-operations to be consumed in different orders by different clients, breaking
-the total order guarantee that the deterministic merge semantics depend on.
+Every record uses \code{modelId} as its key, including locks and presence.
+With stable partition counts, key partitioning keeps a model's records in
+one partition per topic. Models can therefore share partitions while
+preserving their own order within each event kind. The durable dispatcher
+publishes operation batches in model revision order. There is no ordering
+guarantee between models or between the three topics.
 
-Topic keys:
-
-\begin{itemize}
-\item ops: constant key = \code{<modelId>}
-\item locks: constant key = \code{<modelId>}
-\item presence: key = \code{<sessionId>} (or \code{<userId>})
-\end{itemize}
+One partition per topic is sufficient for local development. Larger fixed
+counts may be provisioned initially for throughput. Increasing counts during
+live publication can move a key to a new partition before old records have
+been consumed; drain traffic and consumers and coordinate a cutover before
+resizing. Busy models share partition capacity with other models, and
+retention and broker ACLs apply to whole topics. Application model ACLs
+continue to govern client subscriptions.
 
 \subsection{Producer}
 
@@ -81,14 +83,15 @@ The \code{KafkaConsumerImpl} runs a single-threaded consume loop with:
 \item Group id: \code{archimesh-server} (configurable via
   \code{KAFKA\_CONSUMER\_GROUP\_ID})
 \item Auto offset reset: \code{earliest}
-\item Topic subscription via regex pattern matching all
-  \code{<prefix>.<modelId>.<kind>} topics
+\item Exact subscription to the three \code{<prefix>.<kind>} topics
 \item 500 ms poll timeout
 \end{itemize}
 
-On receiving a record, the consumer parses the topic name to extract the
-model id and kind, then broadcasts the payload to all sessions registered
-for that model:
+On receiving a record, the consumer derives the event kind from the topic
+and the model id from the record key. Missing or blank keys and conflicting
+payload model ids are rejected. Lock and presence payloads need not carry a
+model id. The consumer broadcasts only to sessions registered for the keyed
+model:
 
 \begin{description}
 \item[ops] Broadcasts \code{OpsBroadcast} to all sessions for the model.
@@ -107,7 +110,9 @@ subsequent complete delta or snapshot checkout restore synchronization.
 \begin{description}
 \item[ops] Retain enough for expected consumer outages and lag. Neo4j
   checkpoints plus the operation tail provide the implemented rebuild source;
-  Kafka is the fan-out path, not the model backup.
+  Kafka is the fan-out path, not the model backup. Keep delete-based
+  retention: compaction by model key would remove earlier operation batches
+  still needed by lagging consumers.
 \item[locks] Short retention (minutes). Lock state is ephemeral.
 \item[presence] Very short retention (minutes). Presence is transient.
 \end{description}

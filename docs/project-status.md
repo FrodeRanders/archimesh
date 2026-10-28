@@ -1,6 +1,6 @@
 # Project handoff - 2026-10-28
 
-Archimesh is at a tested stopping point for the current checkpoint, delivery, and recovery work. This is a development handoff, not a claim of production certification or exhaustive fault coverage.
+Archimesh is at a tested stopping point for the current checkpoint, delivery, recovery, and shared-topic work. This is a development handoff, not a claim of production certification or exhaustive fault coverage.
 
 ## Code and branch state
 
@@ -9,13 +9,14 @@ The delivery/recovery work was developed on `feature/delivery-isolation`, based 
 - `3964b65` isolates durable delivery by model with fair, bounded workers.
 - The subsequent recovery commit contains the process-crash drill, fresh-infrastructure server gate, repository-test isolation, runbook, and updated manual, including this handoff.
 
-Resume from `main` after this handoff. Check `git status --short --branch` and `git log -5 --oneline` for the final commit and remote synchronization state. The merged feature branch can be removed after verifying the push. Generated test evidence and build outputs are ignored; source, fixtures, build scripts, diagram sources, rendered figures, and the manual PDF are versioned.
+Both completed feature branches were merged, pushed, and removed. The shared-topic follow-up was developed directly on `main`. Resume from `main`; check `git status --short --branch` and `git log -5 --oneline` for pending changes, the final commit, and remote synchronization state. Generated test evidence and build outputs are ignored; source, fixtures, build scripts, diagram sources, rendered figures, and the manual PDF are versioned.
 
 ## Verified behavior
 
-- Full delivery-change gate: 188 server tests and 52 client tests passed, with infrastructure and WebSocket coverage; server packaging passed.
-- Fresh-infrastructure server gate: 188 passed, zero failures/errors; the separate process drill was correctly skipped by the ordinary gate.
-- Process drill: accepted-but-unpublished work survived a forced JVM stop and was delivered after Kafka returned. Checkpoint-covered pruning and a later accepted tail survived another forced stop.
+- Shared-topic server gate: 193 passed, zero failures/errors; the separate process drill was skipped. The 160-model broker regression published 640 events across three fixed topics/nine partitions, preserving each model's operation order and routing every event to its keyed model.
+- The development Kafka and Neo4j volumes were deliberately reset with user authorization. Schema was reapplied, Neo4j had zero data nodes, and the three shared application topics were provisioned with one partition each.
+- Previous delivery baseline: 188 server tests and 52 client tests passed, including infrastructure and WebSocket coverage. The shared-topic change modifies only the server; its current validation is the 193-test isolated gate above plus packaging and the process drill.
+- Shared-topic process drill: accepted-but-unpublished work survived a forced JVM stop and was delivered after Kafka returned. Checkpoint-covered pruning and a later accepted tail survived another forced stop.
 - An importer blocked inside a real Neo4j restore transaction was force-stopped. The destination retained no partial model. A subsequent import into that fresh database preserved snapshots, ACLs, tags, checkpoint hash, and pruned-batch deduplication.
 - Stale field, delete, property-set, and diagram-membership operations met their restored merge barriers. Editing and rebuild continued successfully from baseline revision 16, through restored revision 18, to revision 23.
 - The process drill and fresh server gate cleaned up their own Docker resources. The LaTeX manual builds without unresolved references or overflowing content, and updated pages were visually checked.
@@ -23,8 +24,8 @@ Resume from `main` after this handoff. Check `git status --short --branch` and `
 Machine-local evidence from the completed runs is under:
 
 ```text
-server/target/recovery-drill/65d04c8f-12e6-4441-b3ca-c807d48365f0/
-server/target/isolated-server-gate/aded865e-8b95-4d8e-b100-9cd36931b214/
+server/target/recovery-drill/bdad8b2f-8f3b-44ef-9efd-20660b30c23d/
+server/target/isolated-server-gate/8b457b8b-c20e-4c49-9fc8-47e8364e9b31/
 ```
 
 `mvn clean` can remove those directories. Regenerate evidence using the commands below; the runbook describes reports and cleanup.
@@ -46,9 +47,9 @@ Run Maven gates sequentially because they share `server/target/`. The isolated s
 
 ## Known operational limits
 
-The shared local development broker reached its 128-partition memory limit after repeated tests created model topics. It refuses new topics at that limit. Its topics and storage were preserved; no development data was deleted or broker configuration changed. Prefer the disposable `server-isolated` and `recovery` gates for fresh validation. Before using that shared broker for new models, plan a deliberate test-topic cleanup or capacity adjustment.
+The previous per-model layout exhausted the development broker's 128-partition memory budget. The new layout shares three topics keyed by model ID, so adding models no longer consumes partitions. Redpanda and its memory settings are unchanged. The old development Kafka/Neo4j volumes were intentionally discarded and recreated; no compatibility reader remains. Prefer disposable `server-isolated` and `recovery` gates to keep test fixtures out of the fresh development stack. See [Kafka setup](../kafka/kafka.md) for the layout and reset procedure.
 
-Supported deployment remains one authoritative server per Neo4j repository and one Kafka partition per model's ops topic. Scheduled checkpoint/pruning maintenance is disabled by default. Large checkpoint capture/restore can pause editing and uses memory proportional to the model. Acceptance receipts and CRDT safety metadata remain retained; checkpoint retention is configurable when scheduled maintenance is enabled.
+Supported deployment remains one authoritative server per Neo4j repository. Every Kafka event uses the model ID as its key; partition counts must remain stable during publishing. Models share partition throughput and topic-wide retention policies. Scheduled checkpoint/pruning maintenance is disabled by default. Large checkpoint capture/restore can pause editing and uses memory proportional to the model. Acceptance receipts and CRDT safety metadata remain retained; checkpoint retention is configurable when scheduled maintenance is enabled.
 
 ## Optional next work
 

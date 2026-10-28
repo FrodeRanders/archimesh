@@ -32,14 +32,14 @@ Run the schema file in the Neo4j container:
 docker compose exec -T neo4j cypher-shell -u "${NEO4J_USER}" -p "${NEO4J_PASSWORD}" < neo4j/schema.cypher
 ```
 
-## 4) Create model topics (optional)
-Your naming convention is `archimesh.model.<modelId>.<kind>`.
-Example for model `demo`:
+## 4) Create shared topics
+All models share these three topics, keyed by `modelId`. One partition each is sufficient for local development; adding a model creates no new topics or partitions. The broker can auto-create missing topics, but explicit provisioning keeps partition counts and retention predictable.
+Provision once for the whole application:
 
 ```bash
-docker compose exec kafka rpk topic create archimesh.model.demo.ops --brokers localhost:9092
-docker compose exec kafka rpk topic create archimesh.model.demo.locks --brokers localhost:9092
-docker compose exec kafka rpk topic create archimesh.model.demo.presence --brokers localhost:9092
+docker compose exec kafka rpk topic create archimesh.model.ops --partitions 1 --replicas 1 --brokers localhost:9092
+docker compose exec kafka rpk topic create archimesh.model.locks --partitions 1 --replicas 1 --brokers localhost:9092
+docker compose exec kafka rpk topic create archimesh.model.presence --partitions 1 --replicas 1 --brokers localhost:9092
 ```
 
 ## 5) Java/Quarkus connection defaults
@@ -61,6 +61,8 @@ List topics:
 ```bash
 docker compose exec kafka rpk topic list --brokers localhost:9092
 ```
+
+The old `archimesh.model.<modelId>.<kind>` layout is no longer consumed. See [Kafka setup](kafka/kafka.md) for retention, sizing and the destructive development reset procedure.
 
 Follow container logs:
 

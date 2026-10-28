@@ -276,19 +276,25 @@ The current graph structure is documented in:
 
 Kafka is used as the ordered fan-out path for accepted Archimesh batches.
 
-Topic pattern:
+Three shared topics (configurable prefix):
 
-- `archimesh.model.<modelId>.ops`
-- `archimesh.model.<modelId>.locks`
-- `archimesh.model.<modelId>.presence`
+- `archimesh.model.ops`
+- `archimesh.model.locks`
+- `archimesh.model.presence`
 
 Important behavior:
 
-- each model's ops topic must have exactly one partition for total order
+- every record is keyed by `modelId`; a model's records stay in one partition per topic, preserving order within that topic
+- one partition per topic is sufficient for local development: three application partitions regardless of model count; larger deployments may pre-provision more, keeping the partition count stable while publishing
+- adding partitions changes key-to-partition mapping; drain and coordinate a cutover before resizing, rather than changing counts during live traffic
+- models share partition capacity; there is no ordering across topic kinds, and per-model broker ACLs/retention are replaced by topic-wide policies
+- consumers subscribe only to the three exact shared topic names and route by record key; mismatched payload identity is rejected; the old per-model topic layout is unsupported
 - one Neo4j transaction persists the log, projection, head, and pending publication payload
 - an ordered durable dispatcher publishes committed batches and retries after broker failures or server restart
 - duplicate broadcasts are tolerated; applied revision advances only after projection application
 - websocket clients receive broadcasts from the session registry / consumer path
+
+See [Kafka setup and partitioning](kafka/kafka.md) for provisioning, retention and the clean-start procedure.
 
 ## Data and state model
 

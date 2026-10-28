@@ -41,8 +41,11 @@ Neo4j/Kafka project, applies the schema, runs all server unit/infrastructure/Web
 tests with an ephemeral HTTP test port, and removes that project's containers and
 volumes on exit. It explicitly disables the process drill. Logs and copied Surefire
 reports are kept under `server/target/isolated-server-gate/<run-uuid>/`.
-This avoids topic accumulation exhausting the development broker's partition
-capacity after repeated runs. Client tests remain in the client/full gates.
+This keeps test messages and model fixtures out of the development stack.
+Application traffic uses three shared topics, so adding test models no longer adds
+partitions. The shared-topic integration test additionally exercises 160 model keys
+on three three-partition topics and removes only its own temporary topics on exit.
+Client tests remain in the client/full gates.
 
 Repository fixture tests use a test-only Quarkus profile with background delivery
 disabled, so the dispatcher cannot consume unpublished rows while those tests inspect

@@ -112,13 +112,29 @@ The admin UI/API provides model provisioning, ACL management, immutable tags, ac
 ## Reliability and deployment
 
 - Run **one authoritative server per Neo4j repository**. A renewable database writer lease enforces this topology; timeline operations are serialized in the active server.
-- Each model's ops topic needs **one Kafka partition** to preserve order. Topic names follow `archimesh.model.<modelId>.<ops|locks|presence>`.
+- All models share **three Kafka topics**: `archimesh.model.ops`, `archimesh.model.locks`, and `archimesh.model.presence`. With one partition each, that is **three application partitions total**, independent of model count. Every event is keyed by `modelId`, preserving each model's order within its topic. See [partitioning and fresh-start setup](kafka/kafka.md).
 - Operation publication is durable and at least once. Lock/presence events use their own Kafka topics; lock leases and live sessions are process-local state.
 - Rebuild verifies the latest checkpoint and complete, contiguous operation tail before replacing the projection in one transaction. Without a checkpoint it requires the full operation history. V2 checkpoint import also restores in one transaction.
 - Manual pruning removes only whole, published batches covered by a verified checkpoint and the requested retention policy. It retains acceptance receipts, all clocks, and tombstones. Stale reconnects receive a snapshot when their delta history has been pruned. Archive full history before pruning if individual old operations are needed.
 - Scheduled checkpoint creation, payload pruning, and retention of older checkpoints are configurable and disabled by default. The worker rotates through bounded model sets, preserves the newest recovery base, and resumes after failures or restart. See [scheduled maintenance configuration](docs/checkpoint-pruning.md#optional-scheduled-maintenance).
 
 The [architecture document](architecture.md#supported-deployment-and-recovery) includes recovery and publication-failure diagrams, deployment boundaries, and known operational gaps.
+
+```mermaid
+flowchart LR
+    A[Model A events] --> P[Kafka publisher]
+    B[Model B events] --> P
+    P -->|key = modelId| O[Shared ops topic]
+    P -->|key = modelId| L[Shared locks topic]
+    P -->|key = modelId| R[Shared presence topic]
+    O --> C[Kafka consumer]
+    L --> C
+    R --> C
+    C -->|key A| SA[Model A sessions]
+    C -->|key B| SB[Model B sessions]
+```
+
+Partition counts are set when provisioning topics; adding models does not add partitions. Busy models share broker capacity, and there is no ordering guarantee between topic kinds. This layout replaces the old per-model topics and requires a fresh Kafka start; the consumer does not read the old layout.
 
 ## Local development and validation
 

@@ -8,6 +8,7 @@ import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -30,7 +31,7 @@ public class KafkaPublisherImpl implements KafkaPublisher {
     @Inject
     ObjectMapper objectMapper;
 
-    private KafkaProducer<String, String> producer;
+    Producer<String, String> producer;
 
     @PostConstruct
     void init() {
@@ -75,7 +76,7 @@ public class KafkaPublisherImpl implements KafkaPublisher {
         }
         CompletableFuture<Void> future = new CompletableFuture<>();
         try {
-            String topic = topicPrefix + "." + modelId + "." + kind;
+            String topic = KafkaTopics.publishTopic(topicPrefix, modelId, kind);
             String value = objectMapper.writeValueAsString(payload);
             LOG.debug("Kafka publish queued: topic={} modelId={} kind={}", topic, modelId, kind);
             producer.send(new ProducerRecord<>(topic, modelId, value), (metadata, exception) -> {

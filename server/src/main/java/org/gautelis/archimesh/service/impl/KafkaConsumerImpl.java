@@ -93,14 +93,14 @@ public class KafkaConsumerImpl implements KafkaConsumer {
             try (org.apache.kafka.clients.consumer.KafkaConsumer<String, String> consumer =
                          new org.apache.kafka.clients.consumer.KafkaConsumer<>(consumerProperties())) {
                 activeConsumer = consumer;
-                String pattern = "^" + topicPrefix.replace(".", "\\.") + "\\.[^.]+\\.(ops|locks|presence)$";
-                consumer.subscribe(java.util.regex.Pattern.compile(pattern));
-                LOG.info("Subscribed to kafka topics pattern {}", pattern);
+                var topics = KafkaTopics.subscription(topicPrefix);
+                consumer.subscribe(topics);
+                LOG.info("Subscribed to kafka topics {}", topics);
 
                 while (running) {
                     ConsumerRecords<String, String> records = consumer.poll(POLL_TIMEOUT);
                     // Preserve Kafka record ordering per partition within this single consumer thread
-                    records.forEach(record -> handleRecord(record.topic(), record.value()));
+                    records.forEach(record -> handleRecord(record.topic(), record.key(), record.value()));
                 }
             } catch (WakeupException e) {
                 if (running) {
@@ -122,17 +122,26 @@ public class KafkaConsumerImpl implements KafkaConsumer {
         }
     }
 
-    void handleRecord(String topic, String payload) {
+    void handleRecord(String topic, String key, String payload) {
         try {
-            JsonNode message = objectMapper.readTree(payload);
-            TopicRoute route = parseTopic(topicPrefix, topic);
-            String modelId = message.path("modelId").asText(null);
-            String kind = route != null ? route.kind() : null;
-            if ((modelId == null || modelId.isBlank()) && route != null) {
-                modelId = route.modelId();
+            String kind = KafkaTopics.kind(topicPrefix, topic);
+            if (kind == null) {
+                LOG.debug("Ignoring unsupported topic {}", topic);
+                return;
             }
+            JsonNode message = objectMapper.readTree(payload);
+            if (message == null || !message.isObject()) {
+                LOG.warn("Ignoring non-object Kafka payload on topic={}", topic);
+                return;
+            }
+            String modelId = key;
             if (modelId == null || modelId.isBlank()) {
-                LOG.warn("Could not derive modelId from topic={} payload", topic);
+                LOG.warn("Missing model key on shared topic={}", topic);
+                return;
+            }
+            String payloadModel = message.path("modelId").asText(null);
+            if (payloadModel != null && !modelId.equals(payloadModel)) {
+                LOG.warn("Ignoring inconsistent model routing on topic={}", topic);
                 return;
             }
             LOG.debug("Kafka record received: topic={} modelId={} kind={}", topic, modelId, kind);
@@ -153,32 +162,6 @@ public class KafkaConsumerImpl implements KafkaConsumer {
         } catch (Exception e) {
             LOG.warn("Failed to process kafka record topic={}", topic, e);
         }
-    }
-
-    static String extractModelIdFromTopic(String topicPrefix, String topic) {
-        TopicRoute route = parseTopic(topicPrefix, topic);
-        return route == null ? null : route.modelId();
-    }
-
-    static TopicRoute parseTopic(String topicPrefix, String topic) {
-        String prefix = topicPrefix + ".";
-        if (topic == null || !topic.startsWith(prefix)) {
-            return null;
-        }
-        int lastDot = topic.lastIndexOf('.');
-        if (lastDot <= prefix.length()) {
-            return null;
-        }
-        String modelId = topic.substring(prefix.length(), lastDot);
-        String kind = topic.substring(lastDot + 1);
-        if (modelId.isBlank()) {
-            return null;
-        }
-        if (!"ops".equals(kind) && !"locks".equals(kind) && !"presence".equals(kind)) {
-            return null;
-        }
-        // Topic format: <prefix>.<modelId>.<kind>
-        return new TopicRoute(modelId, kind);
     }
 
     private Properties consumerProperties() {
@@ -237,6 +220,4 @@ public class KafkaConsumerImpl implements KafkaConsumer {
         return null;
     }
 
-    record TopicRoute(String modelId, String kind) {
-    }
 }
