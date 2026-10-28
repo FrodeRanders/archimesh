@@ -127,14 +127,40 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
     }
 
     @Override
-    public List<JsonNode> pendingBroadcasts() {
+    public List<String> pendingBroadcastModels(String afterModelId, int limit) {
+        if (limit < 1) throw new IllegalArgumentException("Pending model limit must be positive");
+        try (var session = requireDriver("pendingBroadcastModels").session()) {
+            return session.executeRead(tx -> tx.run("MATCH (c:Commit) WHERE c.published=false "
+                            + "WITH DISTINCT c.modelId AS modelId WHERE modelId > $after "
+                            + "RETURN modelId ORDER BY modelId LIMIT $limit",
+                    Map.of("after",afterModelId == null ? "" : afterModelId,"limit",limit))
+                    .list(row -> row.get("modelId").asString()));
+        }
+    }
+
+    @Override
+    public List<JsonNode> pendingBroadcasts(String modelId, int limit) {
+        if (limit < 1) throw new IllegalArgumentException("Pending batch limit must be positive");
         try (var session = requireDriver("pendingBroadcasts").session()) {
-            return session.executeRead(tx -> tx.run("MATCH (c:Commit) "
-                            + "WHERE c.published=false AND c.batchJson IS NOT NULL "
-                            + "RETURN c.batchJson AS json ORDER BY c.modelId, c.revisionFrom LIMIT 100",
-                    Map.of()).list(row -> {
-                try { return objectMapper.readTree(row.get("json").asString()); }
-                catch (Exception e) { throw new IllegalStateException("Invalid persisted delivery payload", e); }
+            return session.executeRead(tx -> tx.run("MATCH (c:Commit {modelId:$modelId,published:false}) "
+                            + "RETURN c.opBatchId AS id,c.revisionFrom AS start,c.revisionTo AS end,c.batchJson AS json "
+                            + "ORDER BY c.revisionFrom LIMIT $limit",
+                    Map.of("modelId",modelId,"limit",limit)).list(row -> {
+                try {
+                    JsonNode batch = objectMapper.readTree(row.get("json").asString());
+                    long start = row.get("start").asLong(), end = row.get("end").asLong();
+                    if (batch == null || !batch.isObject() || !modelId.equals(batch.path("modelId").asText())
+                            || !row.get("id").asString().equals(batch.path("opBatchId").asText())
+                            || start <= 0 || end < start
+                            || start != batch.path("assignedRevisionRange").path("from").asLong(-1)
+                            || end != batch.path("assignedRevisionRange").path("to").asLong(-1)
+                            || !batch.path("ops").isArray() || batch.path("ops").size() != end-start+1) {
+                        throw new IllegalArgumentException("Delivery payload identity or revision range mismatch");
+                    }
+                    return batch;
+                } catch (Exception e) {
+                    throw new IllegalStateException("Invalid persisted delivery payload for model " + modelId, e);
+                }
             }));
         }
     }
@@ -143,6 +169,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
     public void markBroadcastPublished(String modelId, String opBatchId) {
         try (var session = requireDriver("markBroadcastPublished").session()) {
             session.executeWrite(tx -> {
+                requireWriterLease(tx);
                 tx.run("MATCH (c:Commit {modelId:$modelId, opBatchId:$batch}) SET c.published=true",
                         Map.of("modelId", modelId, "batch", opBatchId));
                 return null;

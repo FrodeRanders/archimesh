@@ -24,7 +24,11 @@ public interface Neo4jRepository {
         return Optional.empty();
     }
 
-    default List<JsonNode> pendingBroadcasts() { return List.of(); }
+    /** Sorted pending model IDs strictly after the cursor; payload decoding is model-local. */
+    default List<String> pendingBroadcastModels(String afterModelId, int limit) { return List.of(); }
+
+    /** Earliest unpublished batches for one model, including a failure for missing/corrupt payloads. */
+    default List<JsonNode> pendingBroadcasts(String modelId, int limit) { return List.of(); }
 
     default void markBroadcastPublished(String modelId, String opBatchId) { }
 

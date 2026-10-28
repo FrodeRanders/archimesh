@@ -58,6 +58,14 @@ the send. Committed operation batches are published by
 revision order, waits for broker acknowledgment, then marks publication complete.
 Failed or interrupted sends leave the durable intent pending for retry.
 
+Pending model discovery is separate from payload decoding. A cursor rotates
+through sorted pending model IDs, scanning at most 100 IDs per pass. A bounded
+pool handles independent models concurrently, with at most one queued or
+running worker per model. Each visit publishes a limited prefix in revision
+order, awaiting broker acknowledgment and the Neo4j flag write before its
+successor. A large backlog in one model cannot fill the discovery window for
+every other model.
+
 \manualfigure[\linewidth]{commit-delivery}{Durable acceptance and asynchronous operation fan-out.}{commit-delivery}
 
 The two branches in Figure~\ref{fig:commit-delivery} have separate durability
@@ -117,6 +125,16 @@ the first unpublished or unclassified legacy batch, even when a newer
 checkpoint covers its state. Lock and presence events use direct Kafka
 publication and do not share the durable operation outbox.
 
+A publication failure, invalid or missing payload, or acknowledgment-write
+failure stops that model's visit and defers retries for at least one second.
+Its batch and successors remain pending while other model workers continue.
+Stored payload identity, range and operation count must match the receipt.
+A slow broker send retains its model slot until it settles; later batches
+cannot overtake it. If every worker slot is occupied, other models wait.
+Lease renewal runs separately from the model workers, and shutdown interrupts
+pending waits without acknowledging them. Cursor and cooldown state are
+process-local; restart recovers work from the durable queue.
+
 \subsection{Configuration}
 
 \begingroup\small
@@ -136,3 +154,19 @@ Property & Env var & Default \\
 \bottomrule
 \end{longtable}
 \endgroup
+
+Delivery limits are configured separately from Kafka:
+
+\begin{description}
+\item[\code{app.delivery.concurrent-models}]
+  \code{ARCHIMESH\_DELIVERY\_CONCURRENT\_MODELS}, default 4.
+\item[\code{app.delivery.batches-per-model}]
+  \code{ARCHIMESH\_DELIVERY\_BATCHES\_PER\_MODEL}, default 25.
+\end{description}
+
+Both must be positive. Submit bursts coalesce immediate scan requests; the
+periodic scan also runs once per second. Apply \filepath{neo4j/schema.cypher}
+to install the \code{commit\_delivery} queue index on
+\code{(published, modelId, revisionFrom)}. Model-specific delivery warnings
+identify blocked models; broker-wide and database-wide outages can still
+affect all workers.

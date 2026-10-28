@@ -75,6 +75,8 @@ For notation changes, the plugin brackets submission with acquire/release lock r
 
 A failed transaction receives no acceptance. Retrying the same `(modelId, opBatchId)` consults the persisted commit and returns the original revision range. Kafka publication retries survive server restart; duplicate broadcasts are tolerated. Rejections go to the submitting session and include the batch ID so another client's queued work is unaffected.
 
+Delivery rotates through pending models and uses a bounded pool of independent model workers. Each worker publishes a limited ordered prefix and stops at the first failure. A failed or corrupt model retains its pending intent while other models can progress. Defaults are four concurrent models and 25 batches per model visit; see [delivery configuration](server/README.md#durable-operation-delivery).
+
 ## Opening, reconnecting, and working offline
 
 1. An administrator provisions the model. Clients discover readable models through `GET /models` and tags through `GET /models/{modelId}/tags`; joining or submitting cannot implicitly create a model.

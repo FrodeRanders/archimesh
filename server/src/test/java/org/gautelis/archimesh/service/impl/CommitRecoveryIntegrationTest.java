@@ -6,11 +6,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.gautelis.archimesh.model.RevisionRange;
 import org.junit.jupiter.api.*;
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 class CommitRecoveryIntegrationTest {
     private final ObjectMapper json = new ObjectMapper();
     private Neo4jRepositoryImpl repository;
     private String model;
+    private final List<String> extraModels = new ArrayList<>();
 
     private Neo4jRepositoryImpl open() {
         var repo = new Neo4jRepositoryImpl();
@@ -31,7 +35,10 @@ class CommitRecoveryIntegrationTest {
 
     @AfterEach
     void cleanUp() {
-        if (repository != null) { repository.deleteModel(model); repository.close(); }
+        if (repository != null) {
+            for (String id : extraModels) repository.deleteModel(id);
+            repository.deleteModel(model); repository.close();
+        }
     }
 
     private ObjectNode batch(String id, long start, String... operations) throws Exception {
@@ -76,9 +83,9 @@ class CommitRecoveryIntegrationTest {
         repository.close();
         repository = open();
         Assertions.assertEquals(new RevisionRange(1, 1), repository.findAcceptedRange(model, "durable").orElseThrow());
-        Assertions.assertTrue(repository.pendingBroadcasts().stream().anyMatch(b -> model.equals(b.path("modelId").asText())));
+        Assertions.assertEquals(1,repository.pendingBroadcasts(model,25).size());
         repository.markBroadcastPublished(model, "durable");
-        Assertions.assertFalse(repository.pendingBroadcasts().stream().anyMatch(b -> model.equals(b.path("modelId").asText())));
+        Assertions.assertTrue(repository.pendingBroadcasts(model,25).isEmpty());
     }
 
     @Test
@@ -110,5 +117,77 @@ class CommitRecoveryIntegrationTest {
             repository.releaseServerLease(owner);
             repository.releaseServerLease(other);
         }
+    }
+
+    private String pendingModel(String suffix, int count) throws Exception {
+        String id = model+"-"+suffix;
+        extraModels.add(id); repository.registerModel(id,"Delivery isolation");
+        List<Map<String,Object>> rows = new ArrayList<>();
+        for (int i=1;i<=count;i++) {
+            // Seed only the durable delivery queue to exercise a backlog larger than the old global limit.
+            var batch = json.createObjectNode().put("modelId",id).put("opBatchId","batch-"+i);
+            batch.set("assignedRevisionRange",json.createObjectNode().put("from",i).put("to",i));
+            batch.putArray("ops").add(json.readTree(create("queued-"+i)));
+            rows.add(Map.of("id","batch-"+i,"revision",i,"json",batch.toString()));
+        }
+        try (var driver = org.neo4j.driver.GraphDatabase.driver(repository.uri,org.neo4j.driver.AuthTokens.basic(repository.username,repository.password));
+             var session = driver.session()) {
+            session.run("MATCH (m:Model {modelId:$modelId}) UNWIND $rows AS row "
+                    + "CREATE (c:Commit {modelId:$modelId,opBatchId:row.id,revisionFrom:row.revision,revisionTo:row.revision, "
+                    + "published:false,payloadPruned:false,batchJson:row.json}) CREATE (m)-[:HAS_COMMIT]->(c)",
+                    Map.of("modelId",id,"rows",rows)).consume();
+        }
+        return id;
+    }
+
+    @Test
+    void modelSelectionAndPayloadBudgetsRemainIndependentAcrossRestart() throws Exception {
+        String busy = pendingModel("a",120), healthy = pendingModel("z",1);
+        Assertions.assertEquals(List.of(busy,healthy),repository.pendingBroadcastModels(model,2));
+        Assertions.assertEquals(List.of("batch-1","batch-2","batch-3"),repository.pendingBroadcasts(busy,3).stream()
+                .map(b -> b.path("opBatchId").asText()).toList());
+        Assertions.assertEquals(1,repository.pendingBroadcasts(healthy,3).size());
+        Assertions.assertEquals(healthy,repository.pendingBroadcastModels(busy,1).getFirst());
+        repository.close(); repository = open();
+        Assertions.assertEquals(List.of(busy,healthy),repository.pendingBroadcastModels(model,2));
+        repository.markBroadcastPublished(busy,"batch-1");
+        Assertions.assertEquals("batch-2",repository.pendingBroadcasts(busy,1).getFirst().path("opBatchId").asText());
+        Assertions.assertThrows(IllegalArgumentException.class,() -> repository.pendingBroadcasts(busy,0));
+        Assertions.assertThrows(IllegalArgumentException.class,() -> repository.pendingBroadcastModels(null,0));
+    }
+
+    @Test
+    void corruptMissingAndMismatchedPayloadsRemainModelLocalAndCannotBeSkipped() throws Exception {
+        String broken = pendingModel("a",2), healthy = pendingModel("z",1);
+        try (var driver = org.neo4j.driver.GraphDatabase.driver(repository.uri,org.neo4j.driver.AuthTokens.basic(repository.username,repository.password));
+             var session = driver.session()) {
+            session.run("MATCH (c:Commit {modelId:$modelId,opBatchId:'batch-1'}) SET c.batchJson='broken-json'",
+                    Map.of("modelId",broken)).consume();
+            Assertions.assertEquals(List.of(broken,healthy),repository.pendingBroadcastModels(model,2));
+            Assertions.assertThrows(IllegalStateException.class,() -> repository.pendingBroadcasts(broken,1));
+            Assertions.assertEquals(1,repository.pendingBroadcasts(healthy,1).size());
+            session.run("MATCH (c:Commit {modelId:$modelId,opBatchId:'batch-1'}) REMOVE c.batchJson",
+                    Map.of("modelId",broken)).consume();
+            Assertions.assertThrows(IllegalStateException.class,() -> repository.pendingBroadcasts(broken,1),
+                    "missing payload at the head must block this model rather than return its successor");
+            String foreign = repository.pendingBroadcasts(healthy,1).getFirst().toString();
+            session.run("MATCH (c:Commit {modelId:$modelId,opBatchId:'batch-1'}) SET c.batchJson=$json",
+                    Map.of("modelId",broken,"json",foreign)).consume();
+            Assertions.assertThrows(IllegalStateException.class,() -> repository.pendingBroadcasts(broken,1));
+        }
+    }
+
+    @Test
+    void expiredWriterCannotAcknowledgePendingPublication() throws Exception {
+        commit(batch("pending",1,create("first")));
+        repository.runtimeLeaseKey = "delivery-lease-"+UUID.randomUUID();
+        Assertions.assertTrue(repository.acquireServerLease(UUID.randomUUID().toString(),30_000));
+        try (var driver = org.neo4j.driver.GraphDatabase.driver(repository.uri,org.neo4j.driver.AuthTokens.basic(repository.username,repository.password));
+             var session = driver.session()) {
+            session.run("MATCH (r:ArchimeshRuntime {id:$key}) SET r.expiresAt=0",
+                    Map.of("key",repository.runtimeLeaseKey)).consume();
+        }
+        Assertions.assertThrows(IllegalStateException.class,() -> repository.markBroadcastPublished(model,"pending"));
+        Assertions.assertEquals(1,repository.pendingBroadcasts(model,1).size());
     }
 }

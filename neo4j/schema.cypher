@@ -38,6 +38,9 @@ FOR (c:ModelCheckpoint) REQUIRE (c.modelId, c.revision) IS UNIQUE;
 CREATE INDEX commit_model_rev IF NOT EXISTS
 FOR (c:Commit) ON (c.modelId, c.revisionFrom, c.revisionTo);
 
+CREATE INDEX commit_delivery IF NOT EXISTS
+FOR (c:Commit) ON (c.published, c.modelId, c.revisionFrom);
+
 /*
 Suggested materialized relationships:
 (:Model)-[:HAS_ELEMENT]->(:Element)

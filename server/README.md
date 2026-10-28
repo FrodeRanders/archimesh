@@ -164,6 +164,21 @@ Maintainer invariants:
 - Kafka consumer subscribes to `archimesh.model.*.ops` and emits websocket `OpsBroadcast`.
 - Kafka consumer also subscribes to `locks` and `presence` topics and emits websocket `LockEvent` / `PresenceBroadcast`.
 
+## Durable operation delivery
+
+The delivery service discovers pending model IDs separately from decoding stored batches. It rotates through sorted model IDs, with a maximum of 100 IDs scanned per pass. A bounded pool handles independent models concurrently; only one queued or running worker may handle a given model. Each visit publishes a limited prefix in revision order, waiting for broker acknowledgment and the database publication flag before sending the next batch.
+
+| Property | Environment variable | Default |
+| --- | --- | --- |
+| `app.delivery.concurrent-models` | `ARCHIMESH_DELIVERY_CONCURRENT_MODELS` | `4` |
+| `app.delivery.batches-per-model` | `ARCHIMESH_DELIVERY_BATCHES_PER_MODEL` | `25` |
+
+Both limits must be positive. More model workers allow healthy models to progress while other sends await broker completion; all occupied slots still impose backpressure. A slow send retains its model slot until completion or shutdown, so later batches cannot overtake it. Lease renewal and selection use separate scheduler threads. Submit bursts coalesce scan requests; the periodic scan also runs once per second.
+
+A publish failure, corrupt/missing payload, or publication-flag write failure stops only that model's visit and applies a one-second retry cooldown. The failed batch and its successors remain pending. Payload identity, range and operation count must agree with the stored receipt. Inspect model-specific delivery warnings and repair invalid stored data before expecting that model to progress; other models continue. Broker-wide or database-wide outages can affect all models. At-least-once delivery and original-range deduplication remain unchanged.
+
+The pending cursor is ephemeral; a server restart scans durable pending work again. Shutdown interrupts worker waits without acknowledging unfinished intent, and an in-progress lease renewal cannot reactivate a stopped dispatcher. Apply `neo4j/schema.cypher` to install the `commit_delivery` index on `(published, modelId, revisionFrom)` for pending queue reads.
+
 ## Snapshot / Rebuild API usage
 
 Get canonical snapshot from Neo4j materialized state:

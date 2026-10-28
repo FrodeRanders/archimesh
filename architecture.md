@@ -613,6 +613,10 @@ The plugin discovers readable models through `GET /models` and reads tags throug
 
 Model commit and Kafka publication have different durability boundaries. The pending payload lives on the committed Neo4j commit node, so a broker outage or a server restart leaves a retryable publication intent. The worker renews its authoritative writer lease and publishes pending batches in model revision order.
 
+Pending model IDs are selected independently of payload decoding, in sorted cursor pages of at most 100 IDs. The selector rotates and dispatches to a bounded worker pool (default four concurrent models). At most one queued or running worker owns a model. Each visit reads at most 25 pending batches by default and waits for each broker acknowledgment and Neo4j publication flag before sending its successor. A busy model's payload count cannot fill another model's discovery window.
+
+Publication, payload decoding, or acknowledgment-write failures stop that model's visit and defer retry for at least one second. Its pending batch and successors remain durable; other model workers continue. Missing or invalid payloads block their model rather than being skipped. A slow acknowledgment occupies one model slot, with no application timeout that could release the model before the send settles. If all slots are occupied, other models wait; configure concurrency for the workload. Lease renewal and selection run separately from model workers, submit bursts coalesce scan requests, and shutdown interrupts pending waits without marking them published. The rotation cursor and retry cooldown are process-local; restart recovers pending work from Neo4j.
+
 ```mermaid
 flowchart TB
     Commit["Atomic model transaction commits"] --> Pending["Persisted batch with published = false"]
