@@ -1,0 +1,39 @@
+# Dedicated, disposable infrastructure for ProcessRecoveryIT. No shared service names or volumes.
+services:
+  source-db:
+    image: neo4j:5.26.0-community
+    environment:
+      NEO4J_AUTH: "neo4j/${DRILL_DB_PASSWORD:?set by recovery harness}"
+      NEO4J_server_memory_heap_initial__size: 128m
+      NEO4J_server_memory_heap_max__size: 256m
+      NEO4J_server_memory_pagecache_size: 128m
+    ports:
+      - "127.0.0.1::7687"
+  restore-db:
+    image: neo4j:5.26.0-community
+    environment:
+      NEO4J_AUTH: "neo4j/${DRILL_DB_PASSWORD:?set by recovery harness}"
+      NEO4J_server_memory_heap_initial__size: 128m
+      NEO4J_server_memory_heap_max__size: 256m
+      NEO4J_server_memory_pagecache_size: 128m
+    ports:
+      - "127.0.0.1::7687"
+  kafka:
+    image: redpandadata/redpanda:v24.2.8
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 512M
+      - --reserve-memory
+      - 0M
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - "PLAINTEXT://127.0.0.1:${DRILL_KAFKA_PORT:?set by recovery harness}"
+    ports:
+      - "127.0.0.1:${DRILL_KAFKA_PORT}:9092"

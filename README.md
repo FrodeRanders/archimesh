@@ -6,6 +6,8 @@ The architecture combines a **central authoritative timeline** with **CRDT-style
 
 Start with the overview below, then see [architecture.md](architecture.md) for component wiring, checkout, authorization, timeline, and recovery diagrams. The [CRDT specification](crdt-spec.md) describes merge behavior and its current limits. A longer presentation is available in [the manual](docs/manual/archimesh-manual.pdf).
 
+For the tested stopping point, branch state, resume commands, and known local broker limit, see the [project handoff](docs/project-status.md).
+
 ## Architecture at a glance
 
 ```mermaid
@@ -138,6 +140,8 @@ See [dev-setup.md](dev-setup.md) for environment settings, service ports, and ma
 | `./scripts/validate-local.sh gate` | Fresh plugin build, all client tests, and server unit tests; infrastructure tests skip unless enabled. |
 | `./scripts/validate-local.sh infra` | Gate plus local Neo4j/Kafka, REST, and authorization integration coverage. |
 | `./scripts/validate-local.sh ws` | Full gate including WebSocket end-to-end coverage. |
+| `./scripts/validate-local.sh recovery` | Packaged JVM crash and fresh-database restore drill on isolated Docker infrastructure; [steps and evidence](docs/recovery-drills.md). |
+| `./scripts/validate-local.sh server-isolated` | All server unit, infrastructure and WebSocket tests on fresh disposable Neo4j/Kafka; avoids accumulated development topics and data. |
 
 These scripts are the supported release gate entrypoints. [The sanity checklist](sanity-checklist.md) covers manual collaboration checks in Archi.
 
@@ -148,6 +152,7 @@ These scripts are the supported release gate entrypoints. [The sanity checklist]
 | [architecture.md](architecture.md) | Component wiring, state ownership, identity, checkout, history, and recovery flows. |
 | [crdt-spec.md](crdt-spec.md) | Merge rules, implemented domains, correctness expectations, and remaining work. |
 | [docs/checkpoint-pruning.md](docs/checkpoint-pruning.md) | Checkpoint creation, bounded payload pruning, recovery, and operational limits. |
+| [docs/recovery-drills.md](docs/recovery-drills.md) | Isolated process-crash drill, fresh-database restore, retained evidence, and cleanup. |
 | [client/](client/README.md) | Archi plugin, target-platform setup, pinned build, and client tests. |
 | [server/](server/README.md) | Quarkus endpoints, services, persistence, identity setup, and server tests. |
 | [admin-web/](admin-web/README.md) | Svelte administration UI. |

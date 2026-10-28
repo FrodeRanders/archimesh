@@ -57,6 +57,24 @@ figures before compiling. Sources and prerequisites are documented in
 \subsection{Validation and gate checks}
 
 \begin{description}
+\item[\code{run-isolated-server-gate.sh}]
+  Runs all server unit, infrastructure and WebSocket tests on fresh disposable
+  Neo4j/Kafka with an ephemeral HTTP test port. It requires Python 3 for run IDs
+  and port selection, removes only its own Docker project, and saves logs and
+  Surefire reports under \filepath{server/target/isolated-server-gate/}.
+  Equivalent entry point: \shellcmd{./scripts/validate-local.sh server-isolated}.
+\item[\code{run-recovery-drill.sh}]
+  Packages the server and runs the opt-in \code{ProcessRecoveryIT} against
+  dedicated Docker infrastructure. It force-stops only its own child server
+  JVMs, waits for real writer-lease expiry, checks pending publication and
+  checkpoint recovery, and interrupts an atomic v2 restore into an empty
+  database. Evidence is retained under \filepath{server/target/recovery-drill/}.
+  Use \code{--skip-build} to reuse an existing package. The equivalent gate
+  entry point is \shellcmd{./scripts/validate-local.sh recovery}; see
+  \filepath{docs/recovery-drills.md} for scenarios and cleanup.
+\end{description}
+
+\begin{description}
 \item[\code{validate-local.sh}]
   Central validation entry point.\\
   Usage: \code{./validate-local.sh <mode>}\\
@@ -71,6 +89,10 @@ figures before compiling. Sources and prerequisites are documented in
     coverage. Sets \code{RUN\_LOCAL\_INFRA\_IT=true}.
   \item[\code{ws}] Full gate with websocket end-to-end coverage. Sets
     \code{RUN\_WS\_E2E\_IT=true}.
+  \item[\code{recovery}] Packaged JVM crash and fresh-database restore drill
+    against dedicated Docker infrastructure.
+  \item[\code{server-isolated}] All server tests on fresh disposable
+    Neo4j/Kafka, including WebSocket coverage; client tests run separately.
   \end{description}
 
 \item[\code{crdt-gate.sh}]

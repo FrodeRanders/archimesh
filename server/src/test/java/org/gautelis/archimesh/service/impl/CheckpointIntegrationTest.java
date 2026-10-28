@@ -6,9 +6,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.gautelis.archimesh.model.ModelCheckpoint;
 import org.gautelis.archimesh.model.RevisionRange;
 import org.junit.jupiter.api.*;
+import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.TestProfile;
+import org.gautelis.archimesh.service.RepositoryOnlyProfile;
 
 import java.util.UUID;
 
+@QuarkusTest
+@TestProfile(RepositoryOnlyProfile.class)
 class CheckpointIntegrationTest {
     private final ObjectMapper json = new ObjectMapper();
     private Neo4jRepositoryImpl repository;

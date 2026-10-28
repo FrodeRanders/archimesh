@@ -166,6 +166,8 @@ Maintainer invariants:
 
 ## Durable operation delivery
 
+The [process recovery drill](../docs/recovery-drills.md) exercises force-stopped packaged servers, durable publication after a broker outage, checkpoint-plus-tail recovery after pruning, and interrupted v2 restore into an empty database. Run `./scripts/validate-local.sh recovery` from the repository root; it creates dedicated Docker resources and writes evidence under `server/target/recovery-drill/`.
+
 The delivery service discovers pending model IDs separately from decoding stored batches. It rotates through sorted model IDs, with a maximum of 100 IDs scanned per pass. A bounded pool handles independent models concurrently; only one queued or running worker may handle a given model. Each visit publishes a limited prefix in revision order, waiting for broker acknowledgment and the database publication flag before sending the next batch.
 
 | Property | Environment variable | Default |

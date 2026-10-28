@@ -148,6 +148,9 @@ The project includes local validation scripts for fast feedback:
 
 # Full gate with websocket end-to-end coverage
 ./scripts/validate-local.sh ws
+
+# Isolated packaged JVM crash and fresh-database restore drill
+./scripts/validate-local.sh recovery
 \end{lstlisting}
 
 These are the supported release gate entrypoints. Run \code{fast} before

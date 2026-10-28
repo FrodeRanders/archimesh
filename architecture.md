@@ -603,6 +603,8 @@ The current client implementation does not yet include reconnect jitter. This is
 
 Use one authoritative Archimesh server per Neo4j repository. A renewable database writer lease rejects a second active server; commits check the lease and lock the model head. The service serializes timeline operations within the active server. Horizontal active-active operation is not supported.
 
+The [process recovery drill](docs/recovery-drills.md) exercises packaged server JVMs with forced stops, the real writer-lease expiry, broker recovery, checkpoint pruning, and an interrupted v2 restore into an empty database. Run `./scripts/validate-local.sh recovery`; it uses a dedicated Docker project and retains fixture exports, snapshots, logs, and a machine-readable report.
+
 Snapshot reads use one database transaction and carry property values, field clocks, collection membership clocks, and tombstones. Incomplete delta windows fall back to a snapshot, including after pruning. Rebuild verifies the latest checkpoint and its complete contiguous tail before replacing the projection in one transaction. With no checkpoint, recovery requires the full log from revision 1.
 
 Manual compaction prunes only published batch payloads covered by a verified checkpoint and the revision retention policy. Acceptance receipts, all field/property/member clocks, and tombstones remain. Capture includes orphan safety metadata. Models compacted by an older server may require restoration from a complete export or backup before their first checkpoint; missing recovery coverage is rejected. See [checkpoint maintenance](docs/checkpoint-pruning.md) for the workflow and limits.

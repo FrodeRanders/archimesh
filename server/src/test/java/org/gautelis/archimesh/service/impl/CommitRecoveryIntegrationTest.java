@@ -5,11 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.gautelis.archimesh.model.RevisionRange;
 import org.junit.jupiter.api.*;
+import io.quarkus.test.junit.QuarkusTest;
+import io.quarkus.test.junit.TestProfile;
+import org.gautelis.archimesh.service.RepositoryOnlyProfile;
 import java.util.UUID;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+@QuarkusTest
+@TestProfile(RepositoryOnlyProfile.class)
 class CommitRecoveryIntegrationTest {
     private final ObjectMapper json = new ObjectMapper();
     private Neo4jRepositoryImpl repository;

@@ -185,6 +185,25 @@ logs for critical sync issues, integrity warnings and connection errors.
 
 \subsection{Recovery procedures}
 
+\subsubsection{Repeatable process-crash drill}
+
+Run \shellcmd{./scripts/validate-local.sh recovery} to exercise packaged server
+JVMs against isolated Docker infrastructure. The drill force-stops an accepted
+but unpublished batch, recovers delivery after Kafka returns, restarts after
+checkpoint pruning and tail acceptance, and restores the package into an empty
+database. A database uniqueness lock synchronizes a forced stop inside the
+restore transaction; no partial model may remain after rollback.
+
+The drill compares snapshots, tags, checkpoint hashes and old acceptance
+ranges, then checks stale-write/delete barriers, further edits and rebuild.
+It waits for the real writer lease instead of resetting it. Reports, fixture
+exports and process logs are saved under
+\filepath{server/target/recovery-drill/<run-uuid>/}. Ordinary gates skip this
+opt-in test. Default cleanup removes only the drill's own containers, volumes
+and child processes; the existing development stack is unaffected. See
+\filepath{docs/recovery-drills.md} for commands, retained-infrastructure
+diagnostics and the limits of the tested failure points.
+
 \subsubsection{Pruning makes no progress}
 
 Inspect the compact response's \code{note}, \code{checkpointRevision},

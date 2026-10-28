@@ -84,6 +84,8 @@ These phases commit separately. If a later phase fails, completed safe work rema
 
 ## First-version limits
 
+Use the [process recovery drill](recovery-drills.md) to exercise forced server stops and fresh-database v2 restore. It retains reports, generated exports, and snapshots for comparing recovery state.
+
 Creation, pruning, and rebuild run under the authoritative service's existing serialization. Capturing a large projection or restoring it can pause edits and uses memory proportional to the model. Deletion is bounded by batch count; checkpoint capture/restore is not streamed. The scheduler loads the model catalog each pass. Acceptance receipts accumulate indefinitely; older checkpoints accumulate when scheduled maintenance is disabled. CRDT metadata garbage collection and a multi-writer protocol remain unimplemented. Measure these costs before enabling an automated policy.
 
 Models whose historical operation data was removed by an older implementation need a complete backup/export restore before creating their first checkpoint; the server rejects incomplete recovery coverage. Unclassified legacy publication state remains protected and requires a deliberate migration rather than a pruning bypass.
