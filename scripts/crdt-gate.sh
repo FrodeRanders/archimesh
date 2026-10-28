@@ -4,11 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 RUN_LOCAL_INFRA_IT="${RUN_LOCAL_INFRA_IT:-false}"
 
-SERVER_TESTS="ArchimeshServiceTest"
-CLIENT_TESTS="org.gautelis.archimesh.client.OpMapperNotationInventoryTest,org.gautelis.archimesh.client.OpMapperConnectionBatchTest,org.gautelis.archimesh.client.EmfChangeCaptureConnectionBatchTest,org.gautelis.archimesh.client.CrdtEntityMergeTest,org.gautelis.archimesh.client.CrdtPropertyMergeTest,org.gautelis.archimesh.client.CrdtOrSetTest"
+SERVER_TESTS="*Test"
+CLIENT_TESTS="*Test"
 
 if [[ "$RUN_LOCAL_INFRA_IT" == "true" ]]; then
-  SERVER_TESTS="$SERVER_TESTS,LocalInfraIntegrationTest"
+  SERVER_TESTS="$SERVER_TESTS,*IT"
 fi
 
 ensure_local_infra() {
@@ -85,13 +85,13 @@ echo "[crdt-gate] Preparing client target platform bundles"
 echo "[crdt-gate] Installing client plugin artifact (required by Archimesh client-tests)"
 (
   cd "$ROOT_DIR/client"
-  mvn -q -pl org.gautelis.archimesh.plugin -am install -DskipTests
+  ./mvnw -q -pl org.gautelis.archimesh.plugin -am install -DskipTests
 )
 
 echo "[crdt-gate] Running client CRDT tests"
 (
   cd "$ROOT_DIR/client/client-tests"
-  mvn -q -Dtest="$CLIENT_TESTS" test
+  ../mvnw -q -Dtest="$CLIENT_TESTS" test
 )
 
 if [[ "$RUN_LOCAL_INFRA_IT" == "true" ]]; then

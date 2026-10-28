@@ -18,9 +18,7 @@ import java.util.Base64;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -49,9 +47,7 @@ public class ArchimeshSessionManager {
     private static final String OUTBOX_FILE_SUFFIX = ".outbox.properties";
     private static final long OUTBOX_RETRY_INITIAL_DELAY_MS = 250L;
     private static final long OUTBOX_RETRY_MAX_DELAY_MS = 5000L;
-    private static final int OUTBOX_MAX_REPLAY_ATTEMPTS = 5;
     private static final long OUTBOX_ACK_TIMEOUT_MS = 5000L;
-    private static final int MAX_RECENT_LOCAL_BATCH_IDS = 256;
 
     public interface SessionStateListener {
         void stateChanged(boolean connected, String modelId);
@@ -86,6 +82,7 @@ public class ArchimeshSessionManager {
     private volatile boolean pendingCacheRevisionComparison;
     private volatile long cacheRevisionAtJoin = -1;
     private volatile boolean coldSnapshotRebuildRequested;
+    private volatile boolean awaitingCheckout;
     private volatile boolean outboxFlushInFlight;
     private volatile boolean outboxRetryScheduled;
     private volatile QueuedSubmitOp outboxAwaitingAck;
@@ -95,8 +92,6 @@ public class ArchimeshSessionManager {
     private volatile String lastUserHint;
     private volatile boolean forceColdStartOnNextConnect;
     private final Deque<QueuedSubmitOp> offlineOutbox = new ArrayDeque<>();
-    private final Deque<String> recentLocalOpBatchIds = new ArrayDeque<>();
-    private final Set<String> recentLocalOpBatchIdSet = new HashSet<>();
     private final CopyOnWriteArrayList<SessionStateListener> sessionStateListeners = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<SubmitConflictListener> submitConflictListeners = new CopyOnWriteArrayList<>();
     private final CopyOnWriteArrayList<OutboxCapacityListener> outboxCapacityListeners = new CopyOnWriteArrayList<>();
@@ -152,6 +147,7 @@ public class ArchimeshSessionManager {
             currentWsBaseUrl = baseWsUrl;
             currentModelId = modelId;
             currentModelRef = normalizedRef;
+            lastKnownRevision = rejoinDecision.joinRevision() == null ? 0L : rejoinDecision.joinRevision();
             Long joinRevision = rejoinDecision.joinRevision();
             if(joinRevision != null) {
                 cacheRevisionAtJoin = joinRevision;
@@ -270,6 +266,7 @@ public class ArchimeshSessionManager {
      * triggering the server to deliver a delta or full snapshot.
      */
     public void sendJoin(Long lastSeenRevision, String modelRef) {
+        awaitingCheckout = true;
         StringBuilder payload = new StringBuilder("{");
         payload.append("\"type\":\"Join\",");
         payload.append("\"payload\":{");
@@ -301,6 +298,7 @@ public class ArchimeshSessionManager {
             ArchimeshPlugin.logInfo("Ignoring SubmitOps for read-only model ref modelId=" + currentModelId + " ref=" + currentModelRef);
             return;
         }
+        inboundMessageDispatcher.recordLocalOperations(opBatchJson);
         sendSubmitOpsOrQueue(opBatchJson);
     }
 
@@ -521,31 +519,45 @@ public class ArchimeshSessionManager {
             enqueueOutbox(modelId, submitOpsJson, "model-mismatch");
             return;
         }
-        if(outboxFlushInFlight || hasQueuedEntriesForModel(modelId)) {
-            // Preserve per-model ordering: once replay starts, new submits join the queue
-            enqueueOutbox(modelId, submitOpsJson, "ordered-drain");
-            flushOutboxIfPossible();
-            return;
-        }
-        sendSubmitOverWebSocket(ws, modelId, submitOpsJson);
+        enqueueOutbox(modelId, submitOpsJson, "awaiting-commit");
+        flushOutboxIfPossible();
     }
 
-    private void sendSubmitOverWebSocket(WebSocket ws, String modelId, String submitOpsJson) {
-        String rebased = rebaseSubmitOpsBaseRevision(submitOpsJson, lastKnownRevision);
-        rememberLocalSubmitOpBatchId(extractOpBatchId(rebased));
-        ArchimeshPlugin.logTrace("WS OUT " + summarizeEnvelope(rebased));
-        ws.sendText(rebased, true).exceptionally(ex -> {
-            enqueueOutbox(modelId, submitOpsJson, "send-failed");
-            ArchimeshPlugin.logInfo("Queued SubmitOps after send failure for modelId=" + modelId + " reason=" + ex.getClass().getSimpleName());
-            return null;
-        });
+    private CompletableFuture<WebSocket> sendWithNotationLease(WebSocket ws, String submit) {
+        String payload = SimpleJson.asJsonObject(SimpleJson.readRawField(submit, "payload"));
+        List<String> targets = new ArrayList<>();
+        for (String op : SimpleJson.readArrayObjectElements(payload, "ops")) {
+            String type = SimpleJson.readStringField(op, "type");
+            String target = "UpdateViewObjectOpaque".equals(type) ? SimpleJson.readStringField(op, "viewObjectId")
+                    : "UpdateConnectionOpaque".equals(type) ? SimpleJson.readStringField(op, "connectionId") : null;
+            if (target != null) targets.add("\"" + escape(target) + "\"");
+        }
+        if (targets.isEmpty()) return ws.sendText(submit, true);
+        String targetJson = "[" + String.join(",", targets) + "]";
+        String actor = SimpleJson.readRawField(payload, "actor");
+        String acquire = "{\"type\":\"AcquireLock\",\"payload\":{\"actor\":" + actor
+                + ",\"targets\":" + targetJson + ",\"ttlMs\":10000}}";
+        String release = "{\"type\":\"ReleaseLock\",\"payload\":{\"actor\":" + actor
+                + ",\"targets\":" + targetJson + "}}";
+        return ws.sendText(acquire, true).thenCompose(ignored -> ws.sendText(submit, true))
+                .thenCompose(ignored -> ws.sendText(release, true));
+    }
+
+    public synchronized void completeCheckout() {
+        awaitingCheckout = false;
+        flushOutboxIfPossible();
+    }
+
+    public synchronized void reapplyQueuedOperations() {
+        for (QueuedSubmitOp queued : offlineOutbox) {
+            if (Objects.equals(queued.modelId, currentModelId)) inboundMessageDispatcher.recordLocalOperations(queued.submitOpsJson);
+        }
     }
 
     private synchronized void enqueueOutbox(String modelId, String submitOpsJson, String reason) {
         if(offlineOutbox.size() >= MAX_OUTBOX_SIZE) {
-            QueuedSubmitOp dropped = offlineOutbox.removeFirst();
-            ArchimeshPlugin.logInfo("Outbox full; dropping oldest queued SubmitOps modelId=" + dropped.modelId);
-            persistOutboxToDisk(dropped.modelId);
+            rememberUserHint("The collaboration queue is full. Reconnect before making more shared edits.");
+            throw new IllegalStateException("Outbox full; existing uncommitted edits have been preserved");
         }
         offlineOutbox.addLast(new QueuedSubmitOp(modelId, submitOpsJson, System.currentTimeMillis(), 0, 0L));
         persistOutboxToDisk(modelId);
@@ -566,7 +578,7 @@ public class ArchimeshSessionManager {
         if(isCurrentReferenceReadOnly()) {
             return;
         }
-        if(outboxFlushInFlight) {
+        if(outboxFlushInFlight || awaitingCheckout) {
             return;
         }
         WebSocket ws = webSocket;
@@ -608,46 +620,28 @@ public class ArchimeshSessionManager {
         ArchimeshPlugin.logInfo("Replaying queued offline op modelId=" + currentModelId
                 + " rebaseRevision=" + lastKnownRevision);
         ArchimeshPlugin.logTrace("WS OUT " + summarizeEnvelope(rebased));
-        rememberLocalSubmitOpBatchId(extractOpBatchId(rebased));
-        ws.sendText(rebased, true).whenComplete((ignored, ex) -> handleOutboxReplaySendResult(next, ex));
+        outboxAwaitingAck = next;
+        outboxAwaitingAckOpBatchId = extractOpBatchId(next.submitOpsJson);
+        outboxAwaitingAckDeadlineEpochMs = System.currentTimeMillis() + OUTBOX_ACK_TIMEOUT_MS;
+        sendWithNotationLease(ws, rebased).whenComplete((ignored, ex) -> handleOutboxReplaySendResult(next, ex));
     }
 
     private void handleOutboxReplaySendResult(QueuedSubmitOp replayed, Throwable error) {
         synchronized(this) {
             outboxFlushInFlight = false;
             if(error == null) {
-                // Websocket send success is not commit success; wait for matching OpsAccepted
-                outboxAwaitingAck = replayed;
-                outboxAwaitingAckOpBatchId = extractOpBatchId(replayed.submitOpsJson);
-                outboxAwaitingAckDeadlineEpochMs = System.currentTimeMillis() + OUTBOX_ACK_TIMEOUT_MS;
-                scheduleOutboxRetry(OUTBOX_ACK_TIMEOUT_MS);
-            }
-            else {
+                if (outboxAwaitingAck == replayed) scheduleOutboxRetry(OUTBOX_ACK_TIMEOUT_MS);
+            } else if (offlineOutbox.contains(replayed)) {
+                outboxAwaitingAck = null;
+                outboxAwaitingAckOpBatchId = null;
+                outboxAwaitingAckDeadlineEpochMs = 0L;
                 offlineOutbox.remove(replayed);
-                int attempts = replayed.replayAttempts + 1;
-                if(attempts >= OUTBOX_MAX_REPLAY_ATTEMPTS) {
-                    ArchimeshPlugin.logInfo("Dropping poison queued SubmitOps after max replay attempts modelId="
-                            + replayed.modelId + " attempts=" + attempts + " reason=" + error.getClass().getSimpleName());
-                    persistOutboxToDisk(replayed.modelId);
-                }
-                else {
-                    long retryDelayMs = computeOutboxRetryDelayMs(attempts);
-                    QueuedSubmitOp updated = new QueuedSubmitOp(
-                            replayed.modelId,
-                            replayed.submitOpsJson,
-                            replayed.queuedAtEpochMs,
-                            attempts,
-                            System.currentTimeMillis() + retryDelayMs);
-                    // Requeue at head to preserve strict FIFO replay semantics
-                    offlineOutbox.addFirst(updated);
-                    persistOutboxToDisk(replayed.modelId);
-                    ArchimeshPlugin.logInfo("Retaining queued SubmitOps after replay send failure modelId="
-                            + replayed.modelId
-                            + " attempts=" + attempts
-                            + " retryDelayMs=" + retryDelayMs
-                            + " reason=" + error.getClass().getSimpleName());
-                    scheduleOutboxRetry(retryDelayMs);
-                }
+                int attempts = Math.min(30, replayed.replayAttempts + 1);
+                long retryDelayMs = computeOutboxRetryDelayMs(attempts);
+                offlineOutbox.addFirst(new QueuedSubmitOp(replayed.modelId, replayed.submitOpsJson,
+                        replayed.queuedAtEpochMs, attempts, System.currentTimeMillis() + retryDelayMs));
+                persistOutboxToDisk(replayed.modelId);
+                scheduleOutboxRetry(retryDelayMs);
             }
         }
         flushOutboxIfPossible();
@@ -730,6 +724,11 @@ public class ArchimeshSessionManager {
      * (PRECONDITION_FAILED, LOCK_CONFLICT) and retries other transient failures.
      */
     public void onServerError(String code, String message) {
+        // Legacy callers may show a hint, but an uncorrelated error cannot reject queued work.
+        onServerError(code, message, null);
+    }
+
+    public void onServerError(String code, String message, String opBatchId) {
         rememberUserHint(ArchimeshAuthHints.describeServerError(code, message,
                 authToken != null && !authToken.isBlank(), isCurrentReferenceReadOnly()));
         boolean retry = false;
@@ -737,7 +736,8 @@ public class ArchimeshSessionManager {
         String conflictModelId = null;
         String conflictOpBatchId = null;
         synchronized(this) {
-            if(outboxAwaitingAck == null) {
+            if(outboxAwaitingAck == null || opBatchId == null
+                    || !Objects.equals(opBatchId, outboxAwaitingAckOpBatchId)) {
                 return;
             }
             QueuedSubmitOp waiting = outboxAwaitingAck;
@@ -761,10 +761,12 @@ public class ArchimeshSessionManager {
 
         if(droppedConflict) {
             fireSubmitConflict(conflictModelId, conflictOpBatchId, code, message);
-            flushOutboxIfPossible();
+            if (currentWsBaseUrl != null && !currentWsBaseUrl.isBlank()) sendJoin(null);
+            else flushOutboxIfPossible();
         }
         if(retry) {
-            flushOutboxIfPossible();
+            if ("REVISION_AHEAD".equals(code)) sendJoin(null);
+            else flushOutboxIfPossible();
         }
     }
 
@@ -785,29 +787,6 @@ public class ArchimeshSessionManager {
     private String extractOpBatchId(String submitOpsJson) {
         String payload = SimpleJson.asJsonObject(SimpleJson.readRawField(submitOpsJson, "payload"));
         return payload == null ? null : SimpleJson.readStringField(payload, "opBatchId");
-    }
-
-    /**
-     * Returns true if the given op batch ID was sent from this session, suppressing echo
-     * processing of locally-originated broadcasts.
-     */
-    public synchronized boolean shouldIgnoreLocalOpsBroadcast(String opBatchId) {
-        if(opBatchId == null || opBatchId.isBlank()) {
-            return false;
-        }
-        return recentLocalOpBatchIdSet.contains(opBatchId);
-    }
-
-    private synchronized void rememberLocalSubmitOpBatchId(String opBatchId) {
-        if(opBatchId == null || opBatchId.isBlank() || recentLocalOpBatchIdSet.contains(opBatchId)) {
-            return;
-        }
-        recentLocalOpBatchIds.addLast(opBatchId);
-        recentLocalOpBatchIdSet.add(opBatchId);
-        while(recentLocalOpBatchIds.size() > MAX_RECENT_LOCAL_BATCH_IDS) {
-            String evicted = recentLocalOpBatchIds.removeFirst();
-            recentLocalOpBatchIdSet.remove(evicted);
-        }
     }
 
     private String rebaseSubmitOpsBaseRevision(String submitOpsJson, long revision) {
@@ -1127,16 +1106,14 @@ public class ArchimeshSessionManager {
             return;
         }
         File metadataFile = new File(cacheFile.getParentFile(), cacheFile.getName() + ".meta.properties");
-        File outboxFile = "HEAD".equalsIgnoreCase(normalizeModelRef(modelRef)) ? resolveOutboxFile(modelId) : null;
         boolean removedCache = !cacheFile.exists() || cacheFile.delete();
         boolean removedMetadata = !metadataFile.exists() || metadataFile.delete();
-        boolean removedOutbox = outboxFile == null || !outboxFile.exists() || outboxFile.delete();
         ArchimeshPlugin.logInfo("Discarded archimesh cache projection reason=" + reason
                 + " modelId=" + modelId
                 + " ref=" + modelRef
                 + " cacheDeleted=" + removedCache
                 + " metadataDeleted=" + removedMetadata
-                + " outboxDeleted=" + removedOutbox);
+                + " outboxPreserved=true");
     }
 
     private synchronized void loadOutboxFromDisk(String modelId) {
@@ -1220,11 +1197,20 @@ public class ArchimeshSessionManager {
             properties.setProperty("item." + i + ".nextRetryEpochMs", String.valueOf(queued.nextRetryEpochMs));
             properties.setProperty("item." + i + ".payload", encodeBase64Utf8(queued.submitOpsJson));
         }
-        try(FileOutputStream outputStream = new FileOutputStream(outboxFile)) {
-            properties.store(outputStream, "Archimesh durable outbox");
-        }
-        catch(IOException ex) {
-            ArchimeshPlugin.logInfo("Could not persist durable outbox for modelId=" + modelId + " reason=" + ex.getMessage());
+        try {
+            Path temporary = java.nio.file.Files.createTempFile(outboxFile.toPath().getParent(), "outbox-", ".tmp");
+            try (FileOutputStream output = new FileOutputStream(temporary.toFile())) {
+                properties.store(output, "Archimesh durable outbox");
+                output.getFD().sync();
+            }
+            try {
+                java.nio.file.Files.move(temporary, outboxFile.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                java.nio.file.Files.move(temporary, outboxFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch(IOException ex) {
+            throw new IllegalStateException("Could not persist uncommitted edits for model " + modelId, ex);
         }
     }
 

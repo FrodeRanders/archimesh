@@ -30,7 +30,7 @@ public final class ModelCatalogClient {
     }
 
     public static List<ModelOption> fetchModels(String wsBaseUrl, String bearerToken) throws IOException, InterruptedException {
-        URI overviewUri = adminUri(wsBaseUrl, "/admin/models");
+        URI overviewUri = adminUri(wsBaseUrl, "/models");
 
         HttpRequest request = authorizedRequest(overviewUri, bearerToken)
                 .GET()
@@ -67,7 +67,7 @@ public final class ModelCatalogClient {
         if(modelId == null || modelId.isBlank()) {
             throw new IOException("Model ID is required");
         }
-        URI tagsUri = adminUri(wsBaseUrl, "/admin/models/" + modelId + "/tags");
+        URI tagsUri = adminUri(wsBaseUrl, "/models/" + modelId + "/tags");
 
         HttpRequest request = authorizedRequest(tagsUri, bearerToken)
                 .GET()

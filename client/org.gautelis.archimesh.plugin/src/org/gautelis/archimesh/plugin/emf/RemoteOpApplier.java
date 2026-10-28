@@ -62,7 +62,44 @@ public class RemoteOpApplier {
     private final Map<String, ViewObjectChildMemberClock> viewObjectChildMemberClocks = new HashMap<>();
     private final Map<String, FieldClock> viewObjectNotationClocks = new HashMap<>();
     private final Map<String, FieldClock> connectionNotationClocks = new HashMap<>();
+    private final Map<String, FieldClock> otherFieldClocks = new HashMap<>();
+    private final Map<String, CausalClock> entityTombstones = new HashMap<>();
     private boolean deferredRetryScheduled;
+
+    public void recordLocalOperations(String envelope) {
+        Runnable record = () -> RemoteApplyGuard.runAsRemoteApply(() -> recordLocalOperationsInternal(envelope));
+        if (ArchimeshPlugin.getInstance() == null || Display.getCurrent() != null) record.run();
+        else Display.getDefault().asyncExec(record);
+    }
+
+    private void recordLocalOperationsInternal(String envelope) {
+        String payload = SimpleJson.asJsonObject(SimpleJson.readRawField(envelope, "payload"));
+        for (String op : SimpleJson.readArrayObjectElements(payload, "ops")) {
+            String type = SimpleJson.readStringField(op, "type");
+            CausalClock clock = parseCausal(op);
+            if (type != null && type.startsWith("Create")) {
+                String field = switch (type) {
+                    case "CreateElement" -> "element";
+                    case "CreateRelationship" -> "relationship";
+                    case "CreateFolder" -> "folder";
+                    case "CreateView" -> "view";
+                    case "CreateViewObject" -> "viewObject";
+                    case "CreateConnection" -> "connection";
+                    default -> null;
+                };
+                String value = SimpleJson.asJsonObject(SimpleJson.readRawField(op, field));
+                String id = SimpleJson.readStringField(value, "id");
+                if (id == null) continue;
+                if (findPrefixedObject(id) == null) applyOp(op);
+                if ("CreateElement".equals(type)) seedElementClock(stripPrefix(id, "elem:"), value, clock);
+                else if ("CreateViewObject".equals(type)) seedGeometryClock(stripPrefix(id, "vo:"), SimpleJson.asJsonObject(SimpleJson.readRawField(value, "notationJson")), op);
+                else if ("CreateConnection".equals(type)) seedConnectionNotationClock(stripPrefix(id, "conn:"), SimpleJson.asJsonObject(SimpleJson.readRawField(value, "notationJson")), op);
+                else for (String key : new String[]{"name", "documentation", "source", "target", "parent", "notation"})
+                    otherFieldClocks.computeIfAbsent(id, ignored -> new FieldClock()).set(key, clock);
+            } else applyOp(op);
+        }
+    }
+
 
     public RemoteOpApplier(ArchimeshSessionManager sessionManager) {
         this.sessionManager = sessionManager;
@@ -81,6 +118,22 @@ public class RemoteOpApplier {
         else {
             task.run();
         }
+    }
+
+    public void applyCheckoutDeltaEnvelope(String envelope) {
+        Runnable task = () -> RemoteApplyGuard.runAsRemoteApply(() -> {
+            String payload = SimpleJson.asJsonObject(SimpleJson.readRawField(envelope, "payload"));
+            for (String batch : SimpleJson.readArrayObjectElements(payload, "opBatches")) {
+                applyOpsEnvelopeInternal("{\"payload\":{\"opBatch\":" + batch + "}}");
+            }
+            Long to = SimpleJson.readLongField(payload, "toRevision");
+            if (to != null && to == sessionManager.getLastKnownRevision() && deferredOps.isEmpty()) {
+                sessionManager.completeCheckout();
+            } else sessionManager.sendJoin(null);
+        });
+        Display display = Display.getDefault();
+        if (display != null && !display.isDisposed()) display.asyncExec(task);
+        else task.run();
     }
 
     /**
@@ -102,8 +155,6 @@ public class RemoteOpApplier {
         if(envelopeJson == null || envelopeJson.isBlank()) {
             return;
         }
-
-        syncRevisionHint(envelopeJson);
 
         String payload = SimpleJson.asJsonObject(SimpleJson.readRawField(envelopeJson, "payload"));
         if(payload == null) {
@@ -138,6 +189,12 @@ public class RemoteOpApplier {
         applied += applySnapshotViewObjectChildMembers(snapshot);
         applied += applySnapshotArray(snapshot, "connections", "CreateConnection", "connection");
 
+        restoreMergeState(snapshot);
+        sessionManager.reapplyQueuedOperations();
+        Long head = SimpleJson.readLongField(payload, "headRevision");
+        if (head == null) head = SimpleJson.readLongField(snapshot, "headRevision");
+        if (head != null) sessionManager.setLastKnownRevision(head);
+        sessionManager.completeCheckout();
         ArchimeshPlugin.logInfo("Applied CheckoutSnapshot operations count=" + applied);
     }
 
@@ -163,7 +220,14 @@ public class RemoteOpApplier {
             return;
         }
 
-        syncRevisionHint(opBatch);
+        String range = SimpleJson.asJsonObject(SimpleJson.readRawField(opBatch, "assignedRevisionRange"));
+        Long from = SimpleJson.readLongField(range, "from");
+        Long to = SimpleJson.readLongField(range, "to");
+        if (to != null && to <= sessionManager.getLastKnownRevision()) return;
+        if (from != null && from != sessionManager.getLastKnownRevision() + 1) {
+            sessionManager.sendJoin(sessionManager.getLastKnownRevision());
+            return;
+        }
 
         List<String> ops = SimpleJson.readArrayObjectElements(opBatch, "ops");
         if(ops.isEmpty()) {
@@ -187,6 +251,7 @@ public class RemoteOpApplier {
             }
         }
         applied += retryDeferredOps();
+        if (to != null && deferredOps.isEmpty()) sessionManager.setLastKnownRevision(to);
         scheduleDeferredRetryIfNeeded();
         if(applied > 0) {
             ArchimeshPlugin.logInfo("Applied " + applied + " remote operation(s)");
@@ -451,6 +516,27 @@ public class RemoteOpApplier {
             return false;
         }
 
+        parseCausal(opJson); // Every received operation advances the outgoing logical clock.
+        String idKey = switch (type) {
+            case "CreateRelationship", "UpdateRelationship", "DeleteRelationship" -> "relationship";
+            case "CreateView", "UpdateView", "DeleteView" -> "view";
+            case "CreateViewObject", "UpdateViewObjectOpaque", "DeleteViewObject" -> "viewObject";
+            case "CreateConnection", "UpdateConnectionOpaque", "DeleteConnection" -> "connection";
+            default -> null;
+        };
+        if (idKey != null) {
+            String id = type.startsWith("Create")
+                    ? SimpleJson.readStringField(SimpleJson.asJsonObject(SimpleJson.readRawField(opJson, idKey)), "id")
+                    : SimpleJson.readStringField(opJson, idKey + "Id");
+            if (id != null) {
+                CausalClock incoming = parseCausal(opJson);
+                CausalClock tombstone = entityTombstones.get(id);
+                if (!type.startsWith("Delete") && tombstone != null && !wins(incoming, tombstone)) return false;
+                if (type.startsWith("Delete") && (tombstone == null || wins(incoming, tombstone))) entityTombstones.put(id, incoming);
+                if (type.startsWith("Create")) entityTombstones.remove(id);
+            }
+        }
+
         // Unknown types are ignored so older clients tolerate newer server op domains.
         return switch(type) {
             case "CreateFolder" -> applyCreateFolder(opJson);
@@ -530,6 +616,7 @@ public class RemoteOpApplier {
         created.setType(type == null ? FolderType.USER : type);
         applyFolderFields(created, folderJson);
         parent.getFolders().add(created);
+        seedOtherFields(folderId, opJson);
         return true;
     }
 
@@ -540,7 +627,8 @@ public class RemoteOpApplier {
         if(folder == null || patchJson == null) {
             return false;
         }
-        applyFolderFields(folder, patchJson);
+        if (SimpleJson.hasField(patchJson, "name") && acceptField(folderId, "name", opJson)) setIfPresentName(folder, patchJson, "name");
+        if (SimpleJson.hasField(patchJson, "documentation") && acceptField(folderId, "documentation", opJson)) setIfPresentDocumentation(folder, patchJson, "documentation");
         return true;
     }
 
@@ -570,7 +658,7 @@ public class RemoteOpApplier {
         if(folder == null) {
             return false;
         }
-        return moveFolder(folder, parentFolderId);
+        return acceptField(folderId, "parent", opJson) && moveFolder(folder, parentFolderId);
     }
 
     private boolean applyMoveElementToFolder(String opJson) {
@@ -760,6 +848,7 @@ public class RemoteOpApplier {
             return false;
         }
         model.getDefaultFolderForObject(relationship).getElements().add(relationship);
+        seedOtherFields("rel:" + relationshipId, opJson);
         ArchimeshPlugin.logTrace("Applied CreateRelationship id=rel:" + relationshipId + " name=" + getName(relationship));
         return true;
     }
@@ -772,14 +861,14 @@ public class RemoteOpApplier {
             return false;
         }
 
-        if(relationship instanceof INameable nameable) {
+        if(relationship instanceof INameable nameable && acceptField("rel:" + relationshipId, "name", opJson)) {
             setIfPresentName(nameable, patchJson, "name");
         }
-        if(relationship instanceof IDocumentable documentable) {
+        if(relationship instanceof IDocumentable documentable && acceptField("rel:" + relationshipId, "documentation", opJson)) {
             setIfPresentDocumentation(documentable, patchJson, "documentation");
         }
 
-        if(SimpleJson.hasField(patchJson, "sourceId")) {
+        if(SimpleJson.hasField(patchJson, "sourceId") && acceptField("rel:" + relationshipId, "source", opJson)) {
             EObject source = findPrefixedObject(SimpleJson.readStringField(patchJson, "sourceId"));
             if(!(source instanceof IArchimateConcept sourceConcept)) {
                 return false;
@@ -787,7 +876,7 @@ public class RemoteOpApplier {
             relationship.setSource(sourceConcept);
         }
 
-        if(SimpleJson.hasField(patchJson, "targetId")) {
+        if(SimpleJson.hasField(patchJson, "targetId") && acceptField("rel:" + relationshipId, "target", opJson)) {
             EObject target = findPrefixedObject(SimpleJson.readStringField(patchJson, "targetId"));
             if(!(target instanceof IArchimateConcept targetConcept)) {
                 return false;
@@ -838,6 +927,7 @@ public class RemoteOpApplier {
             return false;
         }
         model.getDefaultFolderForObject(view).getElements().add(view);
+        seedOtherFields("view:" + viewId, opJson);
         ArchimeshPlugin.logTrace("Applied CreateView id=view:" + viewId + " name=" + getName(view));
         return true;
     }
@@ -850,10 +940,10 @@ public class RemoteOpApplier {
             return false;
         }
 
-        if(view instanceof INameable nameable) {
+        if(view instanceof INameable nameable && acceptField("view:" + viewId, "name", opJson)) {
             setIfPresentName(nameable, patchJson, "name");
         }
-        if(view instanceof IDocumentable documentable) {
+        if(view instanceof IDocumentable documentable && acceptField("view:" + viewId, "documentation", opJson)) {
             setIfPresentDocumentation(documentable, patchJson, "documentation");
         }
         ArchimeshPlugin.logTrace("Applied UpdateView id=view:" + viewId + " patch=" + summarizePatch(patchJson));
@@ -976,7 +1066,7 @@ public class RemoteOpApplier {
         String notationJson = SimpleJson.asJsonObject(SimpleJson.readRawField(connectionJson, "notationJson"));
         if(notationJson != null) {
             notationDeserializer.applyConnectionNotation(connection, notationJson);
-            seedConnectionClock(connectionId, notationJson, opJson);
+            seedConnectionNotationClock(connectionId, notationJson, opJson);
         }
         ArchimeshPlugin.logTrace("Applied CreateConnection id=conn:" + connectionId + " represents=" + SimpleJson.readStringField(connectionJson, "representsId"));
         return true;
@@ -1019,7 +1109,14 @@ public class RemoteOpApplier {
         if(!(eObject instanceof IProperties properties)) {
             return false;
         }
-        String value = SimpleJson.hasField(opJson, "value") ? SimpleJson.readStringField(opJson, "value") : null;
+        String rawValue = SimpleJson.readRawField(opJson, "value");
+        String value = rawValue == null || "null".equals(rawValue) ? null
+                : rawValue.startsWith("\"") ? SimpleJson.readStringField(opJson, "value") : rawValue;
+        if (eObject instanceof IArchimateDiagramModel diagram && "viewpoint".equals(key)) {
+            diagram.setViewpoint(value);
+        } else if (eObject instanceof IDiagramModel diagram && "connectionRouterType".equals(key) && value != null) {
+            diagram.setConnectionRouterType(Integer.parseInt(value));
+        }
 
         for(IProperty property : properties.getProperties()) {
             if(key.equals(property.getKey())) {
@@ -1585,7 +1682,47 @@ public class RemoteOpApplier {
         return applied;
     }
 
+    private void restoreMergeState(String snapshot) {
+        for (String op : SimpleJson.readArrayObjectElements(snapshot, "propertyState")) applyOp(op);
+        for (String entry : SimpleJson.readArrayObjectElements(snapshot, "fieldClocks")) {
+            String id = SimpleJson.readStringField(entry, "targetId");
+            String field = SimpleJson.readStringField(entry, "field");
+            if (id == null || field == null) continue;
+            Map<String, FieldClock> clocks = id.startsWith("elem:") ? elementFieldClocks
+                    : id.startsWith("vo:") ? viewObjectNotationClocks
+                    : id.startsWith("conn:") ? connectionNotationClocks : otherFieldClocks;
+            String key = (id.startsWith("elem:") || id.startsWith("vo:") || id.startsWith("conn:"))
+                    ? id.substring(id.indexOf(':') + 1) : id;
+            clocks.computeIfAbsent(key, ignored -> new FieldClock()).set(field, parseCausal(entry));
+        }
+        for (String entry : SimpleJson.readArrayObjectElements(snapshot, "tombstones")) {
+            String id = SimpleJson.readStringField(entry, "targetId");
+            if (id == null) continue;
+            CausalClock clock = parseCausal(entry);
+            entityTombstones.put(id, clock);
+            if (id.startsWith("elem:")) elementTombstones.put(stripPrefix(id, "elem:"), clock);
+        }
+    }
+
+    private void seedOtherFields(String id, String op) {
+        FieldClock clock = otherFieldClocks.computeIfAbsent(id, ignored -> new FieldClock());
+        CausalClock incoming = parseCausal(op);
+        for (String field : new String[]{"name", "documentation", "source", "target", "parent", "notation"}) {
+            if (wins(incoming, clock.get(field))) clock.set(field, incoming);
+        }
+    }
+
+    private boolean acceptField(String id, String field, String op) {
+        FieldClock clock = otherFieldClocks.computeIfAbsent(id, ignored -> new FieldClock());
+        CausalClock incoming = parseCausal(op);
+        if (!wins(incoming, clock.get(field))) return false;
+        clock.set(field, incoming);
+        return true;
+    }
+
     private void clearModelContents(IArchimateModel model) {
+        otherFieldClocks.clear();
+        entityTombstones.clear();
         elementFieldClocks.clear();
         elementTombstones.clear();
         propertyClocks.clear();
@@ -1613,7 +1750,7 @@ public class RemoteOpApplier {
         }
     }
 
-    private void seedConnectionClock(String connectionId, String notationJson, String opJson) {
+    private void seedConnectionNotationClock(String connectionId, String notationJson, String opJson) {
         FieldClock clock = connectionNotationClocks.computeIfAbsent(connectionId, id -> new FieldClock());
         CausalClock incoming = parseCausal(opJson);
         seedClockFromNotation(clock, notationJson, incoming);
@@ -1805,6 +1942,7 @@ public class RemoteOpApplier {
         String causalJson = SimpleJson.asJsonObject(SimpleJson.readRawField(opJson, "causal"));
         Long lamport = SimpleJson.readLongField(causalJson, "lamport");
         String clientId = SimpleJson.readStringField(causalJson, "clientId");
+        if (lamport != null) OpMapper.observeLamport(lamport);
         return new CausalClock(lamport == null ? 0L : lamport, clientId == null ? "" : clientId);
     }
 

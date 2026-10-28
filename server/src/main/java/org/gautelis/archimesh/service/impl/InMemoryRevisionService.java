@@ -23,9 +23,11 @@ public class InMemoryRevisionService implements RevisionService {
     public RevisionRange assignRange(String modelId, int opCount) {
         AtomicLong head = heads.computeIfAbsent(modelId, this::bootstrapHead);
         syncHeadFromRepository(modelId, head);
-        long from = head.incrementAndGet();
-        long to = from + Math.max(0, opCount - 1L);
-        head.set(to);
+        if (opCount <= 0) {
+            throw new IllegalArgumentException("opCount must be positive");
+        }
+        long to = head.addAndGet(opCount);
+        long from = to - opCount + 1L;
         LOG.debug("Revision assigned: modelId={} opCount={} from={} to={}", modelId, opCount, from, to);
         return new RevisionRange(from, to);
     }

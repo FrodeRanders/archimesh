@@ -1,38 +1,20 @@
-# org.gautelis.archimesh.plugin
+# Archimesh plugin for Archi
 
-Archimesh client plugin skeleton.
+The plugin connects an Archi model to a server-backed HEAD or read-only tag, captures semantic, folder and diagram changes through EMF, and reconciles accepted operations under a remote-apply guard.
 
-## Implemented in this scaffold
-- Plugin activator: `ArchimeshPlugin`
-- Early startup extension: `ArchimeshStartup`
-- WebSocket session manager: `ArchimeshSessionManager`
-- Inbound envelope dispatcher: `InboundMessageDispatcher`
-- Echo suppression guard: `RemoteApplyGuard`
-- Remote apply placeholder: `RemoteOpApplier`
-- EMF change capture adapter: `EmfChangeCapture`
-- Minimal semantic op mapping: `OpMapper` (`CreateElement` only)
-- Model attach/detach helper: `ArchimeshModelController`
-- Notation serializer/deserializer placeholders
+Implemented behavior includes:
 
-## Current behavior
-- Can connect/disconnect websocket and send Join/SubmitOps/Lock/Presence envelopes.
-- On local `Notification.ADD` of `IArchimateElement`, emits a minimal `SubmitOps` with one `CreateElement` op.
-- Remote apply path is placeholder (logs only).
-- Connection dialogs now accept an optional bearer token for `oidc` mode:
-  - model catalog/tag lookups send `Authorization: Bearer ...`
-  - websocket upgrade sends the same bearer token
-- Startup bootstrap also accepts a bearer token via:
-  - system property `archimesh.startup.pull.authToken`
-  - env var `ARCHIMESH_STARTUP_PULL_AUTH_TOKEN`
-- Bearer-token failures now surface clearer hints:
-  - model catalog/tag `401` or `403` responses mention invalid/expired tokens or missing roles
-  - websocket auth failures keep a user-visible hint in the status line
-  - connect/open handlers show that hint in an error dialog when the connection attempt fails immediately
+- model/tag discovery through the read-authorized catalog endpoints;
+- bearer-token authentication for catalog requests and websocket upgrades;
+- snapshot and delta checkout, with property values and CRDT merge metadata restored;
+- local merge-clock registration and reconciliation of the client's own accepted broadcasts;
+- a persistent FIFO outbox for online and offline submissions, removed on matching acceptance;
+- correlated conflict handling, capped retry backoff, and preservation of queued work when caches are invalidated;
+- short acquire/submit/release leases for notation changes;
+- server-backed model lifecycle, local caching, and explicit resynchronization.
 
-## Next steps
-1. Replace string-based JSON handling with robust JSON serialization/parsing.
-2. Wire controller attachment to active Archi model lifecycle (open/close/save/reconnect).
-3. Implement semantic updates/deletes and relationship/view ops.
-4. Implement notation opaque round-trip from `notation_mapping.md`.
-5. Add debounce/coalesce for notation updates (150-250ms).
-6. Add lock acquisition hooks on drag/resize/bendpoint edit start.
+See [the client workspace README](../README.md), [architecture](../../architecture.md), and [CRDT specification](../../crdt-spec.md).
+
+Build with `scripts/build-client-standalone.sh` from the repository root. Client builds use the Maven 3.9.16 wrapper in `client/`; the locally installed Maven 3.10 version does not resolve this Tycho build correctly.
+
+The release gate is `scripts/validate-local.sh ws`. It includes all client tests and the local Neo4j/Kafka and websocket integration coverage. A manual two-Archi editing session remains useful for UI and interaction validation.

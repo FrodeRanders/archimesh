@@ -13,7 +13,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @ApplicationScoped
 public class InMemoryIdempotencyService implements IdempotencyService {
     private static final Logger LOG = LoggerFactory.getLogger(InMemoryIdempotencyService.class);
-    private final Map<String, RevisionRange> cache = new ConcurrentHashMap<>();
+    private record BatchKey(String modelId, String opBatchId) { }
+    private final Map<BatchKey, RevisionRange> cache = new ConcurrentHashMap<>();
 
     @Override
     public Optional<RevisionRange> findRange(String modelId, String opBatchId) {
@@ -30,12 +31,11 @@ public class InMemoryIdempotencyService implements IdempotencyService {
 
     @Override
     public void clearModel(String modelId) {
-        String prefix = modelId + "::";
-        cache.keySet().removeIf(key -> key.startsWith(prefix));
+        cache.keySet().removeIf(key -> key.modelId().equals(modelId));
         LOG.info("Idempotency cache cleared for modelId={}", modelId);
     }
 
-    private String key(String modelId, String opBatchId) {
-        return modelId + "::" + opBatchId;
+    private BatchKey key(String modelId, String opBatchId) {
+        return new BatchKey(modelId, opBatchId);
     }
 }

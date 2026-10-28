@@ -7,6 +7,10 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
+import org.neo4j.driver.TransactionContext;
+import org.gautelis.archimesh.service.NotationMetadata;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,6 +27,15 @@ final class Neo4jReadSupport {
     }
 
     JsonNode loadSnapshot(Session session, String modelId, long headRevision) {
+        if (session == null) return loadSnapshotState(null, modelId, headRevision);
+        return session.executeRead(tx -> {
+            long head = tx.run("MATCH (m:Model {modelId:$id}) RETURN coalesce(m.headRevision,0) AS head",
+                    Map.of("id", modelId)).single().get("head").asLong();
+            return loadSnapshotState(tx, modelId, head);
+        });
+    }
+
+    private JsonNode loadSnapshotState(TransactionContext session, String modelId, long headRevision) {
         ObjectNode snapshot = objectMapper.createObjectNode();
         snapshot.put("format", "archimate-materialized-v1");
         snapshot.put("modelId", modelId);
@@ -65,12 +78,74 @@ final class Neo4jReadSupport {
         snapshot.set("viewObjectChildMembers", viewObjectChildMembers);
         snapshot.set("connections", connections);
 
+        appendMergeState(session, modelId, snapshot);
         return snapshot;
     }
 
-    private ArrayNode loadFolders(org.neo4j.driver.Session session, String modelId) {
+    private void appendMergeState(TransactionContext tx, String modelId, ObjectNode snapshot) {
+        ArrayNode fields = snapshot.putArray("fieldClocks");
+        ArrayNode propertyState = snapshot.putArray("propertyState");
+        ArrayNode tombstones = snapshot.putArray("tombstones");
+        for (Record row : tx.run("MATCH (n {modelId:$modelId}) WHERE n:Element OR n:Relationship OR n:Folder "
+                + "OR n:View OR n:ViewObject OR n:Connection RETURN n.id AS id, labels(n) AS labels, properties(n) AS state ORDER BY n.id",
+                Map.of("modelId", modelId)).list()) {
+            String id = row.get("id").asString();
+            Map<String, Object> state = row.get("state").asMap();
+            var labels = row.get("labels").asList(v -> v.asString());
+            for (String key : state.keySet().stream().sorted().toList()) {
+                if (!key.endsWith("_lamport")) continue;
+                String prefix = key.substring(0, key.length() - "_lamport".length());
+                String field = prefix;
+                var notationFields = labels.contains("ViewObject") ? NotationMetadata.VIEW_OBJECT_PERSISTED_FIELDS
+                        : labels.contains("Connection") ? NotationMetadata.CONNECTION_PERSISTED_FIELDS : java.util.List.<NotationMetadata.PersistedNotationField>of();
+                for (var notation : notationFields) if (notation.propertyPrefix().equals(prefix)) field = notation.fieldName();
+                ObjectNode clock = fields.addObject().put("targetId", id).put("field", field);
+                clock.set("causal", causal(((Number) state.get(key)).longValue(), String.valueOf(state.getOrDefault(prefix + "_clientId", ""))));
+            }
+        }
+        for (Record row : tx.run("MATCH (p:PropertyClock {modelId:$modelId}) "
+                + "OPTIONAL MATCH (n {modelId:$modelId, id:p.targetId}) "
+                + "RETURN p.targetId AS target, p.key AS key, p.lamport AS lamport, p.clientId AS client, "
+                + "coalesce(p.deleted,false) AS deleted, n[p.key] AS value ORDER BY p.targetId, p.key",
+                Map.of("modelId", modelId)).list()) {
+            String key = row.get("key").asString();
+            String target = row.get("target").asString();
+            boolean deleted = row.get("deleted").asBoolean();
+            ObjectNode op = propertyState.addObject();
+            op.set("causal", causal(row.get("lamport").asLong(0), row.get("client").asString("")));
+            if (key.startsWith("orset:vo-child:")) {
+                op.put("type", deleted ? "RemoveViewObjectChildMember" : "AddViewObjectChildMember");
+                op.put("parentViewObjectId", target).put("childViewObjectId", decodeMember(key.substring("orset:vo-child:".length())));
+            } else if (key.startsWith("orset:")) {
+                int separator = key.lastIndexOf(':');
+                op.put("type", deleted ? "RemovePropertySetMember" : "AddPropertySetMember");
+                op.put("targetId", target).put("key", key.substring(6, separator)).put("member", decodeMember(key.substring(separator + 1)));
+            } else {
+                op.put("type", deleted ? "UnsetProperty" : "SetProperty");
+                op.put("targetId", target).put("key", key);
+                op.set("value", objectMapper.valueToTree(row.get("value").asObject()));
+            }
+        }
+        for (Record row : tx.run("MATCH (t {modelId:$modelId}) WHERE t:ElementTombstone OR t:RelationshipTombstone "
+                + "OR t:ViewTombstone OR t:ViewObjectTombstone OR t:ConnectionTombstone "
+                + "RETURN t.id AS id, t.lamport AS lamport, t.clientId AS client ORDER BY t.id",
+                Map.of("modelId", modelId)).list()) {
+            tombstones.addObject().put("targetId", row.get("id").asString())
+                    .set("causal", causal(row.get("lamport").asLong(0), row.get("client").asString("")));
+        }
+    }
+
+    private ObjectNode causal(long lamport, String clientId) {
+        return objectMapper.createObjectNode().put("lamport", lamport).put("clientId", clientId);
+    }
+
+    private String decodeMember(String encoded) {
+        return new String(Base64.getUrlDecoder().decode(encoded), StandardCharsets.UTF_8);
+    }
+
+    private ArrayNode loadFolders(TransactionContext session, String modelId) {
         ArrayNode array = JsonNodeFactory.instance.arrayNode();
-        List<Record> records = session.executeRead(tx -> tx.run("""
+        List<Record> records = session.run("""
                         MATCH (m:Model {modelId: $modelId})-[:HAS_FOLDER]->(f:Folder)
                         OPTIONAL MATCH (parent:Folder {modelId: $modelId})-[:HAS_FOLDER]->(f)
                         RETURN f.id AS id,
@@ -80,7 +155,7 @@ final class Neo4jReadSupport {
                                parent.id AS parentFolderId
                         ORDER BY f.id
                         """, Map.of("modelId", modelId))
-                .list());
+                .list();
         for (Record record : records) {
             ObjectNode node = objectMapper.createObjectNode();
             String folderId = record.get("id").asString("");
@@ -271,9 +346,9 @@ final class Neo4jReadSupport {
 
         return opBatches;
     }
-    private ArrayNode loadElements(org.neo4j.driver.Session session, String modelId) {
+    private ArrayNode loadElements(TransactionContext session, String modelId) {
         ArrayNode array = JsonNodeFactory.instance.arrayNode();
-        List<Record> records = session.executeRead(tx -> tx.run("""
+        List<Record> records = session.run("""
                         MATCH (m:Model {modelId: $modelId})-[:HAS_ELEMENT]->(e:Element)
                         RETURN e.id AS id,
                                e.archimateType AS archimateType,
@@ -281,7 +356,7 @@ final class Neo4jReadSupport {
                                e.documentation AS documentation
                         ORDER BY id
                         """, Map.of("modelId", modelId))
-                .list());
+                .list();
         for (Record record : records) {
             ObjectNode node = objectMapper.createObjectNode();
             node.put("id", record.get("id").asString(""));
@@ -293,9 +368,9 @@ final class Neo4jReadSupport {
         return array;
     }
 
-    private ArrayNode loadRelationships(org.neo4j.driver.Session session, String modelId) {
+    private ArrayNode loadRelationships(TransactionContext session, String modelId) {
         ArrayNode array = JsonNodeFactory.instance.arrayNode();
-        List<Record> records = session.executeRead(tx -> tx.run("""
+        List<Record> records = session.run("""
                         MATCH (m:Model {modelId: $modelId})-[:HAS_REL]->(r:Relationship)
                         OPTIONAL MATCH (r)-[:SOURCE]->(src:Element)
                         OPTIONAL MATCH (r)-[:TARGET]->(dst:Element)
@@ -307,7 +382,7 @@ final class Neo4jReadSupport {
                                dst.id AS targetId
                         ORDER BY id
                         """, Map.of("modelId", modelId))
-                .list());
+                .list();
         for (Record record : records) {
             ObjectNode node = objectMapper.createObjectNode();
             node.put("id", record.get("id").asString(""));
@@ -321,9 +396,9 @@ final class Neo4jReadSupport {
         return array;
     }
 
-    private ArrayNode loadViews(org.neo4j.driver.Session session, String modelId) {
+    private ArrayNode loadViews(TransactionContext session, String modelId) {
         ArrayNode array = JsonNodeFactory.instance.arrayNode();
-        List<Record> records = session.executeRead(tx -> tx.run("""
+        List<Record> records = session.run("""
                         MATCH (m:Model {modelId: $modelId})-[:HAS_VIEW]->(v:View)
                         RETURN v.id AS id,
                                v.name AS name,
@@ -331,7 +406,7 @@ final class Neo4jReadSupport {
                                v.notationJson AS notationJson
                         ORDER BY id
                         """, Map.of("modelId", modelId))
-                .list());
+                .list();
         for (Record record : records) {
             ObjectNode node = objectMapper.createObjectNode();
             node.put("id", record.get("id").asString(""));
@@ -343,9 +418,9 @@ final class Neo4jReadSupport {
         return array;
     }
 
-    private ArrayNode loadViewObjects(org.neo4j.driver.Session session, String modelId) {
+    private ArrayNode loadViewObjects(TransactionContext session, String modelId) {
         ArrayNode array = JsonNodeFactory.instance.arrayNode();
-        List<Record> records = session.executeRead(tx -> tx.run("""
+        List<Record> records = session.run("""
                         MATCH (m:Model {modelId: $modelId})-[:HAS_VIEW]->(v:View)-[:CONTAINS]->(vo:ViewObject)
                         OPTIONAL MATCH (vo)-[:REPRESENTS]->(e:Element)
                         RETURN vo.id AS id,
@@ -354,7 +429,7 @@ final class Neo4jReadSupport {
                                vo.notationJson AS notationJson
                         ORDER BY id
                         """, Map.of("modelId", modelId))
-                .list());
+                .list();
         for (Record record : records) {
             ObjectNode node = objectMapper.createObjectNode();
             node.put("id", record.get("id").asString(""));
@@ -366,15 +441,15 @@ final class Neo4jReadSupport {
         return array;
     }
 
-    private ArrayNode loadViewObjectChildMembers(org.neo4j.driver.Session session, String modelId) {
+    private ArrayNode loadViewObjectChildMembers(TransactionContext session, String modelId) {
         ArrayNode array = JsonNodeFactory.instance.arrayNode();
-        List<Record> records = session.executeRead(tx -> tx.run("""
+        List<Record> records = session.run("""
                         MATCH (m:Model {modelId: $modelId})-[:HAS_VIEW]->(:View)-[:CONTAINS]->(parent:ViewObject)-[:CHILD_MEMBER]->(child:ViewObject)
                         RETURN parent.id AS parentViewObjectId,
                                child.id AS childViewObjectId
                         ORDER BY parentViewObjectId, childViewObjectId
                         """, Map.of("modelId", modelId))
-                .list());
+                .list();
         for (Record record : records) {
             ObjectNode node = objectMapper.createObjectNode();
             putNullableText(node, "parentViewObjectId", record.get("parentViewObjectId").asString(null));
@@ -384,9 +459,9 @@ final class Neo4jReadSupport {
         return array;
     }
 
-    private ArrayNode loadConnections(org.neo4j.driver.Session session, String modelId) {
+    private ArrayNode loadConnections(TransactionContext session, String modelId) {
         ArrayNode array = JsonNodeFactory.instance.arrayNode();
-        List<Record> records = session.executeRead(tx -> tx.run("""
+        List<Record> records = session.run("""
                         MATCH (m:Model {modelId: $modelId})-[:HAS_VIEW]->(v:View)-[:CONTAINS]->(c:Connection)
                         OPTIONAL MATCH (c)-[:REPRESENTS]->(r:Relationship)
                         OPTIONAL MATCH (c)-[:FROM]->(f:ViewObject)
@@ -399,7 +474,7 @@ final class Neo4jReadSupport {
                                c.notationJson AS notationJson
                         ORDER BY id
                         """, Map.of("modelId", modelId))
-                .list());
+                .list();
         for (Record record : records) {
             ObjectNode node = objectMapper.createObjectNode();
             node.put("id", record.get("id").asString(""));
@@ -413,16 +488,16 @@ final class Neo4jReadSupport {
         return array;
     }
 
-    private ArrayNode loadFolderMembers(org.neo4j.driver.Session session, String modelId, String relType, String fieldName) {
+    private ArrayNode loadFolderMembers(TransactionContext session, String modelId, String relType, String fieldName) {
         ArrayNode array = JsonNodeFactory.instance.arrayNode();
-        List<Record> records = session.executeRead(tx -> tx.run("""
+        List<Record> records = session.run("""
                         MATCH (m:Model {modelId: $modelId})-[:HAS_FOLDER]->(f:Folder)-[r]->(target)
                         WHERE type(r) = $relType
                         RETURN f.id AS folderId,
                                target.id AS targetId
                         ORDER BY folderId, targetId
                         """, Map.of("modelId", modelId, "relType", relType))
-                .list());
+                .list();
         for (Record record : records) {
             ObjectNode node = objectMapper.createObjectNode();
             putNullableText(node, "folderId", record.get("folderId").asString(null));

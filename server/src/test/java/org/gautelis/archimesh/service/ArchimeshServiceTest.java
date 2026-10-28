@@ -45,6 +45,87 @@ class ArchimeshServiceTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void rejectionIsCorrelatedAndSentOnlyToSubmittingSession() {
+        ArchimeshService service = baseService();
+        var neo = (RecordingNeo4jRepository) service.neo4jRepository;
+        neo.elementExists = false;
+        var properties = new java.util.HashMap<String, Object>();
+        var session = (jakarta.websocket.Session) java.lang.reflect.Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class[]{jakarta.websocket.Session.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "getId" -> "submitting-session";
+                    case "getUserProperties" -> properties;
+                    default -> null;
+                });
+        service.onSubmitOps("demo", session, new SubmitOpsMessage(0, "rejected-batch", null,
+                singleUpdateElementNameOp("elem:missing", "name")));
+        var sessions = (RecordingSessionRegistry) service.sessionRegistry;
+        Assertions.assertTrue(sessions.broadcasts.isEmpty());
+        var error = (ErrorMessage) sessions.sends.getLast().payload();
+        Assertions.assertEquals("rejected-batch", error.opBatchId());
+        Assertions.assertEquals("PRECONDITION_FAILED", error.code());
+    }
+
+    @Test
+    void durableAcceptanceIsCheckedBeforeStateDependentValidationAfterRestart() {
+        ArchimeshService service = baseService();
+        var neo = (RecordingNeo4jRepository) service.neo4jRepository;
+        var message = new SubmitOpsMessage(0, "accepted-before-restart", null,
+                singleUpdateElementNameOp("elem:e1", "updated"));
+        service.onSubmitOps("demo", message);
+        service.idempotencyService = new InMemoryIdempotencyService();
+        neo.elementExists = false;
+        service.onSubmitOps("demo", message);
+        Assertions.assertEquals(1, neo.appendCount);
+        var accepted = acceptedPayloads(((RecordingSessionRegistry) service.sessionRegistry).broadcasts);
+        Assertions.assertEquals(2, accepted.size());
+        Assertions.assertEquals(accepted.get(0).assignedRevisionRange(), accepted.get(1).assignedRevisionRange());
+    }
+
+    @Test
+    void retryAfterFailedPersistenceCommitsInsteadOfAcknowledgingLostWork() {
+        ArchimeshService service = baseService();
+        RecordingNeo4jRepository neo = (RecordingNeo4jRepository) service.neo4jRepository;
+        RecordingSessionRegistry sessions = (RecordingSessionRegistry) service.sessionRegistry;
+        neo.appendFailure = new IllegalStateException("database unavailable");
+        var message = new SubmitOpsMessage(0, "retry-after-failure", null, singleCreateElementOp());
+        Assertions.assertThrows(IllegalStateException.class, () -> service.onSubmitOps("demo", message));
+        Assertions.assertTrue(sessions.broadcasts.isEmpty());
+        neo.appendFailure = null;
+        service.onSubmitOps("demo", message);
+        Assertions.assertEquals(2, neo.appendCount);
+        Assertions.assertEquals(1, neo.applyCount);
+        Assertions.assertEquals(new RevisionRange(1, 1), acceptedPayloads(sessions.broadcasts).getFirst().assignedRevisionRange());
+    }
+
+    @Test
+    void rebuildRejectsIncompleteHistoryBeforeClearingProjection() {
+        ArchimeshService service = baseService();
+        RecordingNeo4jRepository neo = (RecordingNeo4jRepository) service.neo4jRepository;
+        neo.readLatestCommitRevisionValue = 3;
+        ObjectNode batch = objectMapper.createObjectNode();
+        batch.set("assignedRevisionRange", objectMapper.createObjectNode().put("from", 3).put("to", 3));
+        batch.set("ops", singleCreateElementOp());
+        neo.opBatchesToReturn = objectMapper.createArrayNode().add(batch);
+        Assertions.assertThrows(IllegalStateException.class, () -> service.rebuildMaterializedState("demo"));
+        Assertions.assertEquals(0, neo.clearMaterializedStateCount);
+    }
+
+    @Test
+    void nonemptyButIncompleteDeltaFallsBackToSnapshot() {
+        ArchimeshService service = baseService();
+        service.revisionService = new FixedRevisionService(3);
+        RecordingNeo4jRepository neo = (RecordingNeo4jRepository) service.neo4jRepository;
+        ObjectNode batch = objectMapper.createObjectNode();
+        batch.set("assignedRevisionRange", objectMapper.createObjectNode().put("from", 3).put("to", 3));
+        batch.set("ops", singleCreateElementOp());
+        neo.opBatchesToReturn = objectMapper.createArrayNode().add(batch);
+        service.onJoin("demo", null, new JoinMessage(0L, null, null));
+        var sessions = (RecordingSessionRegistry) service.sessionRegistry;
+        Assertions.assertEquals("CheckoutSnapshot", sessions.sends.getLast().type());
+    }
+
+    @Test
     void submitOpsAssignsRangeAndBroadcasts() {
         ArchimeshService service = baseService();
         RecordingSessionRegistry sessions = (RecordingSessionRegistry) service.sessionRegistry;
@@ -300,6 +381,7 @@ class ArchimeshServiceTest {
         batches.add(objectMapper.createObjectNode()
                 .put("opBatchId", "b-5")
                 .set("assignedRevisionRange", objectMapper.createObjectNode().put("from", 5).put("to", 5)));
+        for (JsonNode batch : batches) ((ObjectNode) batch).set("ops", objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("type", "UpdateElement")));
         neo.opBatchesToReturn = batches;
 
         service.onJoin("demo", null, new JoinMessage(3L, null, null));
@@ -1633,6 +1715,27 @@ class ArchimeshServiceTest {
         java.util.Map<String, java.util.Map<String, JsonNode>> tagSnapshots = new java.util.HashMap<>();
 
         @Override
+        public Optional<RevisionRange> findAcceptedRange(String modelId, String opBatchId) {
+            return appendedOpBatches.stream()
+                    .filter(batch -> modelId.equals(batch.path("modelId").asText()) && opBatchId.equals(batch.path("opBatchId").asText()))
+                    .findFirst().map(batch -> new RevisionRange(batch.path("assignedRevisionRange").path("from").asLong(),
+                            batch.path("assignedRevisionRange").path("to").asLong()));
+        }
+
+        @Override
+        public void commitBatch(String modelId, String opBatchId, RevisionRange range, JsonNode opBatch) {
+            int originalSize = appendedOpBatches.size();
+            try {
+                appendOpLog(modelId, opBatchId, range, opBatch);
+                applyToMaterializedState(modelId, opBatch);
+                updateHeadRevision(modelId, range.to());
+            } catch (RuntimeException failure) {
+                while (appendedOpBatches.size() > originalSize) appendedOpBatches.removeLast();
+                throw failure;
+            }
+        }
+
+        @Override
         public void appendOpLog(String modelId, String opBatchId, RevisionRange range, JsonNode opBatch) {
             appendCount++;
             if (appendFailure != null) {
@@ -1705,6 +1808,13 @@ class ArchimeshServiceTest {
             lastCompactRetainRevisions = retainRevisions;
             return new AdminCompactionStatus(modelId, 50L, 50L, 25L, retainRevisions,
                     2L, 10L, 3L, 2L, 4L, 1L, true, "ok");
+        }
+
+        @Override
+        public void rebuildProjection(String modelId, JsonNode history, long head) {
+            clearMaterializedState(modelId);
+            for (JsonNode batch : history) applyToMaterializedState(modelId, batch);
+            updateHeadRevision(modelId, head);
         }
 
         @Override

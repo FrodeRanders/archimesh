@@ -18,6 +18,29 @@ import java.util.Set;
 class InMemoryRevisionServiceTest {
 
     @Test
+    void concurrentBatchesReserveDisjointContiguousRanges() throws Exception {
+        InMemoryRevisionService service = new InMemoryRevisionService();
+        var start = new java.util.concurrent.CountDownLatch(1);
+        var seen = java.util.concurrent.ConcurrentHashMap.<Long>newKeySet();
+        try (var pool = java.util.concurrent.Executors.newFixedThreadPool(8)) {
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+            for (int thread = 0; thread < 8; thread++) futures.add(pool.submit(() -> {
+                try { start.await(); } catch (InterruptedException e) { throw new RuntimeException(e); }
+                for (int batch = 0; batch < 1000; batch++) {
+                    RevisionRange range = service.assignRange("concurrent", 3);
+                    for (long revision = range.from(); revision <= range.to(); revision++) {
+                        Assertions.assertTrue(seen.add(revision), "revision was assigned twice: " + revision);
+                    }
+                }
+            }));
+            start.countDown();
+            for (var future : futures) future.get();
+        }
+        Assertions.assertEquals(24000, seen.size());
+        Assertions.assertEquals(24000, service.headRevision("concurrent"));
+    }
+
+    @Test
     void headRevisionReSyncsUpWhenPersistedHeadAdvances() {
         InMemoryRevisionService service = new InMemoryRevisionService();
         RecordingNeo4jRepository neo = new RecordingNeo4jRepository();

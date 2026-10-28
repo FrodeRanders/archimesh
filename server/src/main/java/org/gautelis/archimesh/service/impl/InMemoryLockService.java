@@ -18,7 +18,7 @@ public class InMemoryLockService implements LockService {
     private final Map<String, LockState> locks = new ConcurrentHashMap<>();
 
     @Override
-    public Optional<String> checkLockConflicts(String modelId, Actor actor, List<String> targets) {
+    public synchronized Optional<String> checkLockConflicts(String modelId, Actor actor, List<String> targets) {
         Instant now = Instant.now();
         for (String target : targets) {
             String key = lockKey(modelId, target);
@@ -38,7 +38,7 @@ public class InMemoryLockService implements LockService {
     }
 
     @Override
-    public LockEventMessage acquire(String modelId, Actor actor, List<String> targets, long ttlMs) {
+    public synchronized LockEventMessage acquire(String modelId, Actor actor, List<String> targets, long ttlMs) {
         Optional<String> conflict = checkLockConflicts(modelId, actor, targets);
         Instant now = Instant.now();
         if (conflict.isPresent()) {
@@ -47,6 +47,7 @@ public class InMemoryLockService implements LockService {
             return new LockEventMessage(UUID.randomUUID().toString(), "LockDenied", actor, targets, now, ttlMs, conflict.get());
         }
 
+        ttlMs = Math.max(1000L, Math.min(60_000L, ttlMs));
         Instant expiresAt = now.plusMillis(ttlMs);
         for (String target : targets) {
             locks.put(lockKey(modelId, target), new LockState(target, actor, ttlMs, expiresAt));
@@ -58,7 +59,7 @@ public class InMemoryLockService implements LockService {
     }
 
     @Override
-    public LockEventMessage release(String modelId, Actor actor, List<String> targets) {
+    public synchronized LockEventMessage release(String modelId, Actor actor, List<String> targets) {
         for (String target : targets) {
             String key = lockKey(modelId, target);
             LockState existing = locks.get(key);

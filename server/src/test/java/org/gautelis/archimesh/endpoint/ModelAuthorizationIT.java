@@ -29,6 +29,22 @@ class ModelAuthorizationIT {
 
     private final List<String> modelsToDelete = new ArrayList<>();
 
+    @Test
+    void readerCatalogAndTagsRespectModelAclWithoutAdminRole() throws Exception {
+        String visible = "catalog-reader-visible";
+        String hidden = "catalog-reader-hidden";
+        modelsToDelete.add(visible); modelsToDelete.add(hidden);
+        archimeshService.registerModel(visible, "Visible", "owner");
+        archimeshService.registerModel(hidden, "Hidden", "owner");
+        archimeshService.updateModelAccessControl(visible, java.util.Set.of("owner"), java.util.Set.of(), java.util.Set.of("reader"));
+        HttpResponse<String> catalog = get("/models", "reader", "model_reader");
+        Assertions.assertEquals(200, catalog.statusCode());
+        Assertions.assertTrue(catalog.body().contains(visible));
+        Assertions.assertFalse(catalog.body().contains(hidden));
+        Assertions.assertEquals(200, get("/models/" + visible + "/tags", "reader", "model_reader").statusCode());
+        Assertions.assertEquals(403, get("/models/" + hidden + "/tags", "reader", "model_reader").statusCode());
+    }
+
     @AfterEach
     void cleanup() {
         for (String modelId : modelsToDelete) {

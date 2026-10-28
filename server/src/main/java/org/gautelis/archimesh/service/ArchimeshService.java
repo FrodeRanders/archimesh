@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * ArchiMate model editing.
  */
 @ApplicationScoped
+@io.quarkus.runtime.Startup
 public class ArchimeshService {
     private static final Logger LOG = LoggerFactory.getLogger(ArchimeshService.class);
     private static final long DEFAULT_LOCK_TTL_MS = 10_000;
@@ -61,6 +62,9 @@ public class ArchimeshService {
     @Inject
     IdempotencyService idempotencyService;
 
+    @Inject
+    CommitDeliveryService commitDeliveryService;
+
     @ConfigProperty(name = "app.consistency.check-enabled", defaultValue = "false")
     boolean consistencyChecksEnabled;
 
@@ -87,6 +91,7 @@ public class ArchimeshService {
 
     @PostConstruct
     void init() {
+        if (commitDeliveryService != null) commitDeliveryService.start();
         kafkaConsumer.start();
         LOG.info("Archimesh service initialized; kafka consumer started");
     }
@@ -96,7 +101,7 @@ public class ArchimeshService {
      * authorizing access, performing checkout (full snapshot or delta replay), and broadcasting
      * the join event.
      */
-    public void onJoin(String modelId, Session session, JoinMessage join) {
+    public synchronized void onJoin(String modelId, Session session, JoinMessage join) {
         if (!ensureRegisteredModelForJoin(modelId, session)) {
             return;
         }
@@ -144,7 +149,7 @@ public class ArchimeshService {
         if (safeLastSeen < head) {
             // Prefer delta replay; fallback to snapshot when history window is unavailable
             JsonNode opBatches = neo4jRepository.loadOpBatches(modelId, safeLastSeen + 1, head);
-            if (!opBatches.isArray() || opBatches.isEmpty()) {
+            if (!coversRevisions(opBatches, safeLastSeen + 1, head)) {
                 LOG.warn("CheckoutDelta requested but no op batches found: modelId={} from={} to={} - sending snapshot fallback",
                         modelId, safeLastSeen + 1, head);
                 JsonNode snapshot = neo4jRepository.loadSnapshot(modelId);
@@ -174,7 +179,8 @@ public class ArchimeshService {
         recordActivity(modelId, "Disconnect", "sessionId=" + safeSessionId(session));
     }
 
-    public void onSubmitOps(String modelId, SubmitOpsMessage submitOps) {
+    public synchronized void onSubmitOps(String modelId, SubmitOpsMessage submitOps) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         onSubmitOps(modelId, null, submitOps);
     }
 
@@ -182,7 +188,8 @@ public class ArchimeshService {
      * Validates, normalizes, and processes incoming operational transforms: assigns revisions,
      * persists to the op-log, applies deltas to the materialized state, and broadcasts acceptance.
      */
-    public void onSubmitOps(String modelId, Session session, SubmitOpsMessage submitOps) {
+    public synchronized void onSubmitOps(String modelId, Session session, SubmitOpsMessage submitOps) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         if (!ensureRegisteredModel(modelId, session, "SubmitOps")) {
             return;
         }
@@ -213,6 +220,23 @@ public class ArchimeshService {
                     "opBatchId=" + opBatchId + " generatedDeleteOps=" + cascadeDeleteGenerated);
         }
 
+        Optional<RevisionRange> known = neo4jRepository.findAcceptedRange(modelId, opBatchId)
+                .or(() -> idempotencyService.findRange(modelId, opBatchId));
+        if (known.isPresent()) {
+            // Idempotency is model-scoped; repeat deliveries replay the accepted range instead of mutating again.
+            LOG.info("SubmitOps idempotency hit: modelId={} opBatchId={} assigned={}..{}",
+                    modelId, opBatchId, known.get().from(), known.get().to());
+            recordActivity(modelId, "SubmitOpsIdempotent",
+                    "opBatchId=" + opBatchId + " assigned=" + known.get().from() + ".." + known.get().to());
+            if (styleOpCount > 0) {
+                styleCounters(modelId).accepted.addAndGet(styleOpCount);
+                recordStyleActivity(modelId, "AcceptedIdempotent", styleOpCount, opBatchId);
+            }
+            reply(session, modelId,
+                    new ServerEnvelope("OpsAccepted", new OpsAcceptedMessage(opBatchId, baseRevision, known.get())));
+            return;
+        }
+
         if (baseRevision > headRevision) {
             LOG.warn("SubmitOps rejected: modelId={} opBatchId={} baseRevision={} exceeds headRevision={}",
                     modelId, opBatchId, baseRevision, headRevision);
@@ -222,9 +246,9 @@ public class ArchimeshService {
                 styleCounters(modelId).rejected.addAndGet(styleOpCount);
                 recordStyleActivity(modelId, "RejectedAhead", styleOpCount, opBatchId);
             }
-            sessionRegistry.broadcast(modelId,
+            reply(session, modelId,
                     new ServerEnvelope("Error", new ErrorMessage("REVISION_AHEAD",
-                            "baseRevision " + baseRevision + " exceeds server headRevision " + headRevision + "; rejoin required")));
+                            "baseRevision " + baseRevision + " exceeds server headRevision " + headRevision + "; rejoin required", opBatchId)));
             return;
         }
 
@@ -238,24 +262,8 @@ public class ArchimeshService {
                 styleCounters(modelId).rejected.addAndGet(styleOpCount);
                 recordStyleActivity(modelId, "RejectedPrecondition", styleOpCount, opBatchId);
             }
-            sessionRegistry.broadcast(modelId,
-                    new ServerEnvelope("Error", new ErrorMessage("PRECONDITION_FAILED", preconditionFailure.get())));
-            return;
-        }
-
-        Optional<RevisionRange> known = idempotencyService.findRange(modelId, opBatchId);
-        if (known.isPresent()) {
-            // Idempotency is model-scoped; repeat deliveries replay the accepted range instead of mutating again.
-            LOG.info("SubmitOps idempotency hit: modelId={} opBatchId={} assigned={}..{}",
-                    modelId, opBatchId, known.get().from(), known.get().to());
-            recordActivity(modelId, "SubmitOpsIdempotent",
-                    "opBatchId=" + opBatchId + " assigned=" + known.get().from() + ".." + known.get().to());
-            if (styleOpCount > 0) {
-                styleCounters(modelId).accepted.addAndGet(styleOpCount);
-                recordStyleActivity(modelId, "AcceptedIdempotent", styleOpCount, opBatchId);
-            }
-            sessionRegistry.broadcast(modelId,
-                    new ServerEnvelope("OpsAccepted", new OpsAcceptedMessage(opBatchId, baseRevision, known.get())));
+            reply(session, modelId,
+                    new ServerEnvelope("Error", new ErrorMessage("PRECONDITION_FAILED", preconditionFailure.get(), opBatchId)));
             return;
         }
 
@@ -272,16 +280,32 @@ public class ArchimeshService {
                     styleCounters(modelId).rejected.addAndGet(styleOpCount);
                     recordStyleActivity(modelId, "RejectedLockConflict", styleOpCount, opBatchId);
                 }
-                sessionRegistry.broadcast(modelId,
-                        new ServerEnvelope("Error", new ErrorMessage("LOCK_CONFLICT", conflict.get())));
+                reply(session, modelId,
+                        new ServerEnvelope("Error", new ErrorMessage("LOCK_CONFLICT", conflict.get(), opBatchId)));
                 return;
             }
         }
+
+        if (!lockTargets.isEmpty()) lockService.acquire(modelId, actor, lockTargets, DEFAULT_LOCK_TTL_MS);
 
         RevisionRange range = revisionService.assignRange(modelId, opCount);
         // Per-op causal tuples are derived from the assigned range so downstream LWW/tombstone checks compare
         // exact op revisions rather than only the enclosing batch.
         JsonNode normalizedOps = normalizeOpsWithCausal(preparedOps, actor, opBatchId, range.from());
+        ObjectNode opBatch = JsonNodeFactory.instance.objectNode();
+        opBatch.put("modelId", modelId);
+        opBatch.put("opBatchId", opBatchId);
+        opBatch.put("baseRevision", baseRevision);
+        opBatch.set("assignedRevisionRange", toJsonRange(range));
+        opBatch.put("timestamp", Instant.now().toString());
+        opBatch.set("ops", normalizedOps);
+
+        try {
+            neo4jRepository.commitBatch(modelId, opBatchId, range, opBatch);
+        } catch (RuntimeException failure) {
+            revisionService.clearModel(modelId);
+            throw failure;
+        }
         idempotencyService.remember(modelId, opBatchId, range);
         LOG.info("SubmitOps accepted: modelId={} opBatchId={} assigned={}..{}",
                 modelId, opBatchId, range.from(), range.to());
@@ -292,35 +316,27 @@ public class ArchimeshService {
             recordStyleActivity(modelId, "Accepted", styleOpCount, opBatchId);
         }
 
-        ObjectNode opBatch = JsonNodeFactory.instance.objectNode();
-        opBatch.put("modelId", modelId);
-        opBatch.put("opBatchId", opBatchId);
-        opBatch.put("baseRevision", baseRevision);
-        opBatch.set("assignedRevisionRange", toJsonRange(range));
-        opBatch.put("timestamp", Instant.now().toString());
-        opBatch.set("ops", normalizedOps);
-
-        neo4jRepository.appendOpLog(modelId, opBatchId, range, opBatch);
-        neo4jRepository.applyToMaterializedState(modelId, opBatch);
         if (styleOpCount > 0) {
             styleCounters(modelId).applied.addAndGet(styleOpCount);
             recordStyleActivity(modelId, "Applied", styleOpCount, opBatchId);
         }
-        neo4jRepository.updateHeadRevision(modelId, range.to());
         runConsistencyChecksIfEnabled(modelId, opBatchId, range.to());
 
-        kafkaPublisher.publishOps(modelId, opBatch).exceptionally(ex -> {
+        if (commitDeliveryService != null) {
+            commitDeliveryService.requestDrain();
+        } else kafkaPublisher.publishOps(modelId, opBatch).exceptionally(ex -> {
             LOG.warn("Kafka publish failed; broadcasting OpsBroadcast directly to sessions: modelId={} opBatchId={}", modelId, opBatchId, ex);
             sessionRegistry.broadcast(modelId,
                     new ServerEnvelope("OpsBroadcast", new OpsBroadcastMessage(opBatch)));
             return null;
         });
 
-        sessionRegistry.broadcast(modelId,
+        reply(session, modelId,
                 new ServerEnvelope("OpsAccepted", new OpsAcceptedMessage(opBatchId, baseRevision, range)));
     }
 
-    public void onAcquireLock(String modelId, AcquireLockMessage message) {
+    public synchronized void onAcquireLock(String modelId, AcquireLockMessage message) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         onAcquireLock(modelId, null, message);
     }
 
@@ -328,7 +344,8 @@ public class ArchimeshService {
      * Acquires locks on the specified element targets for the requesting actor and publishes
      * the lock event to all model sessions via Kafka.
      */
-    public void onAcquireLock(String modelId, Session session, AcquireLockMessage message) {
+    public synchronized void onAcquireLock(String modelId, Session session, AcquireLockMessage message) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         if (!ensureRegisteredModel(modelId, session, "AcquireLock")) {
             return;
         }
@@ -347,7 +364,8 @@ public class ArchimeshService {
         kafkaPublisher.publishLockEvent(modelId, event);
     }
 
-    public void onReleaseLock(String modelId, ReleaseLockMessage message) {
+    public synchronized void onReleaseLock(String modelId, ReleaseLockMessage message) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         onReleaseLock(modelId, null, message);
     }
 
@@ -355,7 +373,8 @@ public class ArchimeshService {
      * Releases locks held by the requesting actor on the specified targets and broadcasts
      * the release event.
      */
-    public void onReleaseLock(String modelId, Session session, ReleaseLockMessage message) {
+    public synchronized void onReleaseLock(String modelId, Session session, ReleaseLockMessage message) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         if (!ensureRegisteredModel(modelId, session, "ReleaseLock")) {
             return;
         }
@@ -420,7 +439,7 @@ public class ArchimeshService {
                 consistent);
     }
 
-    public JsonNode getSnapshot(String modelId) {
+    public synchronized JsonNode getSnapshot(String modelId) {
         return getSnapshot(modelId, null);
     }
 
@@ -428,7 +447,7 @@ public class ArchimeshService {
      * Resolves the given ref (HEAD or tag name) and returns the associated materialized
      * state snapshot.
      */
-    public JsonNode getSnapshot(String modelId, String ref) {
+    public synchronized JsonNode getSnapshot(String modelId, String ref) {
         ResolvedModelRef resolvedRef = resolveModelRef(modelId, ref);
         if (resolvedRef == null) {
             throw new IllegalArgumentException("Unknown model reference for modelId " + modelId + ": " + ref);
@@ -501,7 +520,8 @@ public class ArchimeshService {
      * Removes a model and all associated data from the repository and in-memory caches,
      * optionally forcing deletion even when active sessions exist.
      */
-    public AdminDeleteResult deleteModel(String modelId, boolean force) {
+    public synchronized AdminDeleteResult deleteModel(String modelId, boolean force) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         int activeSessions = sessionRegistry.sessionCount(modelId);
         if (activeSessions > 0 && !force) {
             String message = "Model has active sessions; close clients first or use force=true.";
@@ -658,7 +678,8 @@ public class ArchimeshService {
      * Creates a named snapshot tag at the current HEAD revision, persisting the full
      * materialized state for later retrieval.
      */
-    public ModelTagEntry createModelTag(String modelId, String tagName, String description) {
+    public synchronized ModelTagEntry createModelTag(String modelId, String tagName, String description) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         String normalizedModelId = normalizeModelId(modelId);
         ensureRegisteredModelForAdmin(normalizedModelId);
         String normalizedTagName = normalizeTagName(tagName);
@@ -683,7 +704,7 @@ public class ArchimeshService {
      * Exports the full model state including snapshot, op-log history, tags, and ACL
      * as a portable serialization package.
      */
-    public AdminModelExport exportModel(String modelId) {
+    public synchronized AdminModelExport exportModel(String modelId) {
         String normalizedModelId = normalizeModelId(modelId);
         ensureRegisteredModelForAdmin(normalizedModelId);
         JsonNode snapshot = neo4jRepository.loadSnapshot(normalizedModelId);
@@ -714,7 +735,8 @@ public class ArchimeshService {
      * Imports a previously exported model package, optionally overwriting an existing model
      * and restoring its op-log, tags, and access control.
      */
-    public AdminModelImportResult importModel(AdminModelExport exportPackage, boolean overwrite) {
+    public synchronized AdminModelImportResult importModel(AdminModelExport exportPackage, boolean overwrite) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         if (exportPackage == null) {
             throw new IllegalArgumentException("Import payload is required.");
         }
@@ -807,7 +829,8 @@ public class ArchimeshService {
      * Compacts metadata and op-log history for a model, deleting commits and ops below
      * a configurable retention watermark to reclaim storage.
      */
-    public AdminCompactionStatus compactModelMetadata(String modelId, Long retainRevisionsOverride) {
+    public synchronized AdminCompactionStatus compactModelMetadata(String modelId, Long retainRevisionsOverride) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         long retainRevisions = retainRevisionsOverride == null
                 ? defaultCompactionRetainRevisions
                 : Math.max(0L, retainRevisionsOverride);
@@ -830,19 +853,23 @@ public class ArchimeshService {
      * Clears the materialized graph state and rebuilds it from scratch by replaying all
      * commit batches from the op-log.
      */
-    public RebuildStatus rebuildMaterializedState(String modelId) {
+    public synchronized RebuildStatus rebuildMaterializedState(String modelId) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         long latestCommitRevision = neo4jRepository.readLatestCommitRevision(modelId);
-        neo4jRepository.clearMaterializedState(modelId);
+        JsonNode history = neo4jRepository.loadOpBatches(modelId, 1, latestCommitRevision);
+        if (latestCommitRevision > 0 && !coversRevisions(history, 1, latestCommitRevision)) {
+            throw new IllegalStateException("Cannot rebuild: complete op-log history is unavailable");
+        }
+        neo4jRepository.rebuildProjection(modelId, history, latestCommitRevision);
 
         int appliedBatchCount = 0;
         int appliedOpCount = 0;
         long rebuiltHeadRevision = 0L;
 
         if (latestCommitRevision > 0) {
-            JsonNode opBatches = neo4jRepository.loadOpBatches(modelId, 1, latestCommitRevision);
+            JsonNode opBatches = history;
             if (opBatches != null && opBatches.isArray()) {
                 for (JsonNode opBatch : opBatches) {
-                    neo4jRepository.applyToMaterializedState(modelId, opBatch);
                     appliedBatchCount++;
                     if (opBatch.path("ops").isArray()) {
                         appliedOpCount += opBatch.path("ops").size();
@@ -859,7 +886,7 @@ public class ArchimeshService {
         if (rebuiltHeadRevision == 0L && latestCommitRevision > 0L) {
             rebuiltHeadRevision = latestCommitRevision;
         }
-        neo4jRepository.updateHeadRevision(modelId, rebuiltHeadRevision);
+        revisionService.clearModel(modelId);
         boolean consistent = neo4jRepository.isMaterializedStateConsistent(modelId, rebuiltHeadRevision);
         LOG.info("Rebuild materialized state: modelId={} requestedToRevision={} rebuiltHeadRevision={} appliedBatchCount={} appliedOpCount={} consistent={}",
                 modelId, latestCommitRevision, rebuiltHeadRevision, appliedBatchCount, appliedOpCount, consistent);
@@ -1067,6 +1094,9 @@ public class ArchimeshService {
         JsonNode opBatches = exportPackage.opBatches();
         boolean hasOpBatches = opBatches != null && opBatches.isArray() && !opBatches.isEmpty();
         if (hasOpBatches) {
+            if (!coversRevisions(opBatches, 1, exportPackage.model().headRevision())) {
+                throw new IllegalArgumentException("Import requires complete, contiguous op-log history");
+            }
             return;
         }
         boolean hasSnapshotContent = snapshotHasMaterializedContent(exportPackage.snapshot());
@@ -2094,6 +2124,25 @@ public class ArchimeshService {
             LOG.debug("Consistency check passed: modelId={} opBatchId={} headRevision={}",
                     modelId, opBatchId, assignedHeadRevision);
         }
+    }
+
+    static boolean coversRevisions(JsonNode batches, long from, long to) {
+        if (from > to) return true;
+        if (batches == null || !batches.isArray()) return false;
+        long next = from;
+        for (JsonNode batch : batches) {
+            long start = batch.path("assignedRevisionRange").path("from").asLong(-1);
+            long end = batch.path("assignedRevisionRange").path("to").asLong(-1);
+            if (start != next || end < start || !batch.path("ops").isArray()
+                    || batch.path("ops").size() != end - start + 1) return false;
+            next = end + 1;
+        }
+        return next == to + 1;
+    }
+
+    private void reply(Session session, String modelId, ServerEnvelope message) {
+        if (session == null) sessionRegistry.broadcast(modelId, message);
+        else sessionRegistry.send(session, message);
     }
 
     private JsonNode normalizeOpsWithCausal(JsonNode ops, Actor actor, String opBatchId, long assignedFromRevision) {

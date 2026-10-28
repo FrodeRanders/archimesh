@@ -48,6 +48,8 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
     private Neo4jReadSupport readSupport;
     private Neo4jCompactionSupport compactionSupport;
     private Neo4jOpLogSupport opLogSupport;
+    private volatile String runtimeLeaseOwner;
+    String runtimeLeaseKey = "writer";
 
     @PostConstruct
     void init() {
@@ -65,6 +67,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
     @PreDestroy
     void close() {
         if (driver != null) {
+            if (runtimeLeaseOwner != null) releaseServerLease(runtimeLeaseOwner);
             driver.close();
         }
     }
@@ -73,6 +76,110 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
      * Persists an operation batch to the op-log as a commit node with linked op nodes
      * for the given revision range.
      */
+    @Override
+    public Optional<RevisionRange> findAcceptedRange(String modelId, String opBatchId) {
+        try (var session = requireDriver("findAcceptedRange").session()) {
+            return session.executeRead(tx -> {
+                var rows = tx.run("MATCH (c:Commit {modelId:$modelId, opBatchId:$batch}) "
+                                + "RETURN c.revisionFrom AS start, c.revisionTo AS end",
+                        Map.of("modelId", modelId, "batch", opBatchId));
+                if (!rows.hasNext()) return Optional.empty();
+                var row = rows.single();
+                return Optional.of(new RevisionRange(row.get("start").asLong(), row.get("end").asLong()));
+            });
+        }
+    }
+
+    @Override
+    public boolean acquireServerLease(String owner, long ttlMs) {
+        try (var session = requireDriver("acquireServerLease").session()) {
+            session.run("CREATE CONSTRAINT archimesh_runtime_id IF NOT EXISTS FOR (r:ArchimeshRuntime) REQUIRE r.id IS UNIQUE").consume();
+            boolean acquired = session.executeWrite(tx -> {
+                tx.run("MERGE (r:ArchimeshRuntime {id:$key}) SET r.fence=coalesce(r.fence,0)+1", Map.of("key", runtimeLeaseKey)).consume();
+                var rows = tx.run("MATCH (r:ArchimeshRuntime {id:$key}) "
+                                + "WHERE r.owner=$owner OR coalesce(r.expiresAt,0) < datetime().epochMillis "
+                                + "SET r.owner=$owner, r.expiresAt=datetime().epochMillis+$ttl RETURN r.owner",
+                        Map.of("key", runtimeLeaseKey, "owner", owner, "ttl", ttlMs));
+                return rows.hasNext();
+            });
+            if (acquired) runtimeLeaseOwner = owner;
+            return acquired;
+        }
+    }
+
+    @Override
+    public void releaseServerLease(String owner) {
+        try (var session = requireDriver("releaseServerLease").session()) {
+            session.executeWrite(tx -> {
+                tx.run("MATCH (r:ArchimeshRuntime {id:$key, owner:$owner}) SET r.expiresAt=0 REMOVE r.owner",
+                        Map.of("key", runtimeLeaseKey, "owner", owner));
+                return null;
+            });
+        }
+    }
+
+    @Override
+    public List<JsonNode> pendingBroadcasts() {
+        try (var session = requireDriver("pendingBroadcasts").session()) {
+            return session.executeRead(tx -> tx.run("MATCH (c:Commit) "
+                            + "WHERE c.published=false AND c.batchJson IS NOT NULL "
+                            + "RETURN c.batchJson AS json ORDER BY c.modelId, c.revisionFrom LIMIT 100",
+                    Map.of()).list(row -> {
+                try { return objectMapper.readTree(row.get("json").asString()); }
+                catch (Exception e) { throw new IllegalStateException("Invalid persisted delivery payload", e); }
+            }));
+        }
+    }
+
+    @Override
+    public void markBroadcastPublished(String modelId, String opBatchId) {
+        try (var session = requireDriver("markBroadcastPublished").session()) {
+            session.executeWrite(tx -> {
+                tx.run("MATCH (c:Commit {modelId:$modelId, opBatchId:$batch}) SET c.published=true",
+                        Map.of("modelId", modelId, "batch", opBatchId));
+                return null;
+            });
+        }
+    }
+
+    @Override
+    public void commitBatch(String modelId, String opBatchId, RevisionRange range, JsonNode opBatch) {
+        try (var session = requireDriver("commitBatch").session()) {
+            session.executeWrite(tx -> {
+                if (runtimeLeaseOwner != null && !tx.run("MATCH (r:ArchimeshRuntime {id:$key,owner:$owner}) "
+                                + "WHERE r.expiresAt >= datetime().epochMillis RETURN r",
+                        Map.of("key", runtimeLeaseKey, "owner", runtimeLeaseOwner)).hasNext()) {
+                    throw new IllegalStateException("Authoritative writer lease expired");
+                }
+                // Acquire the model's write lock before reading its head. A competing server can
+                // never commit an overlapping range, even if its in-process cache is stale.
+                var row = tx.run("MATCH (m:Model {modelId:$modelId}) "
+                                + "SET m.commitFence = coalesce(m.commitFence, 0) + 1 "
+                                + "RETURN coalesce(m.headRevision, 0) AS head",
+                        Map.of("modelId", modelId)).single();
+                var existing = tx.run("MATCH (c:Commit {modelId:$modelId, opBatchId:$batch}) RETURN c",
+                        Map.of("modelId", modelId, "batch", opBatchId));
+                if (existing.hasNext()) {
+                    throw new IllegalStateException("Batch was already committed; retry to retrieve its acceptance");
+                }
+                if (row.get("head").asLong() != range.from() - 1L) {
+                    throw new IllegalStateException("Model head changed; retry submission");
+                }
+                opLogSupport.appendOpLog(tx, modelId, opBatchId, range, opBatch);
+                materializedStateSupport.applyBatch(tx, modelId, opBatch);
+                tx.run("MATCH (m:Model {modelId:$modelId}) SET m.headRevision=$head",
+                        Map.of("modelId", modelId, "head", range.to()));
+                // Persist delivery intent with the commit; restart recovery republishes unacknowledged batches.
+                tx.run("MATCH (c:Commit {modelId:$modelId, opBatchId:$batch}) "
+                                + "SET c.batchJson=$json, c.published=false",
+                        Map.of("modelId", modelId, "batch", opBatchId, "json", opBatch.toString()));
+                return null;
+            });
+        } catch (Exception e) {
+            throw writeFailure("commitBatch", modelId, e);
+        }
+    }
+
     @Override
     public void appendOpLog(String modelId, String opBatchId, RevisionRange range, JsonNode opBatch) {
         try (var session = requireDriver("appendOpLog").session()) {
@@ -140,7 +247,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
             });
         } catch (Exception e) {
             LOG.warn("readHeadRevision failed for model={}", modelId, e);
-            return 0L;
+            throw new IllegalStateException("readHeadRevision failed for model " + modelId, e);
         }
     }
 
@@ -274,7 +381,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
             });
         } catch (Exception e) {
             LOG.warn("readModelAccessControl failed for model={}", modelId, e);
-            return Optional.empty();
+            throw new IllegalStateException("readModelAccessControl failed for model " + modelId, e);
         }
     }
 
@@ -478,7 +585,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
             });
         } catch (Exception e) {
             LOG.warn("readLatestCommitRevision failed for model={}", modelId, e);
-            return 0L;
+            throw new IllegalStateException("readLatestCommitRevision failed for model " + modelId, e);
         }
     }
 
@@ -496,7 +603,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
             return readSupport.loadSnapshot(session, modelId, headRevision);
         } catch (Exception e) {
             LOG.warn("loadSnapshot failed for model={}", modelId, e);
-            return readSupport.loadSnapshot(null, modelId, headRevision);
+            throw new IllegalStateException("loadSnapshot failed for model " + modelId, e);
         }
     }
 
@@ -524,7 +631,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
         } catch (Exception e) {
             LOG.warn("loadOpBatches failed for model={} range={}..{}",
                     modelId, fromRevisionInclusive, toRevisionInclusive, e);
-            return readSupport.loadOpBatches(null, modelId, fromRevisionInclusive, toRevisionInclusive);
+            throw new IllegalStateException("loadOpBatches failed for model " + modelId, e);
         }
     }
 
@@ -571,81 +678,30 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
      */
     @Override
     public void clearMaterializedState(String modelId) {
-        LOG.info("clearMaterializedState: modelId={}", modelId);
         try (var session = requireDriver("clearMaterializedState").session()) {
+            session.executeWrite(tx -> { clearProjection(tx, modelId); return null; });
+        }
+    }
+
+    private void clearProjection(TransactionContext tx, String modelId) {
+        tx.run("MATCH (n {modelId:$modelId}) WHERE n:Element OR n:Relationship OR n:View OR n:ViewObject "
+                + "OR n:Connection OR n:Folder OR n:PropertyClock OR n:ElementTombstone OR n:RelationshipTombstone "
+                + "OR n:ViewTombstone OR n:ViewObjectTombstone OR n:ConnectionTombstone DETACH DELETE n",
+                Map.of("modelId", modelId));
+        ensureRootFolders(tx, modelId);
+        tx.run("MATCH (m:Model {modelId:$modelId}) SET m.headRevision=0", Map.of("modelId", modelId));
+    }
+
+    @Override
+    public void rebuildProjection(String modelId, JsonNode history, long head) {
+        try (var session = requireDriver("rebuildProjection").session()) {
             session.executeWrite(tx -> {
-                ensureRootFolders(tx, modelId);
-                tx.run("""
-                        MERGE (m:Model {modelId: $modelId})
-                        WITH m
-                        OPTIONAL MATCH (m)-[:HAS_ELEMENT]->(e:Element)
-                        DETACH DELETE e
-                        """, Map.of("modelId", modelId));
-                tx.run("""
-                        MERGE (m:Model {modelId: $modelId})
-                        WITH m
-                        OPTIONAL MATCH (m)-[:HAS_REL]->(r:Relationship)
-                        DETACH DELETE r
-                        """, Map.of("modelId", modelId));
-                tx.run("""
-                        MERGE (m:Model {modelId: $modelId})
-                        WITH m
-                        OPTIONAL MATCH (m)-[:HAS_RELATIONSHIP_TOMBSTONE]->(t:RelationshipTombstone)
-                        DETACH DELETE t
-                        """, Map.of("modelId", modelId));
-                tx.run("""
-                        MERGE (m:Model {modelId: $modelId})
-                        WITH m
-                        OPTIONAL MATCH (m)-[:HAS_VIEW_TOMBSTONE]->(t:ViewTombstone)
-                        DETACH DELETE t
-                        """, Map.of("modelId", modelId));
-                tx.run("""
-                        MERGE (m:Model {modelId: $modelId})
-                        WITH m
-                        OPTIONAL MATCH (m)-[:HAS_VIEWOBJECT_TOMBSTONE]->(t:ViewObjectTombstone)
-                        DETACH DELETE t
-                        """, Map.of("modelId", modelId));
-                tx.run("""
-                        MERGE (m:Model {modelId: $modelId})
-                        WITH m
-                        OPTIONAL MATCH (m)-[:HAS_CONNECTION_TOMBSTONE]->(t:ConnectionTombstone)
-                        DETACH DELETE t
-                        """, Map.of("modelId", modelId));
-                tx.run("""
-                        MERGE (m:Model {modelId: $modelId})
-                        WITH m
-                        OPTIONAL MATCH (m)-[:HAS_PROPERTY_CLOCK]->(p:PropertyClock)
-                        DETACH DELETE p
-                        """, Map.of("modelId", modelId));
-                tx.run("""
-                        MERGE (m:Model {modelId: $modelId})
-                        WITH m
-                        OPTIONAL MATCH (m)-[:HAS_VIEW]->(v:View)
-                        DETACH DELETE v
-                        """, Map.of("modelId", modelId));
-                tx.run("""
-                        MERGE (m:Model {modelId: $modelId})
-                        WITH m
-                        OPTIONAL MATCH (m)-[:HAS_FOLDER]->(f:Folder)
-                        WHERE coalesce(f.folderType, 'USER') = 'USER'
-                        DETACH DELETE f
-                        """, Map.of("modelId", modelId));
-                tx.run("""
-                        MERGE (m:Model {modelId: $modelId})
-                        WITH m
-                        OPTIONAL MATCH (m)-[:HAS_ELEMENT_TOMBSTONE]->(t:ElementTombstone)
-                        DETACH DELETE t
-                        """, Map.of("modelId", modelId));
-                tx.run("""
-                        MERGE (m:Model {modelId: $modelId})
-                        SET m.headRevision = 0
-                        """, Map.of("modelId", modelId));
-                ensureRootFolders(tx, modelId);
+                tx.run("MATCH (m:Model {modelId:$modelId}) SET m.commitFence=coalesce(m.commitFence,0)+1", Map.of("modelId",modelId));
+                clearProjection(tx, modelId);
+                for (JsonNode batch : history) materializedStateSupport.applyBatch(tx, modelId, batch);
+                tx.run("MATCH (m:Model {modelId:$modelId}) SET m.headRevision=$head", Map.of("modelId",modelId,"head",head));
                 return null;
             });
-        } catch (Exception e) {
-            LOG.warn("clearMaterializedState failed for model={}", modelId, e);
-            throw writeFailure("clearMaterializedState", modelId, e);
         }
     }
 

@@ -2411,7 +2411,7 @@ class LocalInfraIntegrationTest {
     }
 
     @Test
-    void compactionPrunesOldOpLogButRetainsTombstoneDeleteSafety() {
+    void compactionRetainsReplayHistoryAndTombstoneDeleteSafety() {
         assumeLocalInfraEnabled();
 
         String uri = env("NEO4J_URI", "bolt://localhost:7687");
@@ -2500,14 +2500,14 @@ class LocalInfraIntegrationTest {
         Assertions.assertTrue(compaction.executed());
         Assertions.assertEquals(2L, compaction.committedHorizonRevision(), "compaction horizon must follow committed revision");
         Assertions.assertEquals(2L, compaction.watermarkRevision(), "watermark should be derived from committed horizon");
-        Assertions.assertEquals(1L, compaction.deletedCommitCount(), "commit revision < watermark should be removed");
-        Assertions.assertEquals(1L, compaction.deletedOpCount(), "op under deleted commit should be removed");
+        Assertions.assertEquals(0L, compaction.deletedCommitCount(), "recovery history must be retained");
+        Assertions.assertEquals(0L, compaction.deletedOpCount(), "recovery operations must be retained");
         Assertions.assertTrue(compaction.retainedTombstoneCount() >= 1L, "tombstones must be retained for delete safety");
         Assertions.assertTrue(compaction.eligibleTombstoneCount() >= 1L, "eligible tombstones should be reported against watermark");
 
         JsonNode delta = repository.loadOpBatches(modelId, 1, 2);
-        Assertions.assertEquals(1, delta.size(), "old commit should be pruned from op-log range");
-        Assertions.assertEquals(batchId2, delta.get(0).path("opBatchId").asText());
+        Assertions.assertEquals(2, delta.size(), "complete replay history must survive compaction");
+        Assertions.assertEquals(batchId2, delta.get(1).path("opBatchId").asText());
 
         ObjectNode staleUpdateBatch = JsonNodeFactory.instance.objectNode()
                 .put("modelId", modelId)
@@ -2624,8 +2624,8 @@ class LocalInfraIntegrationTest {
                 "older tombstones should be reported eligible under watermark");
         Assertions.assertTrue(compaction.eligibleFieldClockCount() >= 1L,
                 "field clocks at or below watermark should be reported eligible");
-        Assertions.assertTrue(compaction.deletedCommitCount() >= 1L,
-                "commits strictly below watermark should be compacted");
+        Assertions.assertEquals(0L, compaction.deletedCommitCount(),
+                "complete replay history must be retained");
 
         repository.close();
     }
@@ -3279,12 +3279,12 @@ class LocalInfraIntegrationTest {
                 "watermark must follow committed horizon, not drifted head");
         Assertions.assertTrue(compaction.eligibleFieldClockCount() >= 1L,
                 "eligible field clocks should be reported for conservative retention policy");
-        Assertions.assertEquals(1L, compaction.deletedCommitCount(),
-                "only revisions below committed horizon watermark should be pruned");
+        Assertions.assertEquals(0L, compaction.deletedCommitCount(),
+                "compaction must preserve recoverability");
 
         JsonNode delta = repository.loadOpBatches(modelId, 1, 2);
-        Assertions.assertEquals(1, delta.size(), "revision 2 commit should remain after compaction");
-        Assertions.assertEquals(batchId2, delta.get(0).path("opBatchId").asText());
+        Assertions.assertEquals(2, delta.size(), "both commits must survive compaction");
+        Assertions.assertEquals(batchId2, delta.get(1).path("opBatchId").asText());
 
         repository.close();
     }

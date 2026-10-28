@@ -197,7 +197,7 @@ P0 means required to claim CRDT correctness for currently-supported ops; P1 mean
     - ordering guarantees (FIFO per model),
     - max queue behavior (bounded queue, drop-oldest),
     - model-switch behavior for queued ops (model-scoped drain),
-    - replay retry/backoff and poison-entry handling.
+    - replay retry/backoff without discarding uncommitted work on transport failures.
   - Done: reconciliation invariants for `baseRevision` rebasing are implemented:
     - stale/conflicting queued intent on `PRECONDITION_FAILED`/`LOCK_CONFLICT` is deterministically dropped,
     - conflict is surfaced via explicit callback/UI warning (not silent).
@@ -218,7 +218,7 @@ P0 means required to claim CRDT correctness for currently-supported ops; P1 mean
   - added admin compaction endpoint (`POST /admin/models/{modelId}/compact`) with run reporting;
   - compaction watermark now derived from committed revision horizon (`latestCommitRevision - retainRevisions`), with head + horizon reported in admin status;
   - first safe compaction pass implemented:
-    - deletes op-log commits/ops below watermark,
+    - retains op-log commits/ops until durable recovery checkpoints are available,
     - prunes orphan `PropertyClock` entries below watermark,
     - retains tombstones intentionally for delete safety.
   - tombstones now persist `updatedRevision` metadata (when assigned revision range is available during apply), and compaction reports tombstones eligible under watermark while still retaining them by policy.
@@ -295,3 +295,14 @@ P0 means required to claim CRDT correctness for currently-supported ops; P1 mean
 ## Compatibility Notes
 - This phase is backward-compatible with existing op format.
 - Missing `causal` defaults to `(0, "")`, giving deterministic but conservative ordering.
+
+## Commit and replay hardening (2026-10)
+
+- A batch's op-log, projection, revision head and durable publication intent commit atomically.
+- Idempotent retries consult persisted commits before state-dependent validation; successful acceptance is private to the submitting session.
+- Errors include `opBatchId`; uncorrelated or unrelated errors cannot remove outbox entries.
+- Client local writes seed their merge clocks. Own accepted echoes reconcile normally, and observing remote causal metadata advances the outgoing Lamport clock.
+- Snapshots include property state, field/member clocks and tombstones; applied revision advances after application, with gaps requesting catch-up.
+- Compaction preserves replay history. Rebuild/import require complete contiguous history; rebuild replaces the projection transactionally.
+- The supported deployment has one authoritative server, enforced with a renewable database writer lease.
+- `scripts/validate-local.sh ws` builds the plugin with its pinned Maven wrapper and executes all client tests, server unit/infrastructure tests, and websocket/authorization integration tests.

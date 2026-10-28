@@ -25,7 +25,7 @@ import com.archimatetool.model.IProperty;
  */
 public class OpMapper {
     // Lamport clock is local to this mapper instance and monotonically increases across emitted ops.
-    private long lamportCounter = System.currentTimeMillis();
+    private static final java.util.concurrent.atomic.AtomicLong LAMPORT = new java.util.concurrent.atomic.AtomicLong();
     private final NotationSerializer notationSerializer = new NotationSerializer();
 
     /**
@@ -699,11 +699,12 @@ public class OpMapper {
                 "}";
     }
 
-    private synchronized long nextLamport() {
-        long now = System.currentTimeMillis();
-        // Monotonic even if wall clock moves backward
-        lamportCounter = Math.max(lamportCounter + 1, now);
-        return lamportCounter;
+    public static void observeLamport(long remote) {
+        if (remote >= 0) LAMPORT.accumulateAndGet(remote, Math::max);
+    }
+
+    private long nextLamport() {
+        return LAMPORT.updateAndGet(value -> Math.addExact(value, 1));
     }
 
     private String withCausal(String opJson, String userId, String sessionId, String opBatchId, int opIndex) {

@@ -7,7 +7,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 (
   cd "$ROOT_DIR/client"
-  mvn -q -DskipTests package
+  ./mvnw -q -DskipTests package
 )
 
 echo "Standalone client build succeeded: $ROOT_DIR/client/org.gautelis.archimesh.plugin/target"

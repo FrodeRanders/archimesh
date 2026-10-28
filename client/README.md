@@ -24,6 +24,7 @@ The local bundle pool can be prepared from either:
 
 ## Notes
 
+- Builds use `client/mvnw`, pinned to Maven 3.9.16 for Tycho compatibility.
 - This lets client work live with server code in one repo.
 - It does not require syncing plugin sources to another repo.
 - If required bundles change in `MANIFEST.MF`, update `scripts/prepare-client-target-platform.sh`.
@@ -43,7 +44,7 @@ The older generic connect command still exists internally, but the Tools menu no
 - open a server-backed model in Archi, or
 - switch the current local model over to a server-backed session.
 
-Both runtime dialogs load model options from server admin catalog (`/admin/models`) and only allow selecting an existing model.
+Both runtime dialogs load readable model options from the filtered catalog (`/models`) and only allow selecting an existing model.
 Create/rename model IDs in server admin UI first (`/admin`).
 
 Configuration can be provided as Java system properties or environment variables:

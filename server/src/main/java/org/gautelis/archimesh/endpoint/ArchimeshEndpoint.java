@@ -7,6 +7,7 @@ import org.gautelis.archimesh.auth.AuthorizationDeniedException;
 import org.gautelis.archimesh.auth.AuthorizationService;
 import org.gautelis.archimesh.model.WebSocketAuditEvent;
 import org.gautelis.archimesh.service.ArchimeshService;
+import org.gautelis.archimesh.model.Actor;
 import org.gautelis.archimesh.service.SessionRegistry;
 import org.gautelis.archimesh.wire.ClientEnvelope;
 import org.gautelis.archimesh.wire.ServerEnvelope;
@@ -113,20 +114,23 @@ public class ArchimeshEndpoint {
                 }
                 case "SubmitOps" -> {
                     authorizationService.requireWebSocketAllowed(session, AuthorizationAction.MODEL_SUBMIT_OPS, modelId, null);
+                    SubmitOpsMessage submit = objectMapper.treeToValue(envelope.payload(), SubmitOpsMessage.class);
                     archimeshService.onSubmitOps(modelId, session,
-                            objectMapper.treeToValue(envelope.payload(), SubmitOpsMessage.class));
+                            new SubmitOpsMessage(submit.baseRevision(), submit.opBatchId(), trustedActor(session), submit.ops()));
                     auditVerboseMessage("SubmitOps", modelId, session);
                 }
                 case "AcquireLock" -> {
                     authorizationService.requireWebSocketAllowed(session, AuthorizationAction.MODEL_ACQUIRE_LOCK, modelId, null);
+                    AcquireLockMessage acquire = objectMapper.treeToValue(envelope.payload(), AcquireLockMessage.class);
                     archimeshService.onAcquireLock(modelId, session,
-                            objectMapper.treeToValue(envelope.payload(), AcquireLockMessage.class));
+                            new AcquireLockMessage(trustedActor(session), acquire.targets(), acquire.ttlMs()));
                     auditVerboseMessage("AcquireLock", modelId, session);
                 }
                 case "ReleaseLock" -> {
                     authorizationService.requireWebSocketAllowed(session, AuthorizationAction.MODEL_RELEASE_LOCK, modelId, null);
+                    ReleaseLockMessage release = objectMapper.treeToValue(envelope.payload(), ReleaseLockMessage.class);
                     archimeshService.onReleaseLock(modelId, session,
-                            objectMapper.treeToValue(envelope.payload(), ReleaseLockMessage.class));
+                            new ReleaseLockMessage(trustedActor(session), release.targets()));
                     auditVerboseMessage("ReleaseLock", modelId, session);
                 }
                 case "Presence" -> {
@@ -161,7 +165,7 @@ public class ArchimeshEndpoint {
             LOG.error("Request handling failed: sessionId={} modelId={}",
                     sessionId(session), modelId, e);
             sessionRegistry.send(session, new ServerEnvelope("Error",
-                    new ErrorMessage("REQUEST_FAILED", e.getMessage())));
+                    new ErrorMessage("REQUEST_FAILED", "Submission could not be committed; retry the same batch", submissionBatchId(message))));
         }
     }
 
@@ -185,6 +189,18 @@ public class ArchimeshEndpoint {
     public void onError(Session session, @PathParam("modelId") String modelId, Throwable throwable) {
         LOG.warn("WebSocket error: sessionId={} modelId={}", sessionId(session), modelId, throwable);
         archimeshService.onDisconnect(modelId, session);
+    }
+
+    private Actor trustedActor(Session session) {
+        return new Actor(stringProp(session, AUTH_SUBJECT_USER_ID_KEY, "anonymous"), sessionId(session));
+    }
+
+    private String submissionBatchId(String message) {
+        try {
+            var envelope = objectMapper.readTree(message);
+            return "SubmitOps".equals(envelope.path("type").asText())
+                    ? envelope.path("payload").path("opBatchId").asText(null) : null;
+        } catch (Exception ignored) { return null; }
     }
 
     private String sessionId(Session session) {

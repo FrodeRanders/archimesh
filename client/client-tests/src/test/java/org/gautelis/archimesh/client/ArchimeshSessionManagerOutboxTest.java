@@ -72,6 +72,21 @@ class ArchimeshSessionManagerOutboxTest {
     }
 
     @Test
+    void onlineSubmissionsAreDurableBeforeAcknowledgment() throws Exception {
+        ArchimeshSessionManager manager = new ArchimeshSessionManager();
+        ControlledWebSocket ws = new ControlledWebSocket();
+        setField(manager, "webSocket", ws);
+        setField(manager, "currentModelId", "online");
+        manager.sendSubmitOps(submitOps("online", 0, "online-batch"));
+        Assertions.assertEquals(1, queuedPayloads(manager).size());
+        // An unusually fast server may acknowledge before the send future completes.
+        manager.onServerOpsAccepted("online-batch");
+        ws.completeSend(0, null);
+        Assertions.assertTrue(queuedPayloads(manager).isEmpty());
+        Assertions.assertNull(getField(manager, "outboxAwaitingAck"));
+    }
+
+    @Test
     void readOnlyRefSuppressesLocalSubmitEmission() throws Exception {
         ArchimeshSessionManager manager = new ArchimeshSessionManager();
         ControlledWebSocket ws = new ControlledWebSocket();
@@ -160,7 +175,7 @@ class ArchimeshSessionManagerOutboxTest {
     }
 
     @Test
-    void poisonHeadEntryIsDroppedAfterMaxReplayAttemptsAndTailOrderIsPreserved() throws Exception {
+    void repeatedTransportFailuresPreserveHeadAndTailOrder() throws Exception {
         ArchimeshSessionManager manager = new ArchimeshSessionManager();
         String modelId = "model-c";
         String head = submitOps(modelId, 1, "poison-head");
@@ -182,8 +197,9 @@ class ArchimeshSessionManagerOutboxTest {
         }
 
         List<String> queued = queuedPayloads(manager);
-        Assertions.assertEquals(1, queued.size(), "poison head should be dropped after max attempts");
-        Assertions.assertEquals(tail, queued.get(0), "tail order must be preserved after dropping poison head");
+        Assertions.assertEquals(2, queued.size(), "transport failures cannot discard uncommitted work");
+        Assertions.assertEquals(head, queued.get(0));
+        Assertions.assertEquals(tail, queued.get(1));
     }
 
     @Test
@@ -282,7 +298,7 @@ class ArchimeshSessionManagerOutboxTest {
         List<String> conflicts = new ArrayList<>();
         manager.addSubmitConflictListener((m, op, code, message) -> conflicts.add(m + "|" + op + "|" + code));
 
-        manager.onServerError("PRECONDITION_FAILED", "stale local intent");
+        manager.onServerError("PRECONDITION_FAILED", "stale local intent", "stale-op");
         awaitTrue(() -> ws.sentTexts.size() == 2, Duration.ofSeconds(1));
 
         List<String> queued = queuedPayloads(manager);
@@ -314,7 +330,7 @@ class ArchimeshSessionManagerOutboxTest {
         List<String> conflicts = new ArrayList<>();
         manager.addSubmitConflictListener((m, op, code, message) -> conflicts.add(m + "|" + op + "|" + code));
 
-        manager.onServerError("LOCK_CONFLICT", "target locked by another actor");
+        manager.onServerError("LOCK_CONFLICT", "target locked by another actor", "lock-stale");
         awaitTrue(() -> ws.sentTexts.size() == 2, Duration.ofSeconds(1));
 
         List<String> queued = queuedPayloads(manager);
@@ -386,6 +402,21 @@ class ArchimeshSessionManagerOutboxTest {
     }
 
     @Test
+    void unrelatedAndUncorrelatedRejectionsCannotDropQueuedWork() throws Exception {
+        ArchimeshSessionManager manager = new ArchimeshSessionManager();
+        manager.sendSubmitOps(submitOps("correlation", 0, "mine"));
+        ControlledWebSocket ws = new ControlledWebSocket();
+        setField(manager, "webSocket", ws);
+        setField(manager, "currentModelId", "correlation");
+        manager.setLastKnownRevision(0);
+        ws.completeSend(0, null);
+        manager.onServerError("PRECONDITION_FAILED", "another client's edit", "theirs");
+        manager.onServerError("LOCK_CONFLICT", "legacy uncorrelated error");
+        Assertions.assertEquals(1, queuedPayloads(manager).size());
+        Assertions.assertNotNull(getField(manager, "outboxAwaitingAck"));
+    }
+
+    @Test
     void nonConflictServerErrorRetainsHeadAndRetries() throws Exception {
         ArchimeshSessionManager manager = new ArchimeshSessionManager();
         String modelId = "model-retry-error";
@@ -401,7 +432,7 @@ class ArchimeshSessionManagerOutboxTest {
         ws.completeSend(0, null);
         awaitTrue(() -> getField(manager, "outboxAwaitingAck") != null, Duration.ofSeconds(1));
 
-        manager.onServerError("INTERNAL_ERROR", "transient failure");
+        manager.onServerError("INTERNAL_ERROR", "transient failure", "retry-op");
         awaitTrue(() -> ws.sentTexts.size() == 2, Duration.ofSeconds(1));
 
         List<String> queued = queuedPayloads(manager);
@@ -410,19 +441,14 @@ class ArchimeshSessionManagerOutboxTest {
     }
 
     @Test
-    void outboxCapacityDropsOldestEntryWhenFull() throws Exception {
+    void outboxCapacityPreservesExistingUncommittedEdits() throws Exception {
         ArchimeshSessionManager manager = new ArchimeshSessionManager();
-        String modelId = "model-capacity";
-        for(int i = 0; i < 1001; i++) {
-            manager.sendSubmitOps(submitOps(modelId, i, "op-" + i));
-        }
-
+        for (int i = 0; i < 1000; i++) manager.sendSubmitOps(submitOps("capacity", i, "op-" + i));
+        Assertions.assertThrows(IllegalStateException.class,
+                () -> manager.sendSubmitOps(submitOps("capacity", 1000, "overflow")));
         List<String> queued = queuedPayloads(manager);
-        Assertions.assertEquals(1000, queued.size(), "queue must stay bounded at max outbox size");
-        Assertions.assertFalse(queued.stream().anyMatch(payload -> payload.contains("\"opBatchId\":\"op-0\"")),
-                "oldest entry should be dropped first when queue reaches capacity");
-        Assertions.assertTrue(queued.stream().anyMatch(payload -> payload.contains("\"opBatchId\":\"op-1000\"")),
-                "newest entry must be retained");
+        Assertions.assertEquals(1000, queued.size());
+        Assertions.assertTrue(queued.getFirst().contains("op-0"));
     }
 
     @Test

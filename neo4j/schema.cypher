@@ -5,6 +5,9 @@
 CREATE CONSTRAINT model_id IF NOT EXISTS
 FOR (m:Model) REQUIRE m.modelId IS UNIQUE;
 
+CREATE CONSTRAINT archimesh_runtime_id IF NOT EXISTS
+FOR (r:ArchimeshRuntime) REQUIRE r.id IS UNIQUE;
+
 CREATE CONSTRAINT element_model_id IF NOT EXISTS
 FOR (e:Element) REQUIRE (e.modelId, e.id) IS UNIQUE;
 

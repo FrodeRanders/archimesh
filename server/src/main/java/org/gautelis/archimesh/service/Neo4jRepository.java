@@ -12,6 +12,23 @@ import java.util.List;
 import java.util.Set;
 
 public interface Neo4jRepository {
+    /** Atomically persists the log, projection and head, or leaves all three unchanged. */
+    default void commitBatch(String modelId, String opBatchId, RevisionRange range, JsonNode opBatch) {
+        throw new UnsupportedOperationException("Atomic commits are required");
+    }
+
+    default Optional<RevisionRange> findAcceptedRange(String modelId, String opBatchId) {
+        return Optional.empty();
+    }
+
+    default List<JsonNode> pendingBroadcasts() { return List.of(); }
+
+    default void markBroadcastPublished(String modelId, String opBatchId) { }
+
+    default boolean acquireServerLease(String owner, long ttlMs) { return true; }
+
+    default void releaseServerLease(String owner) { }
+
     void appendOpLog(String modelId, String opBatchId, RevisionRange range, JsonNode opBatch);
 
     void applyToMaterializedState(String modelId, JsonNode opBatch);
@@ -27,6 +44,10 @@ public interface Neo4jRepository {
     JsonNode loadOpBatches(String modelId, long fromRevisionInclusive, long toRevisionInclusive);
 
     AdminCompactionStatus compactMetadata(String modelId, long retainRevisions);
+
+    default void rebuildProjection(String modelId, JsonNode history, long head) {
+        throw new UnsupportedOperationException("Atomic rebuild is required");
+    }
 
     void clearMaterializedState(String modelId);
 

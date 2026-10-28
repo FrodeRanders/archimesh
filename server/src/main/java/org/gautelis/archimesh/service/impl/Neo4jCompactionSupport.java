@@ -30,23 +30,10 @@ final class Neo4jCompactionSupport {
         return session.executeWrite(tx -> {
             Map<String, Object> params = Map.of("modelId", modelId, "watermark", watermarkRevision);
 
-            // Op-log compaction is deliberately bounded by the committed-horizon watermark so readers do not lose
-            // revisions that may still be needed for replay or recovery.
-            Record opLogCounts = tx.run("""
-                    MATCH (c:Commit {modelId: $modelId})
-                    WHERE c.revisionTo < $watermark
-                    OPTIONAL MATCH (c)-[:HAS_OP]->(o:Op)
-                    RETURN count(DISTINCT c) AS commitCount, count(o) AS opCount
-                    """, params).single();
-            long deletedCommitCount = opLogCounts.get("commitCount").asLong(0L);
-            long deletedOpCount = opLogCounts.get("opCount").asLong(0L);
-
-            tx.run("""
-                    MATCH (c:Commit {modelId: $modelId})
-                    WHERE c.revisionTo < $watermark
-                    OPTIONAL MATCH (c)-[:HAS_OP]->(o:Op)
-                    DETACH DELETE o, c
-                    """, params);
+            // History is the only rebuild/import source. Until durable checkpoints include
+            // every merge clock and tombstone, pruning it would destroy recoverability.
+            long deletedCommitCount = 0L;
+            long deletedOpCount = 0L;
 
             // Property clocks can only be removed once the target object is gone; otherwise they are still part of
             // the LWW merge contract even if they are older than the watermark.
@@ -203,7 +190,7 @@ final class Neo4jCompactionSupport {
                     true,
                     // Field-clock and tombstone eligibility is reported so operators can see reclaimable state even
                     // though the compactor intentionally keeps the safety metadata in place.
-                    "Compaction completed; tombstones/field clocks retained for safety (eligibility reported)");
+                    "Compaction completed; op-log, tombstones and field clocks retained for recovery");
         });
     }
 }
