@@ -165,7 +165,7 @@ The server uses:
 - a Quarkus-side PEP
 - a project-specific in-process PDP
 
-The current PDP is intentionally narrow to this domain. It is not generic XACML infrastructure.
+The current PDP is intentionally narrow to this domain.
 
 ### Identity modes
 
