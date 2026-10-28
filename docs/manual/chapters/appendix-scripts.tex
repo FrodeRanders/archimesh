@@ -3,92 +3,98 @@
 
 This appendix documents all scripts in the \filepath{scripts/} directory.
 
+The manual has its own reproducible build helpers:
+\shellcmd{bash docs/manual/build.sh} builds from checked-in vector figures;
+\shellcmd{bash docs/manual/build.sh --render-figures} regenerates the Mermaid
+figures before compiling. Sources and prerequisites are documented in
+\filepath{docs/manual/README.md}.
+
 \subsection{Build and install}
 
 \begin{description}
-\item[\texttt{build-archimesh-client.sh}]
-  Convenience wrapper that calls \texttt{build-client-standalone.sh}.
+\item[\code{build-archimesh-client.sh}]
+  Convenience wrapper that calls \code{build-client-standalone.sh}.
 
-\item[\texttt{build-client-standalone.sh}]
+\item[\code{build-client-standalone.sh}]
   Builds the client plugin using Tycho/Maven with the target platform.
 
-\item[\texttt{build-admin-web.sh}]
+\item[\code{build-admin-web.sh}]
   Builds the Svelte admin UI and copies output to the server's static
   resources directory.
 
-\item[\texttt{install-archimesh-plugin.sh}]
+\item[\code{install-archimesh-plugin.sh}]
   Installs the built client plugin JAR into the local Archi installation's
   dropins directory.
 
-\item[\texttt{sync-archimesh-client.sh}]
+\item[\code{sync-archimesh-client.sh}]
   Syncs client plugin source changes without a full rebuild.
 
-\item[\texttt{prepare-client-target-platform.sh}]
+\item[\code{prepare-client-target-platform.sh}]
   Prepares the Eclipse target platform bundles required for client plugin
   compilation.
 
-\item[\texttt{mint-dev-jwt.sh}]
+\item[\code{mint-dev-jwt.sh}]
   Mints a local dev JWT signed with the test private key.\\
-  Usage: \texttt{./mint-dev-jwt.sh --user alice --roles admin,model\_writer}\\
-  Options: \texttt{--expires-in <seconds>}, \texttt{--audience <aud>},
-  \texttt{--print-payload}.\\
-  Env overrides: \texttt{DEV\_JWT\_PRIVATE\_KEY}, \texttt{DEV\_JWT\_ISSUER},
-  \texttt{DEV\_JWT\_EXPIRES\_IN}, \texttt{DEV\_JWT\_AUDIENCE}.
+  Usage: \code{./mint-dev-jwt.sh --user alice --roles admin,model\_writer}\\
+  Options: \code{--expires-in <seconds>}, \code{--audience <aud>},
+  \code{--print-payload}.\\
+  Env overrides: \code{DEV\_JWT\_PRIVATE\_KEY}, \code{DEV\_JWT\_ISSUER},
+  \code{DEV\_JWT\_EXPIRES\_IN}, \code{DEV\_JWT\_AUDIENCE}.
 \end{description}
 
 \subsection{Development infrastructure}
 
 \begin{description}
-\item[\texttt{dev-up.sh}]
+\item[\code{dev-up.sh}]
   Starts Docker Compose infrastructure (Neo4j + Kafka) and optionally the
-  server. Usage: \texttt{./dev-up.sh [background]}.
-  Supports OIDC mode via \texttt{ARCHIMESH\_IDENTITY\_MODE=oidc}.
+  server. Usage: \code{./dev-up.sh [background]}.
+  Supports OIDC mode via \code{ARCHIMESH\_IDENTITY\_MODE=oidc}.
 
-\item[\texttt{dev-down.sh}]
+\item[\code{dev-down.sh}]
   Stops Docker Compose infrastructure.
 \end{description}
 
 \subsection{Validation and gate checks}
 
 \begin{description}
-\item[\texttt{validate-local.sh}]
+\item[\code{validate-local.sh}]
   Central validation entry point.\\
-  Usage: \texttt{./validate-local.sh <mode>}\\
+  Usage: \code{./validate-local.sh <mode>}\\
   Modes:
   \begin{description}
-  \item[\texttt{fast}] Lightweight hardening and parity checks (no Docker
-    infra needed). Runs \texttt{check-crdt-hardening.sh} and
-    \texttt{check-notation-parity.sh}.
-  \item[\texttt{gate}] Full client + server CRDT gate via
-    \texttt{crdt-gate.sh}.
-  \item[\texttt{infra}] Full gate with local Kafka/Neo4j-backed integration
-    coverage. Sets \texttt{RUN\_LOCAL\_INFRA\_IT=true}.
-  \item[\texttt{ws}] Full gate with websocket end-to-end coverage. Sets
-    \texttt{RUN\_WS\_E2E\_IT=true}.
+  \item[\code{fast}] Lightweight hardening and parity checks (no Docker
+    infra needed). Runs \code{check-crdt-hardening.sh} and
+    \code{check-notation-parity.sh}.
+  \item[\code{gate}] Full client + server CRDT gate via
+    \code{crdt-gate.sh}.
+  \item[\code{infra}] Full gate with local Kafka/Neo4j-backed integration
+    coverage. Sets \code{RUN\_LOCAL\_INFRA\_IT=true}.
+  \item[\code{ws}] Full gate with websocket end-to-end coverage. Sets
+    \code{RUN\_WS\_E2E\_IT=true}.
   \end{description}
 
-\item[\texttt{crdt-gate.sh}]
+\item[\code{crdt-gate.sh}]
   Runs the CRDT test suite end-to-end. First runs hardening contract checks,
   then installs the client plugin artifact, runs client CRDT tests
-  (\texttt{OpMapperNotationInventoryTest}, \texttt{OpMapperConnectionBatchTest},
-  \texttt{CrdtEntityMergeTest}, \texttt{CrdtPropertyMergeTest},
-  \texttt{CrdtOrSetTest}), then runs server CRDT tests
-  (\texttt{ArchimeshServiceTest}, optionally
-  \texttt{LocalInfraIntegrationTest} when \texttt{RUN\_LOCAL\_INFRA\_IT=true}).
+  (\code{OpMapperNotationInventoryTest}, \code{OpMapperConnectionBatchTest},
+  \code{CrdtEntityMergeTest}, \code{CrdtPropertyMergeTest},
+  \code{CrdtOrSetTest}), then runs server CRDT tests
+  (\code{ArchimeshServiceTest}, optionally
+  \code{LocalInfraIntegrationTest} when \code{RUN\_LOCAL\_INFRA\_IT=true}).
 
-\item[\texttt{check-crdt-hardening.sh}]
+\item[\code{check-crdt-hardening.sh}]
   Preflight contract check that verifies presence of core CRDT test files,
   gate scripts and spec references. Fails fast when test infrastructure
   drifts.
 
-\item[\texttt{check-notation-parity.sh}]
+\item[\code{check-notation-parity.sh}]
   Compares notation key inventory across: schema definitions
-  (\texttt{schemas/ops.json}), server runtime whitelist constants
-  (\texttt{ArchimeshService}) and client inventory test expectations
-  (\texttt{OpMapperNotationInventoryTest}). Ensures all three agree on
+  (\code{schemas/ops.json}), server runtime whitelist constants
+  (\code{ArchimeshService}) and client inventory test expectations
+  (\code{OpMapperNotationInventoryTest}). Ensures all three agree on
   supported notation fields.
 
-\item[\texttt{check-archimesh-sanity.sh}]
+\item[\code{check-archimesh-sanity.sh}]
   Scans Archi workspace logs for critical sync issues, integrity warnings
   and connection errors. Useful for diagnosing client-side problems.
 \end{description}
@@ -96,7 +102,7 @@ This appendix documents all scripts in the \filepath{scripts/} directory.
 \subsection{Log monitoring}
 
 \begin{description}
-\item[\texttt{tail-archimesh-logs.sh}]
+\item[\code{tail-archimesh-logs.sh}]
   Tails Archi workspace logs with archimesh-related filtering. Useful for
   real-time debugging during client plugin development.
 \end{description}

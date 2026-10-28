@@ -1,0 +1,8 @@
+flowchart TB
+    Start["Scheduled pass\nDisabled by default"] --> Lease{"Writer lease valid?"}
+    Lease -->|"No"| Stop["Defer to next pass"]
+    Lease -->|"Yes"| Pick["Visit at most models-per-run\nRotate through sorted catalog"]
+    Pick --> Capture["Per-model serialized visit\nCreate checkpoint if revision threshold is met"]
+    Capture --> Prune["Prune one bounded set of\ncovered, published payload batches"]
+    Prune --> GC["Verify latest checkpoint, receipts and tail\nKeep newest configured checkpoint count"]
+    GC --> Next["Continue to next model\nIsolate and log individual model failures"]

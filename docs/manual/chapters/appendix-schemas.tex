@@ -11,22 +11,22 @@ protocol contract. The authoritative schema files live in
 \toprule
 File & Purpose \\
 \midrule
-\texttt{common.json} & Shared type definitions: \texttt{ModelId},
-  \texttt{UserId}, \texttt{SessionId}, \texttt{EntityId},
-  \texttt{RFC3339}, \texttt{Causal}, \texttt{Actor},
-  \texttt{RevisionRange}, \texttt{JsonObject}. \\
-\texttt{ops.json} & Operation type definitions for all supported op types:
+\code{common.json} & Shared type definitions: \code{ModelId},
+  \code{UserId}, \code{SessionId}, \code{EntityId},
+  \code{RFC3339}, \code{Causal}, \code{Actor},
+  \code{RevisionRange}, \code{JsonObject}. \\
+\code{ops.json} & Operation type definitions for all supported op types:
   create, update, delete for elements, relationships, views, view objects,
   connections, folders; property and membership operations; plus strict
   notation JSON objects for view objects and connections. \\
-\texttt{op-batch.json} & Op batch envelope: \texttt{SubmitOps} with
-  \texttt{baseRevision}, \texttt{opBatchId}, \texttt{actor} and
-  \texttt{ops} array. \\
-\texttt{lock-event.json} & Lock event payload: action (acquired, released,
+\code{op-batch.json} & Op batch envelope: \code{SubmitOps} with
+  \code{baseRevision}, \code{opBatchId}, \code{actor} and
+  \code{ops} array. \\
+\code{lock-event.json} & Lock event payload: action (acquired, released,
   expired), actor, targets, timestamp. \\
-\texttt{presence.json} & Presence payload: modelId, userId, sessionId,
+\code{presence.json} & Presence payload: modelId, userId, sessionId,
   viewId, selection array, cursor object. \\
-\texttt{notation-contract.md} & Human-readable contract describing the
+\code{notation-contract.md} & Human-readable contract describing the
   notation field boundaries and parity requirements. \\
 \bottomrule
 \end{longtable}
@@ -37,30 +37,30 @@ File & Purpose \\
 \toprule
 Direction & Type & Description \\
 \midrule
-Client $\to$ Server & \texttt{Join} & Request checkout. Optional
-  \texttt{lastSeenRevision} and \texttt{ref}. \\
-Client $\to$ Server & \texttt{SubmitOps} & Submit one op batch.
-  \texttt{baseRevision}, \texttt{opBatchId}, \texttt{ops}. \\
-Client $\to$ Server & \texttt{AcquireLock} & Acquire notation lock on
-  targets. \texttt{ttlMs}. \\
-Client $\to$ Server & \texttt{ReleaseLock} & Release notation lock on
+Client $\to$ Server & \code{Join} & Request checkout. Optional
+  \code{lastSeenRevision} and \code{ref}. \\
+Client $\to$ Server & \code{SubmitOps} & Submit one op batch.
+  \code{baseRevision}, \code{opBatchId}, \code{ops}. \\
+Client $\to$ Server & \code{AcquireLock} & Acquire notation lock on
+  targets. \code{ttlMs}. \\
+Client $\to$ Server & \code{ReleaseLock} & Release notation lock on
   targets. \\
-Client $\to$ Server & \texttt{Presence} & Broadcast cursor position and
+Client $\to$ Server & \code{Presence} & Broadcast cursor position and
   selection on a view. \\
 \midrule
-Server $\to$ Client & \texttt{CheckoutSnapshot} & Full materialized model
+Server $\to$ Client & \code{CheckoutSnapshot} & Full materialized model
   state. \\
-Server $\to$ Client & \texttt{CheckoutDelta} & Incremental ops since
-  \texttt{lastSeenRevision}. \\
-Server $\to$ Client & \texttt{OpsAccepted} & Batch commit confirmation with
+Server $\to$ Client & \code{CheckoutDelta} & Incremental ops since
+  \code{lastSeenRevision}. \\
+Server $\to$ Client & \code{OpsAccepted} & Batch commit confirmation with
   assigned revision range. \\
-Server $\to$ Client & \texttt{OpsBroadcast} & Remote batch broadcast (Kafka
-  fan-out or direct fallback). \\
-Server $\to$ Client & \texttt{LockEvent} & Lock state change notification. \\
-Server $\to$ Client & \texttt{PresenceBroadcast} & Remote cursor/selection
+Server $\to$ Client & \code{OpsBroadcast} & Remote batch broadcast (Kafka
+  fan-out through the consumer). \\
+Server $\to$ Client & \code{LockEvent} & Lock state change notification. \\
+Server $\to$ Client & \code{PresenceBroadcast} & Remote cursor/selection
   update. \\
-Server $\to$ Client & \texttt{Error} & Rejection or failure with
-  \texttt{code} and \texttt{message}. \\
+Server $\to$ Client & \code{Error} & Rejection or failure with
+  \code{code} and \code{message}. \\
 \bottomrule
 \end{longtable}
 
@@ -114,25 +114,25 @@ Server $\to$ Client & \texttt{Error} & Rejection or failure with
 \subsection{Notation JSON objects}
 
 View object and connection notation are validated against strict schemas
-(\texttt{additionalProperties: false}):
+(\code{additionalProperties: false}):
 
 \subsubsection{ViewObjectNotationJson}
 
-Supported fields: \texttt{x}, \texttt{y}, \texttt{width}, \texttt{height},
-\texttt{type}, \texttt{alpha}, \texttt{lineAlpha}, \texttt{lineWidth},
-\texttt{lineStyle}, \texttt{textAlignment}, \texttt{textPosition},
-\texttt{gradient}, \texttt{iconVisibleState},
-\texttt{deriveElementLineColor}, \texttt{fillColor}, \texttt{lineColor},
-\texttt{font}, \texttt{fontColor}, \texttt{iconColor},
-\texttt{imagePath}, \texttt{imagePosition}, \texttt{name},
-\texttt{documentation}.
+Supported fields: \code{x}, \code{y}, \code{width}, \code{height},
+\code{type}, \code{alpha}, \code{lineAlpha}, \code{lineWidth},
+\code{lineStyle}, \code{textAlignment}, \code{textPosition},
+\code{gradient}, \code{iconVisibleState},
+\code{deriveElementLineColor}, \code{fillColor}, \code{lineColor},
+\code{font}, \code{fontColor}, \code{iconColor},
+\code{imagePath}, \code{imagePosition}, \code{name},
+\code{documentation}.
 
 \subsubsection{ConnectionNotationJson}
 
-Supported fields: \texttt{type}, \texttt{nameVisible},
-\texttt{textAlignment}, \texttt{textPosition}, \texttt{lineWidth},
-\texttt{name}, \texttt{lineColor}, \texttt{font}, \texttt{fontColor},
-\texttt{documentation}, \texttt{bendpoints}.
+Supported fields: \code{type}, \code{nameVisible},
+\code{textAlignment}, \code{textPosition}, \code{lineWidth},
+\code{name}, \code{lineColor}, \code{font}, \code{fontColor},
+\code{documentation}, \code{bendpoints}.
 
 \subsection{Error codes}
 
@@ -140,20 +140,20 @@ Supported fields: \texttt{type}, \texttt{nameVisible},
 \toprule
 Code & Meaning \\
 \midrule
-\texttt{REVISION\_AHEAD} & Client \texttt{baseRevision} exceeds server
+\code{REVISION\_AHEAD} & Client \code{baseRevision} exceeds server
   head. Client must rejoin. \\
-\texttt{PRECONDITION\_FAILED} & Referenced entity does not exist, or
+\code{PRECONDITION\_FAILED} & Referenced entity does not exist, or
   notation contains unknown keys. \\
-\texttt{LOCK\_CONFLICT} & Another client holds a conflicting notation lock. \\
-\texttt{MODEL\_NOT\_FOUND} & The requested model is not registered. \\
-\texttt{REF\_NOT\_FOUND} & The requested tag name does not exist. \\
-\texttt{REF\_READ\_ONLY} & Write attempted on a tagged (read-only) ref. \\
+\code{LOCK\_CONFLICT} & Another client holds a conflicting notation lock. \\
+\code{MODEL\_NOT\_FOUND} & The requested model is not registered. \\
+\code{REF\_NOT\_FOUND} & The requested tag name does not exist. \\
+\code{REF\_READ\_ONLY} & Write attempted on a tagged (read-only) ref. \\
 \bottomrule
 \end{longtable}
 
 \subsection{Export/import format}
 
-The admin export format is a JSON package containing:
+Without a checkpoint the server emits a v1 package containing:
 
 \begin{lstlisting}[caption={Export package structure}]
 {
@@ -168,3 +168,10 @@ The admin export format is a JSON package containing:
 \end{lstlisting}
 
 The package format is documented in full in \filepath{server/EXPORT\_FORMAT.md}.
+
+Checkpointed exports use \code{archi-model-export-v2}. They add
+\code{checkpoint} (format, model ID, revision C, timestamp, checksum and raw
+state) and \code{receipts} (batch IDs, original ranges and timestamps covering
+1..C). Their \code{opBatches} contain exactly the tail C+1..HEAD, which can be
+empty at C=HEAD. V1 remains supported. See Section~\ref{sec:Management} for
+atomic v2 restore, target model rebinding and full-history archive requirements.

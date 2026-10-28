@@ -9,7 +9,7 @@ Docker Desktop (or Docker Engine with the Compose plugin) and Java~21+.
 \begin{itemize}
 \item Docker Desktop (or Docker Engine + Compose plugin)
 \item Java 21+ (for the Quarkus server)
-\item Maven 3.9+ (for building the server and client plugin)
+\item Maven for the server; the client uses its pinned Maven 3.9.16 wrapper
 \item Eclipse with Archi and the Archi modelling tool (for the client plugin)
 \end{itemize}
 
@@ -49,8 +49,8 @@ Services available after startup:
 
 \begin{description}
 \item[Neo4j Browser] \url{http://localhost:7474}
-\item[Neo4j Bolt] \texttt{bolt://localhost:7687}
-\item[Kafka broker] \texttt{localhost:9092}
+\item[Neo4j Bolt] \code{bolt://localhost:7687}
+\item[Kafka broker] \code{localhost:9092}
 \item[Kafka UI] \url{http://localhost:8080}
 \end{description}
 
@@ -92,7 +92,7 @@ The client plugin is an Eclipse RCP bundle:
 
 \begin{lstlisting}[language=bash,caption={Build client plugin}]
 cd client
-mvn -q -pl org.gautelis.archimesh.plugin -am install -DskipTests
+./mvnw -q -pl org.gautelis.archimesh.plugin -am install -DskipTests
 \end{lstlisting}
 
 Install the built plugin into Archi using:
@@ -117,7 +117,7 @@ Or use the convenience script:
 ./scripts/build-admin-web.sh
 \end{lstlisting}
 
-The built static app is served by Quarkus at \texttt{/admin-ui/}.
+The built static app is served by Quarkus at \code{/admin-ui/}.
 
 \subsection{First collaborative session}
 
@@ -125,8 +125,8 @@ The built static app is served by Quarkus at \texttt{/admin-ui/}.
 \item Start two Archi instances with the plugin installed.
 \item In the first instance, create a new model or open an existing one.
 \item Use \textbf{Tools \textgreater\ Connect Archimesh...} to connect.
-  Enter the WebSocket URL (e.g. \texttt{ws://localhost:8081}) and model id
-  (\texttt{demo}).
+  Enter the WebSocket URL (e.g. \code{ws://localhost:8081}) and model id
+  (\code{demo}).
 \item In the second instance, connect to the same model.
 \item Make edits in either instance. Changes appear in the other within the
   broadcast latency of the Kafka fan-out path (typically under one second).
@@ -150,8 +150,8 @@ The project includes local validation scripts for fast feedback:
 ./scripts/validate-local.sh ws
 \end{lstlisting}
 
-These are the supported release gate entrypoints. Run \texttt{fast} before
-committing; run \texttt{gate} or \texttt{infra} before pushing.
+These are the supported release gate entrypoints. Run \code{fast} before
+committing; run \code{gate} or \code{infra} before pushing.
 
 \subsection{Stopping}
 
@@ -159,20 +159,11 @@ committing; run \texttt{gate} or \texttt{infra} before pushing.
 docker compose down
 \end{lstlisting}
 
-Add \texttt{-v} to also remove volumes (clean slate):
+Add \code{-v} to also remove volumes (clean slate):
 
 \begin{lstlisting}[language=bash,caption={Stop and remove volumes}]
 docker compose down -v
 \end{lstlisting}
 
-\subsection{Where to go next}
-
-\begin{itemize}
-\item Section~\ref{sec:Architecture} for the system architecture and component
-  layout.
-\item Section~\ref{sec:ClientPlugin} for the client plugin internals.
-\item Section~\ref{sec:ServerApi} for the complete API reference.
-\item Section~\ref{sec:AdminOperations} for the admin UI and supervision
-  workflows.
-\item \filepath{dev-setup.md} for additional local development tips.
-\end{itemize}
+Additional local setup notes are in \filepath{dev-setup.md}. The introduction
+maps the remaining chapters to developer and operator tasks.

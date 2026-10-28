@@ -1,0 +1,27 @@
+sequenceDiagram
+    participant A as Archi A
+    participant S as Quarkus
+    participant DB as Neo4j
+    participant K as Kafka
+    participant B as Archi B
+    A->>A: Persist batch in FIFO outbox
+    A->>S: SubmitOps (batch ID, base, ops)
+    S->>S: Authorize, deduplicate, validate<br/>Assign revision range
+    S->>DB: One transaction: log, projection,<br/>head and publication intent
+    DB-->>S: Commit succeeds
+    par Private acceptance
+      S-->>A: OpsAccepted (ID and range)
+      A->>A: Remove matching outbox entry
+    and Durable publication
+      S->>DB: Delivery worker reads pending batch
+      DB-->>S: Batch in model revision order
+      S->>K: Publish operation batch
+      K-->>S: Broker acknowledgment
+      S->>DB: Mark published
+      K-->>S: Consumer receives record
+      S-->>A: OpsBroadcast
+      S-->>B: OpsBroadcast
+    end
+    A->>A: Reconcile own accepted echo
+    B->>B: Merge into local EMF projection
+    Note over A,B: Acceptance and broadcast may arrive in either order.<br/>Advance applied revision after local application.

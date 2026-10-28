@@ -7,7 +7,7 @@ Archimesh server.
 \subsection{WebSocket endpoint}
 
 \begin{description}
-\item[Path] \texttt{/models/\{modelId\}/stream}
+\item[Path] \code{/models/\{modelId\}/stream}
 \item[Protocol] WebSocket (RFC 6455)
 \item[Sub-protocol] None (plain JSON text frames)
 \end{description}
@@ -22,21 +22,21 @@ scoped to one model.
 \item Server performs authorization checks (see
   Section~\ref{sec:Authorization}) and either accepts the connection or
   closes it with policy violation status.
-\item Client sends a \texttt{Join} message to request model state.
-\item Server responds with \texttt{CheckoutSnapshot} or
-  \texttt{CheckoutDelta}.
-\item Client sends \texttt{SubmitOps}, \texttt{AcquireLock},
-  \texttt{ReleaseLock} and \texttt{Presence} messages during the session.
-\item Server broadcasts \texttt{OpsAccepted}, \texttt{OpsBroadcast},
-  \texttt{LockEvent}, \texttt{PresenceBroadcast} and \texttt{Error}
-  messages to connected sessions.
+\item Client sends a \code{Join} message to request model state.
+\item Server responds with \code{CheckoutSnapshot} or
+  \code{CheckoutDelta}.
+\item Client sends \code{SubmitOps}, \code{AcquireLock},
+  \code{ReleaseLock} and \code{Presence} messages during the session.
+\item Server replies to the submitting session with \code{OpsAccepted}
+  or a correlated \code{Error}. Model subscribers receive
+  \code{OpsBroadcast}, \code{LockEvent} and \code{PresenceBroadcast}.
 \item Client or server closes the WebSocket. On close the server unregisters
   the session and releases held locks.
 \end{enumerate}
 
 \subsubsection{Inbound messages (client to server)}
 
-All inbound messages are wrapped in a \texttt{ClientEnvelope}:
+All inbound messages are wrapped in a \code{ClientEnvelope}:
 
 \begin{lstlisting}[caption={ClientEnvelope shape}]
 {
@@ -49,78 +49,80 @@ All inbound messages are wrapped in a \texttt{ClientEnvelope}:
 \toprule
 Type & Purpose & Key payload fields \\
 \midrule
-\texttt{Join} & Request model checkout &
-  \texttt{lastSeenRevision} (optional),
-  \texttt{ref} (optional; \texttt{HEAD} or tag name),
-  \texttt{actor} (\texttt{userId}, \texttt{sessionId}) \\
-\texttt{SubmitOps} & Submit one batch of operations &
-  \texttt{baseRevision},
-  \texttt{opBatchId},
-  \texttt{actor},
-  \texttt{ops} (array) \\
-\texttt{AcquireLock} & Acquire a notation lease &
-  \texttt{actor},
-  \texttt{targets} (array of entity ids),
-  \texttt{ttlMs} \\
-\texttt{ReleaseLock} & Release a notation lease &
-  \texttt{actor},
-  \texttt{targets} (array of entity ids) \\
-\texttt{Presence} & Broadcast cursor/selection &
-  \texttt{actor},
-  \texttt{viewId},
-  \texttt{selection} (array),
-  \texttt{cursor} (object) \\
+\code{Join} & Request model checkout &
+  \code{lastSeenRevision} (optional),
+  \code{ref} (optional; \code{HEAD} or tag name),
+  \code{actor} (\code{userId}, \code{sessionId}) \\
+\code{SubmitOps} & Submit one batch of operations &
+  \code{baseRevision},
+  \code{opBatchId},
+  \code{actor},
+  \code{ops} (array) \\
+\code{AcquireLock} & Acquire a notation lease &
+  \code{actor},
+  \code{targets} (array of entity ids),
+  \code{ttlMs} \\
+\code{ReleaseLock} & Release a notation lease &
+  \code{actor},
+  \code{targets} (array of entity ids) \\
+\code{Presence} & Broadcast cursor/selection &
+  \code{actor},
+  \code{viewId},
+  \code{selection} (array),
+  \code{cursor} (object) \\
 \bottomrule
 \end{longtable}
 
 \subsubsection{Join and checkout}
 
-When the server receives a \texttt{Join}:
+When the server receives a \code{Join}:
 
 \begin{enumerate}
 \item The model must exist (registered via admin API).
 \item Authorization is checked (join action).
-\item The requested ref is resolved (\texttt{HEAD} or tag name).
-\item If \texttt{lastSeenRevision} is present and a delta is available
-  (the revision gap is within the op-log window), the server responds
-  with \texttt{CheckoutDelta} containing the missing operations.
-\item Otherwise, the server responds with \texttt{CheckoutSnapshot}
+\item The requested ref is resolved (\code{HEAD} or tag name).
+\item Tagged refs always receive their stored read-only snapshot. For HEAD,
+  a positive trusted client revision at or below head can receive a delta
+  only when every range and operation count in the requested window is present.
+  A gap after pruning falls back to a current snapshot.
+\item Otherwise, the server responds with \code{CheckoutSnapshot}
   containing the full materialized model state at the requested ref.
 \end{enumerate}
 
 \subsubsection{SubmitOps processing}
 
-The \texttt{SubmitOps} pipeline (implemented in \texttt{ArchimeshService}):
+The \code{SubmitOps} pipeline (implemented in \code{ArchimeshService}):
 
 \begin{enumerate}
 \item Model registration and writable ref checks.
 \item Validation of the op batch structure.
 \item Normalization and expansion (bootstrap view ref normalization,
   cascade delete expansion).
-\item Revision-ahead check: if \texttt{baseRevision > headRevision},
-  broadcast \texttt{Error(REVISION\_AHEAD)} to all sessions.
+\item Durable idempotency check: an existing batch receipt returns its original
+  \code{OpsAccepted} range, including after payload pruning.
+\item Revision-ahead check: if \code{baseRevision > headRevision},
+  send \code{Error(REVISION\_AHEAD)} to the submitting session.
 \item Precondition validation: all entity references must exist either in
   persisted state or in earlier ops within the same batch.
-\item Idempotency check: if the \texttt{opBatchId} has been seen before,
-  broadcast \texttt{OpsAccepted} with the known revision range.
 \item Lock conflict check: for operations requiring notation locks
-  (\texttt{UpdateViewObjectOpaque}, \texttt{UpdateConnectionOpaque}),
+  (\code{UpdateViewObjectOpaque}, \code{UpdateConnectionOpaque}),
   verify no other session holds a conflicting lock.
-\item Revision range assignment: allocate \texttt{from..to} consuming one
+\item Revision range assignment: allocate \code{from..to} consuming one
   revision per op.
 \item Causal metadata normalization: stamp each op with
-  \texttt{clientId}, \texttt{lamport}, \texttt{opId}.
-\item Idempotency recording.
-\item Persistence: append to op-log, apply to materialized state, update
-  head revision.
+  \code{clientId}, \code{lamport}, \code{opId}.
+\item Atomic persistence: append log, apply projection, update head and store
+  pending publication payload in one Neo4j transaction. Failed persistence
+  receives no acceptance and invalidates the in-memory revision cache.
+\item Cache the committed acceptance range.
 \item Optional post-commit consistency checks.
-\item Kafka publish (with fallback direct broadcast on failure).
-\item Broadcast \texttt{OpsAccepted} to all sessions.
+\item Request the durable delivery worker to publish committed batches.
+\item Reply \code{OpsAccepted} to the submitting session.
 \end{enumerate}
 
-If any step fails before persistence, an \texttt{Error} message is broadcast
-with a specific code (\texttt{REVISION\_AHEAD}, \texttt{PRECONDITION\_FAILED},
-\texttt{LOCK\_CONFLICT}).
+If validation rejects the batch, a correlated \code{Error} is sent to its submitter
+with a specific code (\code{REVISION\_AHEAD}, \code{PRECONDITION\_FAILED},
+\code{LOCK\_CONFLICT}).
 
 \subsubsection{Outbound messages (server to client)}
 
@@ -128,33 +130,33 @@ with a specific code (\texttt{REVISION\_AHEAD}, \texttt{PRECONDITION\_FAILED},
 \toprule
 Type & Purpose & Key payload fields \\
 \midrule
-\texttt{CheckoutSnapshot} & Full model state &
-  \texttt{modelId}, \texttt{headRevision},
-  \texttt{elements}, \texttt{relationships},
-  \texttt{views}, \texttt{folders}, etc. \\
-\texttt{CheckoutDelta} & Incremental changes &
-  \texttt{modelId},
-  \texttt{fromRevision}, \texttt{toRevision},
-  \texttt{ops} (array) \\
-\texttt{OpsAccepted} & Batch commit confirmation &
-  \texttt{opBatchId}, \texttt{baseRevision},
-  \texttt{assignedRevisionRange} \\
-\texttt{OpsBroadcast} & Remote batch broadcast &
-  \texttt{opBatch} (full committed batch) \\
-\texttt{LockEvent} & Lock state change &
-  \texttt{action} (acquired/released/expired),
-  \texttt{actor}, \texttt{targets} \\
-\texttt{PresenceBroadcast} & Remote cursor/selection &
-  \texttt{actor}, \texttt{viewId},
-  \texttt{selection}, \texttt{cursor} \\
-\texttt{Error} & Rejection or failure &
-  \texttt{code}, \texttt{message} \\
+\code{CheckoutSnapshot} & Full model state &
+  \code{modelId}, \code{headRevision},
+  \code{elements}, \code{relationships},
+  \code{views}, \code{folders}, etc. \\
+\code{CheckoutDelta} & Incremental changes &
+  \code{modelId},
+  \code{fromRevision}, \code{toRevision},
+  \code{ops} (array) \\
+\code{OpsAccepted} & Batch commit confirmation &
+  \code{opBatchId}, \code{baseRevision},
+  \code{assignedRevisionRange} \\
+\code{OpsBroadcast} & Remote batch broadcast &
+  \code{opBatch} (full committed batch) \\
+\code{LockEvent} & Lock state change &
+  \code{action} (acquired/released/expired),
+  \code{actor}, \code{targets} \\
+\code{PresenceBroadcast} & Remote cursor/selection &
+  \code{actor}, \code{viewId},
+  \code{selection}, \code{cursor} \\
+\code{Error} & Rejection or failure &
+  \code{code}, \code{message}, optional \code{opBatchId} \\
 \bottomrule
 \end{longtable}
 
 \subsection{REST API}
 
-The server exposes REST endpoints under the base path \texttt{/}.
+The server exposes REST endpoints under the base path \code{/}.
 
 \subsubsection{Model state endpoints}
 
@@ -162,12 +164,16 @@ The server exposes REST endpoints under the base path \texttt{/}.
 \toprule
 Endpoint & Method & Purpose \\
 \midrule
-\texttt{/models/\{modelId\}/snapshot} & GET & Get the current materialized
-  snapshot of a model. Optional query parameter \texttt{?ref=<tagName>}. \\
-\texttt{/models/\{modelId\}/rebuild} & POST & Rebuild materialized state
-  from the op-log. Clears materialized nodes and replays all commits. \\
+\code{/models/\{modelId\}/snapshot} & GET & Get the current materialized
+  snapshot of a model. Optional query parameter \code{?ref=<tagName>}. \\
+\code{/models/\{modelId\}/rebuild} & POST & Rebuild materialized state
+  from checkpoint plus complete tail, or full history. Transactional replacement. \\
 \bottomrule
 \end{longtable}
+
+Readable-model discovery uses \code{GET /models} and
+\code{GET /models/\{modelId\}/tags}. These filter by read access; ordinary
+plugin users do not need access to the admin catalog.
 
 Example:
 
@@ -181,39 +187,48 @@ curl -s http://localhost:8081/models/demo/snapshot | jq .
 \toprule
 Endpoint & Method & Purpose \\
 \midrule
-\texttt{/admin/models} & GET & List registered models (catalog). \\
-\texttt{/admin/models/\{modelId\}} & POST & Register a new model. \\
+\code{/admin/models} & GET & List registered models (catalog). \\
+\code{/admin/models/\{modelId\}} & POST & Register a new model. \\
+& PUT & Rename with query parameter \code{modelName}. \\
 & DELETE & Delete a model. Query param
-  \texttt{?force=true} to override active-session guard. \\
-\texttt{/admin/models/\{modelId\}/status} & GET & Aggregated status:
+  \code{?force=true} to override active-session guard. \\
+\code{/admin/models/\{modelId\}/status} & GET & Aggregated status:
   snapshot counts, revision, consistency. \\
-\texttt{/admin/models/\{modelId\}/rebuild-and-status} & POST & Rebuild and
+\code{/admin/models/\{modelId\}/rebuild-and-status} & POST & Rebuild and
   return status in one call. \\
-\texttt{/admin/models/\{modelId\}/window?limit=25} & GET & Model window:
+\code{/admin/models/\{modelId\}/window?limit=25} & GET & Model window:
   status + recent activity + recent op batches. \\
-\texttt{/admin/overview?limit=25} & GET & Overview for all known
+\code{/admin/overview?limit=25} & GET & Overview for all known
   active/recent models. \\
-\texttt{/admin/models/\{modelId\}/integrity} & GET & Integrity report:
+\code{/admin/models/\{modelId\}/integrity} & GET & Integrity report:
   missing references, orphan nodes. \\
-\texttt{/admin/models/\{modelId\}/acl} & GET, PUT & Read or update
+\code{/admin/models/\{modelId\}/acl} & GET, PUT & Read or update
   per-model ACL (admin, writer, reader user lists). \\
-\texttt{/admin/models/\{modelId\}/tags} & POST & Create an immutable tag
+\code{/admin/models/\{modelId\}/tags} & POST & Create an immutable tag
   at the current HEAD. \\
-\texttt{/admin/models/\{modelId\}/export} & GET & Export model package
-  (snapshot + op-log + tags + ACL). \\
-\texttt{/admin/models/import?overwrite=true|false} & POST & Import a model
+\code{/admin/models/\{modelId\}/export} & GET & Export model package
+  (snapshot, recovery data, tags and ACL). \\
+\code{/admin/models/import?overwrite=true|false} & POST & Import a model
   package. \\
-\texttt{/admin/models/\{modelId\}/checkpoints} & POST & Create immutable checkpoint. \\
-\texttt{/admin/models/\{modelId\}/checkpoints/latest} & GET & Latest checkpoint summary. \\
-\texttt{/admin/models/\{modelId\}/compact} & POST & Run compaction on
+\code{/admin/models/\{modelId\}/checkpoints} & POST & Create immutable checkpoint. \\
+\code{/admin/models/\{modelId\}/checkpoints/latest} & GET & Latest checkpoint summary. \\
+\code{/admin/models/\{modelId\}/compact} & POST & Run compaction on
   the model (prune covered published payloads; supports dryRun). \\
-\texttt{/admin/auth/diagnostics} & GET & Authorization diagnostics:
+\code{/admin/auth/diagnostics} & GET & Authorization diagnostics:
   resolved identity, subject, normalized roles. \\
-\texttt{/admin/sessions} & GET & Active WebSocket sessions across all
+\code{/admin/sessions} & GET & Active WebSocket sessions across all
   models. \\
-\texttt{/admin/audit/config} & GET & Current audit configuration. \\
+\code{/admin/audit/config} & GET & Current audit configuration. \\
 \bottomrule
 \end{longtable}
+
+Checkpoint creation and inspection are model-admin actions. The latest
+summary returns model ID, revision, creation timestamp, SHA-256 hash and raw
+node/edge counts; no checkpoint gives 404. Compaction accepts
+\code{retainRevisions} and \code{dryRun=true|false} query parameters.
+Its report includes the verified checkpoint boundary, eligibility before the
+run, actual deletions and durable pruning progress. See
+Section~\ref{sec:Management} for the full maintenance workflow.
 
 Examples:
 
@@ -243,7 +258,7 @@ curl -s -X DELETE "http://localhost:8081/admin/models/demo?force=true" | jq .
 \subsubsection{Admin UI endpoint}
 
 \begin{description}
-\item[Path] \texttt{/admin-ui/}
+\item[Path] \code{/admin-ui/}
 \item[Serves] Static Svelte admin application (built from
   \filepath{admin-web/}).
 \end{description}

@@ -7,35 +7,35 @@ Point (PEP) and a project-specific in-process Policy Decision Point (PDP).
 \subsection{Identity modes}
 
 Identity resolution is pluggable. The mode is selected via
-\texttt{ARCHIMESH\_IDENTITY\_MODE} (or \texttt{app.identity.mode}):
+\code{ARCHIMESH\_IDENTITY\_MODE} (or \code{app.identity.mode}):
 
 \begin{description}
-\item[\texttt{bootstrap}] Local/dev mode. No external identity provider.
+\item[\code{bootstrap}] Local/dev mode. No external identity provider.
   \begin{itemize}
-  \item REST: identity from \texttt{X-Archimesh-User} and
-    \texttt{X-Archimesh-Roles} headers.
-  \item WebSocket: identity from query parameters \texttt{user} and
-    \texttt{roles}.
+  \item REST: identity from \code{X-Archimesh-User} and
+    \code{X-Archimesh-Roles} headers.
+  \item WebSocket: identity from query parameters \code{user} and
+    \code{roles}.
   \item Intended for local development and simple standalone deployments.
   \end{itemize}
 
-\item[\texttt{proxy}] Trusted forwarded headers from a reverse proxy.
+\item[\code{proxy}] Trusted forwarded headers from a reverse proxy.
   \begin{itemize}
   \item REST: identity from trusted forwarded headers (default
-    \texttt{X-Forwarded-User}, \texttt{X-Forwarded-Roles}).
+    \code{X-Forwarded-User}, \code{X-Forwarded-Roles}).
   \item WebSocket: identity from trusted forwarded headers captured during
     the handshake.
   \item Header names are configurable via
-    \texttt{app.identity.proxy.user-header} and
-    \texttt{app.identity.proxy.roles-header}.
-  \item Do not expose \texttt{proxy} mode directly to untrusted clients
+    \code{app.identity.proxy.user-header} and
+    \code{app.identity.proxy.roles-header}.
+  \item Do not expose \code{proxy} mode directly to untrusted clients
     without a trusted proxy in front.
   \end{itemize}
 
-\item[\texttt{oidc}] Direct principal/role resolution through Quarkus auth.
+\item[\code{oidc}] Direct principal/role resolution through Quarkus auth.
   \begin{itemize}
   \item REST: identity from the authenticated Quarkus
-    \texttt{SecurityContext}.
+    \code{SecurityContext}.
   \item WebSocket: identity from the authenticated WebSocket upgrade
     principal and role checks captured during the handshake.
   \item Can use local JWT verification or an external OIDC provider.
@@ -49,12 +49,12 @@ Role names from the identity provider are normalized into three canonical
 internal roles:
 
 \begin{description}
-\item[\texttt{admin}] Catalog-wide administration: register/delete models,
+\item[\code{admin}] Catalog-wide administration: register/delete models,
   manage ACLs, run compactions, export/import, view diagnostics.
-\item[\texttt{model\_reader}] Read model snapshots and join read-only
+\item[\code{model\_reader}] Read model snapshots and join read-only
   sessions.
-\item[\texttt{model\_writer}] Submit operations, acquire locks, send
-  presence. Implies \texttt{model\_reader}.
+\item[\code{model\_writer}] Submit operations, acquire locks, send
+  presence. Implies \code{model\_reader}.
 \end{description}
 
 Role names are configurable:
@@ -92,22 +92,22 @@ The PDP decides on these actions:
 \item Compaction
 \end{itemize}
 
-Authorization is deny-by-default when \texttt{ARCHIMESH\_AUTHZ\_ENABLED=true}.
+Authorization is deny-by-default when \code{ARCHIMESH\_AUTHZ\_ENABLED=true}.
 
 \subsubsection{Model-scoped ACLs}
 
-Per-model ACLs are stored on the \texttt{:Model} node as
-\texttt{adminUsers}, \texttt{writerUsers} and \texttt{readerUsers} arrays.
+Per-model ACLs are stored on the \code{:Model} node as
+\code{adminUsers}, \code{writerUsers} and \code{readerUsers} arrays.
 When an ACL is configured for a model, it overrides the generic reader/writer
 role checks for that model:
 
 \begin{itemize}
-\item A user listed in \texttt{adminUsers} gets admin access to that model.
-\item A user listed in \texttt{writerUsers} can submit ops and lock for that
+\item A user listed in \code{adminUsers} gets admin access to that model.
+\item A user listed in \code{writerUsers} can submit ops and lock for that
   model.
-\item A user listed in \texttt{readerUsers} can read snapshots for that
+\item A user listed in \code{readerUsers} can read snapshots for that
   model.
-\item Catalog-wide admin actions still require the global \texttt{admin}
+\item Catalog-wide admin actions still require the global \code{admin}
   role.
 \end{itemize}
 
@@ -115,7 +115,7 @@ role checks for that model:
 
 \subsubsection{Local JWT (dev mode)}
 
-For local development with bearer tokens, use \texttt{app.identity.mode=oidc}
+For local development with bearer tokens, use \code{app.identity.mode=oidc}
 with Quarkus JWT validation:
 
 \begin{lstlisting}[caption={Local JWT config}]
@@ -157,7 +157,7 @@ Concrete provider examples are in \filepath{server/examples/}.
 
 \subsection{Authorization diagnostics}
 
-The endpoint \texttt{GET /admin/auth/diagnostics} returns the resolved
+The endpoint \code{GET /admin/auth/diagnostics} returns the resolved
 identity mode, subject, normalized roles and authorization status for the
 current request. The admin UI exposes this through the \textbf{Auth Check}
 action. This is useful for debugging misconfigured role mappings or proxy
@@ -165,27 +165,29 @@ headers.
 
 \subsection{Configuration summary}
 
+\begingroup\small
 \begin{longtable}{p{46mm}p{54mm}p{54mm}}
 \toprule
 Property & Env var & Default \\
 \midrule
-\texttt{app.authz.enabled} & \texttt{ARCHIMESH\_AUTHZ\_ENABLED} &
-  \texttt{false} \\
-\texttt{app.identity.mode} & \texttt{ARCHIMESH\_IDENTITY\_MODE} &
-  \texttt{bootstrap} \\
-\texttt{app.identity.proxy.user-header} &
-  \texttt{ARCHIMESH\_PROXY\_USER\_HEADER} &
-  \texttt{X-Forwarded-User} \\
-\texttt{app.identity.proxy.roles-header} &
-  \texttt{ARCHIMESH\_PROXY\_ROLES\_HEADER} &
-  \texttt{X-Forwarded-Roles} \\
-\texttt{app.authz.admin-role} & \texttt{ARCHIMESH\_AUTHZ\_ADMIN\_ROLE} &
-  \texttt{admin} \\
-\texttt{app.authz.reader-role} & \texttt{ARCHIMESH\_AUTHZ\_READER\_ROLE} &
-  \texttt{model\_reader} \\
-\texttt{app.authz.writer-role} & \texttt{ARCHIMESH\_AUTHZ\_WRITER\_ROLE} &
-  \texttt{model\_writer} \\
-\texttt{quarkus.oidc.enabled} & \texttt{ARCHIMESH\_QUARKUS\_OIDC\_ENABLED} &
-  \texttt{false} \\
+\code{app.authz.enabled} & \code{ARCHIMESH\_AUTHZ\_ENABLED} &
+  \code{false} \\
+\code{app.identity.mode} & \code{ARCHIMESH\_IDENTITY\_MODE} &
+  \code{bootstrap} \\
+\code{app.identity.proxy.user-header} &
+  \code{ARCHIMESH\_PROXY\_USER\_HEADER} &
+  \code{X-Forwarded-User} \\
+\code{app.identity.proxy.roles-header} &
+  \code{ARCHIMESH\_PROXY\_ROLES\_HEADER} &
+  \code{X-Forwarded-Roles} \\
+\code{app.authz.admin-role} & \code{ARCHIMESH\_AUTHZ\_ADMIN\_ROLE} &
+  \code{admin} \\
+\code{app.authz.reader-role} & \code{ARCHIMESH\_AUTHZ\_READER\_ROLE} &
+  \code{model\_reader} \\
+\code{app.authz.writer-role} & \code{ARCHIMESH\_AUTHZ\_WRITER\_ROLE} &
+  \code{model\_writer} \\
+\code{quarkus.oidc.enabled} & \code{ARCHIMESH\_QUARKUS\_OIDC\_ENABLED} &
+  \code{false} \\
 \bottomrule
 \end{longtable}
+\endgroup

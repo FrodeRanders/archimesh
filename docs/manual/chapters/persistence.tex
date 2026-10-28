@@ -10,42 +10,46 @@ The persistence layer is organized into a split repository with a main
 coordinator and specialized support classes:
 
 \begin{description}
-\item[\texttt{Neo4jRepositoryImpl}] Main coordinating repository. Orchestrates
+\item[\code{Neo4jRepositoryImpl}] Main coordinating repository. Orchestrates
   op-log writes, materialized state mutations, head revision updates,
   snapshots, rebuilds, imports, exports, compactions and integrity checks.
-\item[\texttt{Neo4jOpLogSupport}] Commit and operation persistence. Writes
-  \texttt{:Commit} and \texttt{:Op} nodes, maintains the \texttt{NEXT}
+\item[\code{Neo4jOpLogSupport}] Commit and operation persistence. Writes
+  \code{:Commit} and \code{:Op} nodes, maintains the \code{NEXT}
   chain.
-\item[\texttt{Neo4jMaterializedStateSupport}] Materialized graph mutation.
+\item[\code{Neo4jMaterializedStateSupport}] Materialized graph mutation.
   Creates, updates and deletes elements, relationships, views, view objects,
   connections and folders. Applies LWW merges and tombstone checks.
   Maintains property clocks.
-\item[\texttt{Neo4jReadSupport}] Snapshot export, checkout delta reads,
+\item[\code{Neo4jReadSupport}] Snapshot export, checkout delta reads,
   consistency checks. Reads materialized state and converts it to the JSON
   snapshot/export format.
-\item[\texttt{Neo4jCompactionSupport}] Bounded pruning of published
+\item[\code{Neo4jCompactionSupport}] Bounded pruning of published
   operation payloads covered by a verified checkpoint and retention watermark.
   Retains acceptance receipts, clocks, and tombstones.
+\item[\code{Neo4jCheckpointSupport}] Lossless raw graph capture, schema
+  and checksum verification, and checkpoint restoration.
 \end{description}
 
 \subsection{Graph model}
 
-The database stores four kinds of state per model:
+The database stores these kinds of state per model:
 
 \begin{enumerate}
 \item Model catalog and ACL metadata
 \item Materialized current state
 \item Committed op-log history
 \item Merge metadata (tombstones, property clocks)
+\item Immutable recovery checkpoints and named tag snapshots
+\item Durable publication intents and retained acceptance receipts
 \end{enumerate}
 
 All identity is model-scoped: materialized entity identity is
-\texttt{(modelId, id)}; commit identity is \texttt{(modelId, opBatchId)};
-tag identity is \texttt{(modelId, tagName)}.
+\code{(modelId, id)}; commit identity is \code{(modelId, opBatchId)};
+tag identity is \code{(modelId, tagName)}.
 
 \subsubsection{Core model node}
 
-Every model is rooted at a \texttt{:Model} node:
+Every model is rooted at a \code{:Model} node:
 
 \begin{lstlisting}[caption={Model node properties}]
 {
@@ -59,7 +63,7 @@ Every model is rooted at a \texttt{:Model} node:
 }
 \end{lstlisting}
 
-ACL data is stored directly on \texttt{:Model} as user-id arrays.
+ACL data is stored directly on \code{:Model} as user-id arrays.
 
 \subsubsection{Materialized state nodes}
 
@@ -67,22 +71,22 @@ ACL data is stored directly on \texttt{:Model} as user-id arrays.
 \toprule
 Label & Properties \\
 \midrule
-\texttt{:Element} & \texttt{modelId}, \texttt{id}, \texttt{archimateType},
-  \texttt{name}, \texttt{documentation},
-  \texttt{name\_lamport}, \texttt{name\_clientId},
-  \texttt{documentation\_lamport}, \texttt{documentation\_clientId} \\
-\texttt{:Relationship} & \texttt{modelId}, \texttt{id}, \texttt{archimateType},
-  \texttt{name}, \texttt{documentation}, \texttt{sourceId}, \texttt{targetId},
+\code{:Element} & \code{modelId}, \code{id}, \code{archimateType},
+  \code{name}, \code{documentation},
+  \code{name\_lamport}, \code{name\_clientId},
+  \code{documentation\_lamport}, \code{documentation\_clientId} \\
+\code{:Relationship} & \code{modelId}, \code{id}, \code{archimateType},
+  \code{name}, \code{documentation}, \code{sourceId}, \code{targetId},
   plus LWW clocks for name, documentation, source and target. \\
-\texttt{:Folder} & \texttt{modelId}, \texttt{id}, \texttt{folderType},
-  \texttt{name}, \texttt{documentation}, plus LWW clocks. \\
-\texttt{:View} & \texttt{modelId}, \texttt{id}, \texttt{name},
-  \texttt{documentation}, \texttt{notationJson}, plus LWW clocks. \\
-\texttt{:ViewObject} & \texttt{modelId}, \texttt{id}, \texttt{notationJson},
+\code{:Folder} & \code{modelId}, \code{id}, \code{folderType},
+  \code{name}, \code{documentation}, plus LWW clocks. \\
+\code{:View} & \code{modelId}, \code{id}, \code{name},
+  \code{documentation}, \code{notationJson}, plus LWW clocks. \\
+\code{:ViewObject} & \code{modelId}, \code{id}, \code{notationJson},
   plus per-field LWW clocks for geometry, style and label fields. \\
-\texttt{:Connection} & \texttt{modelId}, \texttt{id},
-  \texttt{sourceViewObjectId}, \texttt{targetViewObjectId},
-  \texttt{representsId}, \texttt{notationJson}, plus per-field LWW clocks. \\
+\code{:Connection} & \code{modelId}, \code{id},
+  \code{sourceViewObjectId}, \code{targetViewObjectId},
+  \code{representsId}, \code{notationJson}, plus per-field LWW clocks. \\
 \bottomrule
 \end{longtable}
 
@@ -115,8 +119,8 @@ Label & Properties \\
 
 \begin{itemize}
 \item Root folders use stable synthetic ids:
-  \texttt{folder:root-strategy}, \texttt{folder:root-business},
-  \texttt{folder:root-diagrams}, etc.
+  \code{folder:root-strategy}, \code{folder:root-business},
+  \code{folder:root-diagrams}, etc.
 \item User folders use immutable ids --- rename changes the name property
   but not the node identity.
 \item A model-tree object belongs to exactly one folder at a time.
@@ -126,13 +130,15 @@ Label & Properties \\
 
 \subsubsection{Op-log history}
 
-Commit nodes and operation nodes form the append-only operation log:
+Commit nodes preserve the accepted timeline. Linked operation payloads remain
+until checkpoint-covered pruning:
 
 \begin{lstlisting}[caption={Op-log nodes}]
 (:Commit {
   modelId, opBatchId,
   revisionFrom, revisionTo,
-  userId, sessionId, ts
+  ts, opCount,
+  published, payloadPruned, batchJson
 })
 
 (:Op {
@@ -149,12 +155,36 @@ Relationships:
 \end{lstlisting}
 
 \begin{itemize}
-\item \texttt{revisionFrom..revisionTo} is the assigned revision range for
+\item \code{revisionFrom..revisionTo} is the assigned revision range for
   one committed submit batch.
-\item \texttt{payloadJson} stores the normalized op payload.
-\item \texttt{seq} preserves op order inside a batch.
-\item \texttt{NEXT} keeps the timeline linear.
+\item \code{payloadJson} stores the normalized op payload.
+\item \code{seq} preserves op order inside a batch.
+\item \code{NEXT} keeps the timeline linear.
+\item Production atomic commits store \code{batchJson} and
+  \code{published=false} together with projection and head changes.
+  Broker acknowledgment permits setting \code{published=true}.
+\item Pruning removes \code{Op} nodes and \code{batchJson}, then marks
+  \code{payloadPruned=true}. The commit remains as an acceptance receipt.
 \end{itemize}
+
+\subsubsection{Recovery checkpoints}
+
+\begin{lstlisting}[caption={Checkpoint node and ownership}]
+(:Model)-[:HAS_CHECKPOINT]->(:ModelCheckpoint {
+  modelId, revision, sha256, payloadJson
+})
+\end{lstlisting}
+
+\code{payloadJson} contains the versioned checkpoint document, including
+creation timestamp, raw nodes and edges, all merge metadata and the checksum.
+Uniqueness is \code{(modelId, revision)}. At an existing boundary, creation
+returns the immutable checkpoint rather than replacing it.
+
+The checkpoint's projection does not duplicate catalog metadata, ACLs, tags,
+commits or its own storage node. Its reserved model endpoint is rebound to the
+destination model on restore. A checkpoint is richer than a client snapshot;
+it includes raw clock and orphan safety state needed for deterministic merges.
+See Section~\ref{sec:Checkpoints} for validation and recovery requirements.
 
 \subsubsection{Tags}
 
@@ -170,7 +200,7 @@ Tags are stored as standalone nodes:
 \begin{itemize}
 \item Tags are immutable --- once created, they cannot be modified or deleted
   (tag deletion is disabled by default).
-\item \texttt{snapshotJson} stores the materialized snapshot at the tagged
+\item \code{snapshotJson} stores the materialized snapshot at the tagged
   revision.
 \item Tags do not create branches; they are read-only pointers on the linear
   timeline.
@@ -188,8 +218,8 @@ Tombstones prevent stale recreates after deletes:
 (:ConnectionTombstone { modelId, id, lamport, clientId })
 \end{lstlisting}
 
-Tombstones are anchored from \texttt{:Model} via specific relationship types
-(\texttt{HAS\_ELEMENT\_TOMBSTONE}, etc.). Compaction reports tombstone
+Tombstones are anchored from \code{:Model} via specific relationship types
+(\code{HAS\_ELEMENT\_TOMBSTONE}, etc.). Compaction reports tombstone
 eligibility but retains them for delete safety.
 
 \subsubsection{Merge metadata --- property clocks}
@@ -198,12 +228,12 @@ Property merge state is stored in dedicated metadata nodes:
 
 \begin{lstlisting}[caption={PropertyClock node}]
 (:PropertyClock {
-  modelId, ownerId, key,
+  modelId, targetId, key,
   lamport, clientId, deleted
 })
 \end{lstlisting}
 
-Anchored via \texttt{(:Model)-[:HAS\_PROPERTY\_CLOCK]->(:PropertyClock)}.
+Anchored via \code{(:Model)-[:HAS\_PROPERTY\_CLOCK]->(:PropertyClock)}.
 Supports LWW and OR-set style property semantics. Compaction retains all
 property clocks, including orphan safety metadata.
 
@@ -222,24 +252,30 @@ uniqueness constraints:
 (:Connection {modelId, id})           UNIQUE
 (:Commit {modelId, opBatchId})        UNIQUE
 (:ModelTag {modelId, tagName})        UNIQUE
+(:ModelCheckpoint {modelId, revision}) UNIQUE
 \end{lstlisting}
 
-An index on \texttt{(:Commit)} by \texttt{(modelId, revisionFrom, revisionTo)}
+An index on \code{(:Commit)} by \code{(modelId, revisionFrom, revisionTo)}
 supports efficient delta window queries.
 
 \subsection{Persistence invariants}
 
 \begin{itemize}
-\item Materialized entity identity is \texttt{(modelId, id)} --- never rely
+\item Materialized entity identity is \code{(modelId, id)} --- never rely
   on node-internal ids across queries.
-\item Commit/idempotency identity is \texttt{(modelId, opBatchId)} ---
+\item Commit/idempotency identity is \code{(modelId, opBatchId)} ---
   duplicate submission of the same batch is a no-op.
+\item Atomic model commits persist log, projection, head and delivery intent
+  together. A failed transaction changes none of them.
+\item Recovery requires a verified checkpoint and complete tail, or full log
+  from revision 1. Replacement is transactional. Pruning keeps acceptance
+  receipts and all CRDT safety metadata.
 \item Repository write paths must fail fast on Neo4j persistence errors ---
   never silently skip a mutation.
 \item Notation field definitions must flow through
-  \texttt{NotationMetadata}, the shared source of truth for supported
+  \code{NotationMetadata}, the shared source of truth for supported
   notation fields and persisted merge metadata.
-\item Compaction never allows stale \texttt{Create*} or \texttt{Update*} to
+\item Compaction never allows stale \code{Create*} or \code{Update*} to
   beat a logically newer delete --- tombstones are retained.
 \end{itemize}
 
@@ -249,13 +285,13 @@ supports efficient delta window queries.
 \toprule
 Property & Env var & Default \\
 \midrule
-\texttt{app.neo4j.uri} & \texttt{NEO4J\_URI} &
-  \texttt{bolt://localhost:7687} \\
-\texttt{app.neo4j.username} & \texttt{NEO4J\_USER} & \texttt{neo4j} \\
-\texttt{app.neo4j.password} & \texttt{NEO4J\_PASSWORD} &
-  \texttt{devpassword} \\
+\code{app.neo4j.uri} & \code{NEO4J\_URI} &
+  \code{bolt://localhost:7687} \\
+\code{app.neo4j.username} & \code{NEO4J\_USER} & \code{neo4j} \\
+\code{app.neo4j.password} & \code{NEO4J\_PASSWORD} &
+  \code{devpassword} \\
 \bottomrule
 \end{longtable}
 
-In production, always set \texttt{NEO4J\_PASSWORD} to a strong value. The
-default \texttt{devpassword} is for local development only.
+In production, always set \code{NEO4J\_PASSWORD} to a strong value. The
+default \code{devpassword} is for local development only.

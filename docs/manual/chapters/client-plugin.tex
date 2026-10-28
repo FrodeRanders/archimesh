@@ -7,35 +7,35 @@ remote operations into the local model.
 
 \subsection{Plugin entry point}
 
-The plugin activator is \\ \texttt{org.gautelis.archimesh.plugin.ArchimeshPlugin},
-an \texttt{AbstractUIPlugin} subclass.
+The plugin activator is \\ \code{org.gautelis.archimesh.plugin.ArchimeshPlugin},
+an \code{AbstractUIPlugin} subclass.
 
 On startup it creates the three central objects:
 
 \begin{description}
-\item[\texttt{ArchimeshSessionManager}] WebSocket lifecycle, outbox handling,
+\item[\code{ArchimeshSessionManager}] WebSocket lifecycle, outbox handling,
   join/rejoin decisions and local submit tracking.
-\item[\texttt{WorkbenchModelLifecycleBridge}] Hooks into Archi's workbench to
+\item[\code{WorkbenchModelLifecycleBridge}] Hooks into Archi's workbench to
   detect model open, close, save and dirty-state changes.
-\item[\texttt{ArchimeshStatusLineBridge}] Displays connection state, conflict
+\item[\code{ArchimeshStatusLineBridge}] Displays connection state, conflict
   banners and outbox capacity warnings in the Archi status line.
 \end{description}
 
-The plugin id is \texttt{org.gautelis.archimesh.plugin}. Debug and trace
-logging are controlled by the system property \texttt{archimesh.debug} and
-\texttt{archimesh.trace}, or equivalently the environment variables
-\texttt{ARCHIMESH\_DEBUG} and \texttt{ARCHIMESH\_TRACE}.
+The plugin id is \code{org.gautelis.archimesh.plugin}. Debug and trace
+logging are controlled by the system property \code{archimesh.debug} and
+\code{archimesh.trace}, or equivalently the environment variables
+\code{ARCHIMESH\_DEBUG} and \code{ARCHIMESH\_TRACE}.
 
 \subsection{Session manager}
 
-\texttt{ArchimeshSessionManager} is the central client-side coordinator. It
+\code{ArchimeshSessionManager} is the central client-side coordinator. It
 manages:
 
 \begin{itemize}
 \item WebSocket connection lifecycle (connect, disconnect, reconnect)
 \item Per-model persistent bounded outbox (FIFO queue with replay)
 \item Join/rejoin decision logic with cache metadata
-\item Echo suppression for locally submitted op batches
+\item Accepted-echo reconciliation for locally submitted op batches
 \item Cache autosave policy (debounced saves on sync traffic)
 \end{itemize}
 
@@ -49,16 +49,24 @@ manages:
   \item If the session is server-backed, cache metadata is read from
     \filepath{\textasciitilde/Archi/archimesh-cache/<modelId>.meta.properties}.
   \item If metadata is valid and the cached revision is known, the join
-    includes \texttt{lastSeenRevision} so the server can send a delta.
+    includes \code{lastSeenRevision} so the server can send a delta.
   \item If metadata is missing, mismatched or the revision is unknown, the
-    join omits \texttt{lastSeenRevision} to request a cold snapshot.
+    join omits \code{lastSeenRevision} to request a cold snapshot.
   \end{itemize}
 \item The session manager opens a WebSocket to
-  \texttt{<baseUrl>/models/<modelId>/stream} and sends a \texttt{Join} message.
-\item The server responds with \texttt{CheckoutSnapshot} (full model state)
-  or \texttt{CheckoutDelta} (incremental changes since lastSeenRevision).
+  \code{<baseUrl>/models/<modelId>/stream} and sends a \code{Join} message.
+\item The server responds with \code{CheckoutSnapshot} (full model state)
+  or \code{CheckoutDelta} (incremental changes since lastSeenRevision).
 \item The client applies the checkout payload into the local Archi model.
+\item Only after checkout completes does it drain pending submissions.
 \end{enumerate}
+
+The server checks delta coverage, not just the latest available revision.
+Missing history after pruning or an ahead-of-server revision causes a current
+snapshot. Snapshots restore values, clocks and tombstones before queued work
+is replayed. Figure~\ref{fig:checkout} shows the decision path.
+
+\manualfigure{checkout}{Checkout and reconnect decisions, including snapshot fallback after pruning.}{checkout}
 
 \subsubsection{Rejoin and cache verification}
 
@@ -67,8 +75,8 @@ projection is discarded (forcing a cold snapshot) if:
 
 \begin{itemize}
 \item The metadata file does not exist or cannot be read.
-\item The metadata \texttt{serverBacked} flag does not match.
-\item The \texttt{modelId} or \texttt{modelRef} does not match the target.
+\item The metadata \code{serverBacked} flag does not match.
+\item The \code{modelId} or \code{modelRef} does not match the target.
 \item The cache file is missing from disk.
 \item The cached revision is unknown (negative).
 \item The cache file exists but is implausibly small for a model with
@@ -81,7 +89,7 @@ the client requests a cold snapshot rebuild.
 
 \subsection{EMF change capture}
 
-\texttt{EmfChangeCapture} observes local EMF model changes via Archi's
+\code{EmfChangeCapture} observes local EMF model changes via Archi's
 ECore notification mechanism. When the user edits the model, the capture
 layer:
 
@@ -92,8 +100,8 @@ layer:
   geometry update) into a single logical operation.
 \item Defers connection-creation submission until all referenced identifiers
   (source, target, relationship, view) are available, then emits the
-  relationship and connection in a single \texttt{SubmitOps} batch.
-\item Passes the collected operations to \texttt{OpMapper} for wire-format
+  relationship and connection in a single \code{SubmitOps} batch.
+\item Passes the collected operations to \code{OpMapper} for wire-format
   encoding.
 \end{enumerate}
 
@@ -102,52 +110,53 @@ from the server are not re-captured and re-submitted as local edits.
 
 \subsection{Operation mapping}
 
-\texttt{OpMapper} converts captured EMF changes into Archimesh wire-format
+\code{OpMapper} converts captured EMF changes into Archimesh wire-format
 operations. The supported operation types are:
 
 \begin{longtable}{p{52mm}p{102mm}}
 \toprule
 Operation & Purpose \\
 \midrule
-\texttt{CreateElement} & Create a new ArchiMate element. \\
-\texttt{UpdateElement} & Update element name or documentation. \\
-\texttt{DeleteElement} & Delete an element and cascade-delete its
+\code{CreateElement} & Create a new ArchiMate element. \\
+\code{UpdateElement} & Update element name or documentation. \\
+\code{DeleteElement} & Delete an element and cascade-delete its
   diagram representations. \\
-\texttt{CreateRelationship} & Create a relationship between two elements. \\
-\texttt{UpdateRelationship} & Update relationship fields. \\
-\texttt{DeleteRelationship} & Delete a relationship and cascade-delete
+\code{CreateRelationship} & Create a relationship between two elements. \\
+\code{UpdateRelationship} & Update relationship fields. \\
+\code{DeleteRelationship} & Delete a relationship and cascade-delete
   its connections. \\
-\texttt{CreateFolder} & Create a user folder. \\
-\texttt{UpdateFolder} & Rename a folder or update its documentation. \\
-\texttt{DeleteFolder} & Delete an empty user folder. \\
-\texttt{CreateView} & Create a new diagram view. \\
-\texttt{UpdateView} & Update view metadata. \\
-\texttt{DeleteView} & Delete a view and its contents. \\
-\texttt{CreateViewObject} & Place an element on a diagram. \\
-\texttt{UpdateViewObjectOpaque} & Update geometry, style or label fields
+\code{CreateFolder} & Create a user folder. \\
+\code{UpdateFolder} & Rename a folder or update its documentation. \\
+\code{DeleteFolder} & Delete an empty user folder. \\
+\code{CreateView} & Create a new diagram view. \\
+\code{UpdateView} & Update view metadata. \\
+\code{DeleteView} & Delete a view and its contents. \\
+\code{CreateViewObject} & Place an element on a diagram. \\
+\code{UpdateViewObjectOpaque} & Update geometry, style or label fields
   of a diagram object. \\
-\texttt{DeleteViewObject} & Remove a diagram object. \\
-\texttt{CreateConnection} & Draw a connection between two diagram objects. \\
-\texttt{UpdateConnectionOpaque} & Update connection style, label or
+\code{DeleteViewObject} & Remove a diagram object. \\
+\code{CreateConnection} & Draw a connection between two diagram objects. \\
+\code{UpdateConnectionOpaque} & Update connection style, label or
   bendpoint fields. \\
-\texttt{DeleteConnection} & Remove a diagram connection. \\
-\texttt{AddElementToFolder} & Place an element in a folder. \\
-\texttt{RemoveElementFromFolder} & Remove an element from a folder. \\
-\texttt{SetProperty} & Set a key-value property on a model entity. \\
-\texttt{UnsetProperty} & Remove a property. \\
-\texttt{AddPropertySetMember} & Add an element to a property set. \\
-\texttt{RemovePropertySetMember} & Remove an element from a property set. \\
-\texttt{AddViewObjectChildMember} & Nest a view object inside another. \\
-\texttt{RemoveViewObjectChildMember} & Remove nested view object membership. \\
+\code{DeleteConnection} & Remove a diagram connection. \\
+\code{MoveElementToFolder} & Move an element to its destination folder. \\
+\code{MoveRelationshipToFolder} & Move a relationship to its destination folder. \\
+\code{MoveViewToFolder} & Move a view to its destination folder. \\
+\code{SetProperty} & Set a key-value property on a model entity. \\
+\code{UnsetProperty} & Remove a property. \\
+\code{AddPropertySetMember} & Add an element to a property set. \\
+\code{RemovePropertySetMember} & Remove an element from a property set. \\
+\code{AddViewObjectChildMember} & Nest a view object inside another. \\
+\code{RemoveViewObjectChildMember} & Remove nested view object membership. \\
 \bottomrule
 \end{longtable}
 
-Each operation carries a \texttt{causal} object with \texttt{clientId},
-\texttt{lamport} and \texttt{opId} for LWW merge semantics.
+Each operation carries a \code{causal} object with \code{clientId},
+\code{lamport} and \code{opId} for LWW merge semantics.
 
 \subsection{Remote operation application}
 
-\texttt{RemoteOpApplier} applies snapshots and remote broadcasts into the
+\code{RemoteOpApplier} applies snapshots and remote broadcasts into the
 local EMF model. Key behaviors:
 
 \begin{itemize}
@@ -156,8 +165,8 @@ local EMF model. Key behaviors:
   labels) using causal clock comparison.
 \item Maintains element field clocks and tombstones for delete safety.
 \item Handles property-level LWW and OR-set semantics for
-  \texttt{SetProperty}, \texttt{UnsetProperty},
-  \texttt{AddPropertySetMember}, \texttt{RemovePropertySetMember}.
+  \code{SetProperty}, \code{UnsetProperty},
+  \code{AddPropertySetMember}, \code{RemovePropertySetMember}.
 \item Restores folder structure before folder memberships during snapshot
   application.
 \item Restores views before view objects and connections.
@@ -167,26 +176,27 @@ local EMF model. Key behaviors:
 
 \subsection{Offline outbox}
 
-When the WebSocket is unavailable or a live send fails, the client queues
-operations in a persistent bounded outbox. Key guarantees:
+Every submission is persisted in the bounded outbox before a send, including
+while online. Key guarantees:
 
 \begin{itemize}
 \item \textbf{FIFO per model.} Operations are drained in submission order.
 \item \textbf{Rebase before send.} Each replayed op has its
-  \texttt{baseRevision} updated to the current known server revision.
+  \code{baseRevision} updated to the current known server revision.
 \item \textbf{Ack-gated removal.} Entries are removed only after the server
-  sends a matching \texttt{OpsAccepted}. Websocket send completion is not
+  sends a matching \code{OpsAccepted}. Websocket send completion is not
   enough --- the server must confirm commit.
-\item \textbf{Deterministic retry.} Failed sends are retried with capped
-  exponential backoff. Entries failing after the maximum replay attempts (5)
-  are dropped as poison entries.
+\item \textbf{Transport retry.} Failed sends and missing acknowledgments
+  retry with capped exponential backoff. Transport failures preserve the entry
+  and its batch ID so the server can return an earlier acceptance.
 \item \textbf{Conflict resolution.} Entries receiving
-  \texttt{PRECONDITION\_FAILED} or \texttt{LOCK\_CONFLICT} from the server
-  are deterministically dropped. A conflict callback is fired, surfaced in
-  the UI status line.
-\item \textbf{Bounded queue.} Maximum 1000 entries. When full, the oldest
-  entry is dropped. A warning fires at 80\% capacity (800 entries) and is
-  displayed in the status line.
+  \code{PRECONDITION\_FAILED} or \code{LOCK\_CONFLICT} from the server
+  remove the correlated conflicting entry, surface a conflict callback in the
+  status line, and trigger projection recovery. Another client's rejection
+  does not remove local work.
+\item \textbf{Bounded queue.} Maximum 1000 entries. At capacity, new enqueue
+  is rejected while existing uncommitted work is preserved. A warning fires
+  at 80\% capacity (800 entries) and is displayed in the status line.
 \item \textbf{Durable persistence.} The outbox is persisted to
   \filepath{\textasciitilde/Archi/archimesh-cache/<modelId>.archimate.outbox.properties}
   and reloaded on reconnect.
@@ -195,46 +205,42 @@ operations in a persistent bounded outbox. Key guarantees:
 \subsection{Cache policy}
 
 When running in server-backed mode, the client treats the local
-\texttt{.archimate} file as a cache projection, not the primary artifact.
+\code{.archimate} file as a cache projection, not the primary artifact.
 
 \begin{description}
 \item[Cache path] \filepath{\textasciitilde/Archi/archimesh-cache/<modelId>.archimate}
 \item[Metadata file] \filepath{<cacheFile>.meta.properties} stores
-  \texttt{modelId}, \texttt{modelRef}, \texttt{lastKnownRevision},
-  \texttt{serverBacked} and \texttt{savedAtEpochMs}.
+  \code{modelId}, \code{modelRef}, \code{lastKnownRevision},
+  \code{serverBacked} and \code{savedAtEpochMs}.
 \item[Autosave triggers] Debounced saves (2 s cooldown) after
-  \texttt{CheckoutSnapshot}, \texttt{CheckoutDelta},
-  \texttt{OpsBroadcast} and \texttt{OpsAccepted}.
+  \code{CheckoutSnapshot}, \code{CheckoutDelta},
+  \code{OpsBroadcast} and \code{OpsAccepted}.
 \item[Force-save triggers] On model attach, detach and disconnect.
 \item[Discard policy] Cache is discarded if inconsistent, invalid or not
   server-backed at reconnect.
 \end{description}
 
-\subsection{Echo suppression}
+\subsection{Accepted-echo reconciliation}
 
-To avoid double-applying their own submitted operations, clients track the
-most recent 256 locally submitted \texttt{opBatchId} values. When an
-\texttt{OpsBroadcast} arrives via the Kafka fan-out path, the client checks
-whether the batch was locally submitted. If so, the broadcast is silently
-ignored. The local model was already updated optimistically and will be
-corrected by the \texttt{OpsAccepted} confirmation if needed.
+Local edits are optimistic. The client seeds local merge clocks, advances its
+logical clock from incoming causal metadata, and reconciles its own accepted
+broadcast against the current local state. It does not simply discard every
+self-echo: accepted server normalization and merge metadata must be reflected
+without overwriting a newer optimistic edit. Applied revision advances after
+application. Acceptance removes the matching outbox entry; it can arrive
+before or after the corresponding broadcast.
 
 \subsection{Menu commands}
 
 The plugin contributes the following commands to Archi's \textbf{Tools} menu:
 
+\begingroup\small
 \begin{description}
-\item[Connect Archimesh...] Connect the active model to an Archimesh server.
-  Opens a dialog for server URL, model id, user, session id and optional
-  bearer token.
-\item[Disconnect Archimesh] Disconnect from the server, save cache and
-  return to local-only mode.
-\item[Open Archimesh Model from Server...] Browse the server model catalog
-  and open a model from the server.
-\item[Switch Active Model to Server-Backed...] Attach Archimesh to the
-  currently active local model, making it server-backed.
-\item[Show Last Archimesh Conflict] Display details for the most recent
-  conflict (precondition failure or lock conflict).
-\item[Resynchronize Model] Discard the local projection and pull a fresh
-  snapshot from the server.
+\item[Connect Archimesh...] Enter server URL, model ID, identity and optional bearer token.
+\item[Disconnect Archimesh] Save cache and return to local mode.
+\item[Open Archimesh Model from Server...] Browse and open a readable server model.
+\item[Switch Active Model to Server-Backed...] Attach the active local model.
+\item[Show Last Archimesh Conflict] Inspect the latest conflict.
+\item[Resynchronize Model] Replace the projection from a fresh server snapshot.
 \end{description}
+\endgroup

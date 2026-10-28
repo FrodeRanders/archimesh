@@ -1,0 +1,10 @@
+flowchart TB
+    CP[("Checkpoint at revision C\nRaw projection, clocks and tombstones")]
+    Tail[("Retained operation tail\nC+1 through committed HEAD")]
+    CP --> V{"Valid checksum and graph schema?\nExact contiguous tail and op counts?"}
+    Tail --> V
+    V -->|"No"| Reject["Reject recovery\nPreserve existing projection"]
+    V -->|"Yes"| Tx["One Neo4j transaction\nClear projection, restore base, replay tail, set head"]
+    Tx --> Done["Recovered model\nRollback replacement if the transaction fails"]
+    R[("Retained acceptance receipts\nBatch IDs and original revision ranges")]
+    R --> Retry["Old retry returns original acceptance\nNo new revision allocation"]

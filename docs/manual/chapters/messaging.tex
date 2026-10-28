@@ -12,17 +12,17 @@ Three topic kinds exist per model:
 \toprule
 Topic pattern & Content & Partitioning \\
 \midrule
-\texttt{archimesh.model.<modelId>.ops} & Committed op batches &
+\code{archimesh.model.<modelId>.ops} & Committed op batches &
   Exactly 1 partition (required) \\
-\texttt{archimesh.model.<modelId>.locks} & Lock acquire/release/expire &
+\code{archimesh.model.<modelId>.locks} & Lock acquire/release/expire &
   1 partition \\
-\texttt{archimesh.model.<modelId>.presence} & Cursor/selection broadcasts &
+\code{archimesh.model.<modelId>.presence} & Cursor/selection broadcasts &
   1 partition (or keyed by sessionId) \\
 \bottomrule
 \end{longtable}
 
-The topic prefix is configurable via \texttt{KAFKA\_TOPIC\_PREFIX} (default
-\texttt{archimesh.model}).
+The topic prefix is configurable via \code{KAFKA\_TOPIC\_PREFIX} (default
+\code{archimesh.model}).
 
 \subsection{Single-partition requirement}
 
@@ -34,38 +34,47 @@ the total order guarantee that the deterministic merge semantics depend on.
 Topic keys:
 
 \begin{itemize}
-\item ops: constant key = \texttt{<modelId>}
-\item locks: constant key = \texttt{<modelId>}
-\item presence: key = \texttt{<sessionId>} (or \texttt{<userId>})
+\item ops: constant key = \code{<modelId>}
+\item locks: constant key = \code{<modelId>}
+\item presence: key = \code{<sessionId>} (or \code{<userId>})
 \end{itemize}
 
 \subsection{Producer}
 
-The \texttt{KafkaPublisherImpl} uses a \texttt{KafkaProducer<String,{}String>}
+The \code{KafkaPublisherImpl} uses a \texttt{KafkaProducer<String,{}String>}
 with:
 
 \begin{itemize}
-\item \texttt{acks=all} --- wait for all in-sync replicas
-\item \texttt{retries=3}
-\item \texttt{delivery.timeout.ms=120000}
+\item \code{acks=all} --- wait for all in-sync replicas
+\item \code{retries=3}
+\item \code{delivery.timeout.ms=120000}
 \item String serializers for both key and value
 \end{itemize}
 
-Publishing is asynchronous. The \texttt{publishOps} method returns a
-\texttt{CompletableFuture<Void>} that completes when the broker acknowledges
-the send. If the send fails, the server falls back to broadcasting
-\texttt{OpsBroadcast} directly to connected WebSocket sessions.
+Publishing is asynchronous. The \code{publishOps} method returns a
+\code{CompletableFuture<Void>} that completes when the broker acknowledges
+the send. Committed operation batches are published by
+\code{CommitDeliveryService}. It reads pending Neo4j payloads in model
+revision order, waits for broker acknowledgment, then marks publication complete.
+Failed or interrupted sends leave the durable intent pending for retry.
+
+\manualfigure[\linewidth]{commit-delivery}{Durable acceptance and asynchronous operation fan-out.}{commit-delivery}
+
+The two branches in Figure~\ref{fig:commit-delivery} have separate durability
+boundaries. Acceptance confirms the Neo4j commit to the submitting session;
+broadcast reaches every subscriber through the Kafka consumer. Either can
+arrive first. A failed model transaction receives no acceptance.
 
 \subsection{Consumer}
 
-The \texttt{KafkaConsumerImpl} runs a single-threaded consume loop with:
+The \code{KafkaConsumerImpl} runs a single-threaded consume loop with:
 
 \begin{itemize}
-\item Group id: \texttt{archimesh-server} (configurable via
-  \texttt{KAFKA\_CONSUMER\_GROUP\_ID})
-\item Auto offset reset: \texttt{earliest}
+\item Group id: \code{archimesh-server} (configurable via
+  \code{KAFKA\_CONSUMER\_GROUP\_ID})
+\item Auto offset reset: \code{earliest}
 \item Topic subscription via regex pattern matching all
-  \texttt{<prefix>.<modelId>.<kind>} topics
+  \code{<prefix>.<modelId>.<kind>} topics
 \item 500 ms poll timeout
 \end{itemize}
 
@@ -74,52 +83,56 @@ model id and kind, then broadcasts the payload to all sessions registered
 for that model:
 
 \begin{description}
-\item[ops] Broadcasts \texttt{OpsBroadcast} to all sessions for the model.
-  The submitter suppresses its own echo.
-\item[locks] Broadcasts \texttt{LockEvent}.
-\item[presence] Broadcasts \texttt{PresenceBroadcast}.
+\item[ops] Broadcasts \code{OpsBroadcast} to all sessions for the model.
+  The submitter reconciles its own echo against the optimistic local state.
+\item[locks] Broadcasts \code{LockEvent}.
+\item[presence] Broadcasts \code{PresenceBroadcast}.
 \end{description}
 
 The consumer is resilient to Kafka unavailability: on connection failure it
-sleeps and retries. While the consumer is down, the direct broadcast fallback
-in the submit path (Section~\ref{sec:ServerApi}) ensures connected clients
-still receive updates.
+sleeps and retries. While publication or consumption is unavailable, other
+clients can lag behind the accepted state. Durable publication retry and a
+subsequent complete delta or snapshot checkout restore synchronization.
 
 \subsection{Retention}
 
 \begin{description}
-\item[ops] Long retention if Kafka is used for rebuild, otherwise moderate.
-  The Neo4j op-log is the durable log; Kafka is the fan-out path.
+\item[ops] Retain enough for expected consumer outages and lag. Neo4j
+  checkpoints plus the operation tail provide the implemented rebuild source;
+  Kafka is the fan-out path, not the model backup.
 \item[locks] Short retention (minutes). Lock state is ephemeral.
 \item[presence] Very short retention (minutes). Presence is transient.
 \end{description}
 
-\subsection{Fallback broadcast}
+\subsection{Publication failure and duplicate delivery}
 
-If Kafka publish fails (broker unavailable, topic error, serialization
-failure), the \texttt{ArchimeshService} catches the exception and broadcasts
-\texttt{OpsBroadcast} directly to all sessions registered for the model. This
-ensures that connected clients on the same server instance still receive
-remote updates even when the Kafka fan-out path is unavailable.
+If Kafka accepts a batch but the server stops before Neo4j records the
+publication flag, restart can publish it again. Delivery is at least once;
+clients tolerate duplicate committed ranges and reconcile accepted echoes.
+Retrying a submitted batch consults the persisted acceptance receipt and
+returns the original revision range without committing again.
 
-The fallback uses the same \texttt{OpsBroadcastMessage} envelope as the
-consumer path, so clients process it identically. Echo suppression on the
-submitting client prevents double-application.
+Publication payloads are retained until acknowledged. Pruning never crosses
+the first unpublished or unclassified legacy batch, even when a newer
+checkpoint covers its state. Lock and presence events use direct Kafka
+publication and do not share the durable operation outbox.
 
 \subsection{Configuration}
 
+\begingroup\small
 \begin{longtable}{p{50mm}p{54mm}p{50mm}}
 \toprule
 Property & Env var & Default \\
 \midrule
-\texttt{kafka.bootstrap.servers} & \texttt{KAFKA\_BOOTSTRAP\_SERVERS} &
-  \texttt{localhost:9092} \\
-\texttt{kafka.topic.prefix} & \texttt{KAFKA\_TOPIC\_PREFIX} &
-  \texttt{archimesh.model} \\
-\texttt{kafka.consumer.group-id} & \texttt{KAFKA\_CONSUMER\_GROUP\_ID} &
-  \texttt{archimesh-server} \\
-\texttt{kafka.consumer.auto-offset-reset} &
-  \texttt{KAFKA\_CONSUMER\_AUTO\_OFFSET\_RESET} &
-  \texttt{earliest} \\
+\code{kafka.bootstrap.servers} & \code{KAFKA\_BOOTSTRAP\_SERVERS} &
+  \code{localhost:9092} \\
+\code{kafka.topic.prefix} & \code{KAFKA\_TOPIC\_PREFIX} &
+  \code{archimesh.model} \\
+\code{kafka.consumer.group-id} & \code{KAFKA\_CONSUMER\_GROUP\_ID} &
+  \code{archimesh-server} \\
+\code{kafka.consumer.auto-offset-reset} &
+  \code{KAFKA\_CONSUMER\_AUTO\_OFFSET\_RESET} &
+  \code{earliest} \\
 \bottomrule
 \end{longtable}
+\endgroup

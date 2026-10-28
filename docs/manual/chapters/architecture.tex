@@ -16,8 +16,14 @@ through a centralized server. It combines:
 \item Neo4j for the materialized model graph, op-log, tags and merge metadata
 \end{itemize}
 
-The model timeline is intentionally linear: one \texttt{HEAD}, no branches,
+The model timeline is intentionally linear: one \code{HEAD}, no branches,
 immutable tags as named historical points.
+
+Figure~\ref{fig:system-context} shows the client and server boundaries. Only
+Quarkus connects to Neo4j and Kafka; Archi plugins and the browser use the
+server's WebSocket and HTTP interfaces.
+
+\manualfigure{system-context}{System components and transport boundaries.}{system-context}
 
 \subsection{High-level flow}
 
@@ -27,8 +33,10 @@ immutable tags as named historical points.
   Archimesh operations.
 \item The server validates the op batch against preconditions, locks and
   idempotency state, then assigns authoritative revisions.
-\item The server persists the batch, updates the materialized graph and
-  broadcasts it via Kafka.
+\item One Neo4j transaction commits the log, projection, head revision and
+  durable publication intent. The submitting session receives acceptance.
+\item The delivery worker publishes committed operations to Kafka in model
+  revision order, retrying failures from durable state.
 \item Other connected clients apply the accepted operations into their local
   Archi model.
 \end{enumerate}
@@ -65,22 +73,26 @@ The server is organized into distinct packages:
 \toprule
 Package & Responsibility \\
 \midrule
-\texttt{endpoint} & WebSocket endpoint (\texttt{ArchimeshEndpoint}), REST
-  endpoints (\texttt{ModelStateEndpoint}, \texttt{AdminEndpoint},
-  \texttt{AdminUiEndpoint}, \texttt{ConsistencyEndpoint}). \\
-\texttt{service} & Central coordination (\texttt{ArchimeshService}), plus
+\code{endpoint} & WebSocket endpoint (\code{ArchimeshEndpoint}), REST
+  endpoints (\code{ModelStateEndpoint}, \code{AdminEndpoint},
+  \code{AdminUiEndpoint}, \code{ConsistencyEndpoint}). \\
+\code{service} & Central coordination (\code{ArchimeshService}), plus
   service interfaces for validation, revision, locks, Neo4j repository,
   Kafka publish/consume, session registry and idempotency. \\
-\texttt{service.impl} & Concrete implementations: in-memory services for
+\code{CommitDeliveryService} & Writer-lease renewal and ordered retry of
+  committed publication intents. \\
+\code{CheckpointMaintenanceService} & Optional scheduled checkpoint
+  creation, covered payload pruning and older-checkpoint retention. \\
+\code{service.impl} & Concrete implementations: in-memory services for
   validation, revision, locks and sessions; Neo4j repository with split
-  support classes for op-log, materialized state, reads and compaction;
+  support classes for op-log, materialized state, reads, checkpoints and compaction;
   Kafka publisher and consumer implementations. \\
-\texttt{auth} & Authorization: identity modes, role normalization,
+\code{auth} & Authorization: identity modes, role normalization,
   policy decision point (PDP), authorization service and transport. \\
-\texttt{model} & Admin data classes: status, catalog, sessions, ACLs,
+\code{model} & Admin data classes: status, catalog, sessions, ACLs,
   export/import, compaction, integrity, audit. \\
-\texttt{wire} & Wire protocol envelopes (\texttt{ClientEnvelope},
-  \texttt{ServerEnvelope}) and message types for inbound
+\code{wire} & Wire protocol envelopes (\code{ClientEnvelope},
+  \code{ServerEnvelope}) and message types for inbound
   (Join, SubmitOps, AcquireLock, ReleaseLock, Presence) and outbound
   (CheckoutSnapshot, CheckoutDelta, OpsAccepted, OpsBroadcast,
   LockEvent, PresenceBroadcast, Error). \\
@@ -93,19 +105,19 @@ Package & Responsibility \\
 \toprule
 Package & Responsibility \\
 \midrule
-\texttt{ws} & WebSocket session manager, outbox handling, join/rejoin
+\code{ws} & WebSocket session manager, outbox handling, join/rejoin
   decisions, local submit tracking, inbound message dispatch. \\
-\texttt{emf} & EMF change capture, operation mapping, remote op
+\code{emf} & EMF change capture, operation mapping, remote op
   application, CRDT merge (LWW, OR-set, tombstones), model controller. \\
-\texttt{startup} & Eclipse startup hooks, workbench lifecycle bridge,
+\code{startup} & Eclipse startup hooks, workbench lifecycle bridge,
   status line bridge. \\
-\texttt{handlers} & Menu command handlers: connect, disconnect, open
+\code{handlers} & Menu command handlers: connect, disconnect, open
   server model, switch active model, show last conflict, resynchronize. \\
-\texttt{ui} & Connect dialog, server model catalog dialog, open server
+\code{ui} & Connect dialog, server model catalog dialog, open server
   model dialog. \\
-\texttt{notation} & Notation serializer and deserializer for Archi
+\code{notation} & Notation serializer and deserializer for Archi
   diagram fields. \\
-\texttt{util} & Authentication hint helpers and lightweight JSON
+\code{util} & Authentication hint helpers and lightweight JSON
   utilities. \\
 \bottomrule
 \end{longtable}
@@ -118,7 +130,8 @@ The system maintains two kinds of state at all times:
 \item[Local working state] Inside each Archi client. This is the EMF model
   the user sees and edits. It is not authoritative.
 \item[Authoritative shared state] On the Archimesh server. The Neo4j graph
-  is the source of truth. The op-log is the replayable history.
+  is the source of truth. A verified checkpoint and complete operation tail,
+  or the full log before the first checkpoint, provide recovery data.
 \end{description}
 
 The client plugin synchronizes between these two states: capturing local
@@ -127,26 +140,31 @@ local model.
 
 \subsection{Snapshot vs op-log}
 
-The server keeps both a materialized snapshot-like graph and an append-only
-op-log in Neo4j. Why both exist:
+The server keeps a materialized graph, accepted operation history and optional
+recovery checkpoints in Neo4j. Their roles differ:
 
 \begin{itemize}
 \item The materialized graph makes joins, exports and admin inspection fast
   (no replay needed).
-\item The op-log preserves the authoritative committed history for rebuild,
-  import and time-travel.
+\item Retained batch payloads provide delta checkout and replay after a checkpoint.
+\item A raw checkpoint preserves projection state and all merge metadata at
+  a committed revision. Earlier covered payloads can then be pruned.
+\item Compact acceptance receipts preserve batch identity and revision ranges
+  after payload pruning. Tags retain independent historical snapshots.
 \end{itemize}
 
-This is why export packages contain both the current snapshot and the full
-op batch history. The snapshot is derived from the op-log; the op-log is
-the ground truth.
+Exports contain the current client-facing snapshot and either complete
+history (v1), or a checkpoint, prefix receipts and complete tail (v2).
+Checkpoints contain raw graph and merge state beyond the client snapshot.
+Arbitrary historical replay before the recovery base requires an archived
+full history; tagged snapshots remain available independently.
 
 \subsection{Folder model}
 
 Model-tree folders are first-class synchronized state with strict rules:
 
 \begin{itemize}
-\item Root folders have stable synthetic ids (e.g. \texttt{folder:root-business}).
+\item Root folders have stable synthetic ids (e.g. \code{folder:root-business}).
 \item User folders have immutable ids --- rename is allowed, but identity is
   stable.
 \item Object placement in folders is explicit and persisted.
@@ -161,20 +179,29 @@ This avoids drift between clients and preserves Archi model-tree structure.
 Every model has exactly one linear revision timeline with:
 
 \begin{itemize}
-\item One moving \texttt{HEAD}
+\item One moving \code{HEAD}
 \item Zero or more immutable tags
 \item No branches
 \end{itemize}
 
-Clients submit batches against a \texttt{baseRevision}. The server assigns an
+Clients submit batches against a \code{baseRevision}. The server assigns an
 authoritative contiguous revision range. If a batch contains \(N\) ops it
 consumes \(N\) revisions. Tags are read-only pointers to historical revisions,
 stored with a snapshot of the model at that point.
 
-Only \texttt{HEAD} is writable. Tagged revisions are read-only for both reads
-and writes.
+Only \code{HEAD} is writable. Tagged revisions can be read but reject writes.
 
 \subsection{Deployment and operational considerations}
+
+\subsubsection{Authoritative writer and durability}
+
+Run one authoritative server per Neo4j repository. A renewable database lease
+rejects a second active writer; commit and maintenance transactions check the
+lease, and timeline operations are serialized within the active service.
+Active-active server operation is not supported. Locks, presence and live
+session registries are process-local; committed state and publication intents
+survive restart in Neo4j. See Section~\ref{sec:Messaging} for delivery and
+Section~\ref{sec:Management} for checkpoint recovery.
 
 \subsubsection{Transport security}
 
@@ -183,7 +210,7 @@ deploy behind a reverse proxy (Nginx, Caddy, Traefik) that terminates TLS and
 forwards to the Quarkus server. Example configurations are provided in
 \filepath{server/examples/}.
 
-When using \texttt{app.identity.mode=proxy}, the reverse proxy must also
+When using \code{app.identity.mode=proxy}, the reverse proxy must also
 forward trusted identity headers, and the WebSocket upgrade path must carry
 those headers through the proxy to the server.
 
@@ -212,6 +239,7 @@ order. If multiple partitions are used, the total order guarantee breaks and
 clients can receive operations in different orders, producing divergent state.
 This is a hard constraint, not a recommendation.
 
-If Kafka publish fails, the server falls back to broadcasting
-\texttt{OpsBroadcast} directly to connected WebSocket sessions, ensuring
-clients on the same server instance still receive updates.
+If Kafka publication fails, the committed payload remains pending in Neo4j
+and is retried by the delivery worker. The submitting client may already have
+received acceptance while other clients await fan-out. There is no direct
+broadcast bypass in the normal production delivery path.

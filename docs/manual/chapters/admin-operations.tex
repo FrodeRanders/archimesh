@@ -7,17 +7,19 @@ logging, activity monitoring and session inspection.
 \subsection{Admin UI}
 
 The admin UI is a Svelte application served by Quarkus at
-\texttt{/admin-ui/}. It is organized into seven routes:
+\code{/admin-ui/}. It is organized into seven routes:
 
 \begin{description}
 \item[Overview] Dashboard showing all known models with status summaries,
-  head revisions, element/relationship/view counts and active session counts.
+  head revisions, counts of elements, relationships and views, and active sessions.
   Colour-coded status: green (no issues), yellow (stale), red (integrity
   problems or consistency check failures).
 
 \item[Models] Detailed per-model view: catalog metadata, ACL configuration,
   head revision, estimated counts, tag list and available actions (create
-  tag, rebuild, compact, export, delete). The model selector persists the
+  tag, rebuild, checkpoint, preview pruning, prune, export, delete).
+  Maintenance shows the latest checkpoint and each pruning result, including
+  eligibility, actual payload deletions and durable progress. The model selector persists the
   chosen model in browser storage.
 
 \item[Versions] Tag management: list existing tags with description,
@@ -44,8 +46,8 @@ The admin UI is a Svelte application served by Quarkus at
 The admin UI supports:
 
 \begin{itemize}
-\item Bootstrap auth inputs for \texttt{X-Archimesh-User} and
-  \texttt{X-Archimesh-Roles}, plus an optional bearer token for OIDC mode.
+\item Bootstrap auth inputs for \code{X-Archimesh-User} and
+  \code{X-Archimesh-Roles}, plus an optional bearer token for OIDC mode.
 \item Configurable poll interval (persisted in browser storage; set to 0 to
   disable auto-refresh).
 \item When a bearer token is present, admin 401/403 failures explain likely
@@ -80,7 +82,7 @@ Operational guidance:
   polling is frequent.
 \item Avoid over-aggressive dashboard refresh intervals in production ---
   repeated window reads produce repeated audit events.
-\item Treat \texttt{admin\_audit} as machine-readable output; parse the JSON
+\item Treat \code{admin\_audit} as machine-readable output; parse the JSON
   payload, do not depend on free-form message text.
 \end{itemize}
 
@@ -95,13 +97,13 @@ Emitted for WebSocket lifecycle events:
 \item Closes
 \end{itemize}
 
-Configurable via \texttt{ARCHIMESH\_AUDIT\_WEBSOCKET\_ACTIONS} (comma-separated
+Configurable via \code{ARCHIMESH\_AUDIT\_WEBSOCKET\_ACTIONS} (comma-separated
 action names). Set to an empty value to disable WebSocket audit entirely.
 
-Set \texttt{ARCHIMESH\_AUDIT\_WEBSOCKET\_VERBOSE=true} to also emit
-\texttt{WebSocketMessageAccepted} events for accepted
-\texttt{SubmitOps}, \texttt{AcquireLock}, \texttt{ReleaseLock} and
-\texttt{Presence} messages.
+Set \code{ARCHIMESH\_AUDIT\_WEBSOCKET\_VERBOSE=true} to also emit
+\code{WebSocketMessageAccepted} events for accepted
+\code{SubmitOps}, \code{AcquireLock}, \code{ReleaseLock} and
+\code{Presence} messages.
 
 \subsection{Supervision checklist}
 
@@ -112,12 +114,17 @@ Regular operational supervision tasks:
   not submitting) or integrity issues.
 \item Check the sessions page for unexpected disconnects or abandoned
   sessions.
-\item Check the operations page for repeated \texttt{SubmitOpsRejected*}
+\item Check the operations page for repeated \code{SubmitOpsRejected*}
   events --- these indicate client problems.
 \item Check the audit page for unauthorized access attempts.
 \item Monitor Neo4j disk usage --- op-log and materialized state grow with
-  model activity.
+  model activity. Payload pruning retains receipts and all CRDT metadata.
+\item Inspect the latest checkpoint and preview the selected retention policy
+  before pruning. Archive full history before the first checkpoint if required.
+\item If scheduled maintenance is enabled, review its result/failure logs,
+  checkpoint age and retained checkpoint count. Configuration is documented
+  in Section~\ref{sec:ScheduledMaintenance}.
 \item Monitor Kafka topic sizes and consumer lag.
-\item Periodically run \texttt{GET /admin/models/\{modelId\}/integrity} and
+\item Periodically run \code{GET /admin/models/\{modelId\}/integrity} and
   check for orphan nodes or missing references.
 \end{itemize}

@@ -1,0 +1,20 @@
+flowchart TB
+    A["Archi clients\nEMF model + Archimesh plugin"]
+    U["Browser\nSvelte admin UI"]
+    subgraph Server["One authoritative Quarkus server"]
+      API["WebSocket + REST endpoints\nIdentity and authorization"]
+      S["Collaboration service\nValidation, revisions, locks, retry deduplication"]
+      D["Commit delivery\nPersisted publication retry"]
+      M["Optional maintenance\nCheckpoint, prune, retain"]
+      API <--> S
+      S --> D
+    end
+    DB[("Neo4j\nGraph, checkpoints, receipts, tail,\nclocks, tombstones, tags, ACLs")]
+    K[("Kafka\nPer-model ops, locks, presence")]
+    A <-->|"WebSocket + discovery HTTP"| API
+    U <-->|"Admin REST"| API
+    S <-->|"Atomic commit and checkout"| DB
+    D <-->|"Pending batches / publication flags"| DB
+    M <-->|"Serialized maintenance"| S
+    D -->|"Publish ops"| K
+    K -->|"Consumer to session fan-out"| API

@@ -1,0 +1,8 @@
+flowchart TB
+    J["Join registered model\nAuthorize and resolve ref"] --> T{"Tagged ref?"}
+    T -->|"Yes"| TS["Stored tag snapshot\nRead-only checkout"]
+    T -->|"No: HEAD"| D{"Trusted revision > 0, at or below HEAD,\nand complete delta window?"}
+    D -->|"No: cold, pruned, missing, or ahead"| S["Current snapshot\nValues, clocks and tombstones"]
+    D -->|"Yes"| Delta["CheckoutDelta\nComplete accepted batches"]
+    S --> Ready["Apply under remote-apply guard\nFinish checkout, then drain FIFO outbox"]
+    Delta --> Ready

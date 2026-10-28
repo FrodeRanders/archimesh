@@ -153,6 +153,6 @@ These scripts are the supported release gate entrypoints. [The sanity checklist]
 | [neo4j/](neo4j/graph-model.md) | Graph model and [database constraints/indexes](neo4j/schema.cypher). |
 | [kafka/](kafka/kafka.md) | Topic naming and partitioning guidance. |
 | [scripts/](scripts/) | Development, packaging, installation, and validation commands. |
-| [docs/manual/](docs/manual/archimesh-manual.pdf) | Longer project manual and its LaTeX source. |
+| [docs/manual/](docs/manual/archimesh-manual.pdf) | Illustrated project manual, LaTeX/Mermaid sources, and [build instructions](docs/manual/README.md). |
 
 This project was created using Codex, but the process has been highly iterative with a lot of trials, fails and sequential human decisions. I would not have been able to make progress like this without my Codex "team", but I have been along the whole trip.

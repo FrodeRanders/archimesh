@@ -12,17 +12,17 @@ Several endpoints help diagnose problems without restarting the server:
 \toprule
 Endpoint & Purpose \\
 \midrule
-\texttt{GET /admin/overview} & Check which models exist and their health.
+\code{GET /admin/overview} & Check which models exist and their health.
   Look for stale head revisions or integrity warnings. \\
-\texttt{GET /admin/models/\{modelId\}/status} & Detailed model status:
+\code{GET /admin/models/\{modelId\}/status} & Detailed model status:
   counts, revision, consistency. \\
-\texttt{GET /admin/models/\{modelId\}/integrity} & Structural integrity:
+\code{GET /admin/models/\{modelId\}/integrity} & Structural integrity:
   missing references, orphan nodes. \\
-\texttt{GET /admin/auth/diagnostics} & Authorization troubleshooting:
+\code{GET /admin/auth/diagnostics} & Authorization troubleshooting:
   resolved identity, roles, mode. \\
-\texttt{GET /admin/sessions} & Active WebSocket sessions across all
+\code{GET /admin/sessions} & Active WebSocket sessions across all
   models. Check for stale or abandoned sessions. \\
-\texttt{GET /admin/audit/config} & Current audit configuration. \\
+\code{GET /admin/audit/config} & Current audit configuration. \\
 \bottomrule
 \end{longtable}
 
@@ -35,13 +35,13 @@ Endpoint & Purpose \\
 \item[Possible causes]
   \begin{itemize}
   \item Server is not running. Check with \\
-    \texttt{curl http://localhost:8081/admin/overview}.
+    \code{curl http://localhost:8081/admin/overview}.
   \item Wrong URL. The WebSocket URL should be \\
-    \texttt{ws://<host>:<port>} (not \texttt{http}).
+    \code{ws://<host>:<port>} (not \code{http}).
   \item Authorization failure. Check the auth token validity and role
-    assignments. Use \texttt{GET /admin/auth/diagnostics}.
+    assignments. Use \code{GET /admin/auth/diagnostics}.
   \item Model does not exist. Models must be registered via
-    \texttt{POST /admin/models/\{modelId\}} before clients can connect.
+    \code{POST /admin/models/\{modelId\}} before clients can connect.
   \item Network firewall blocking WebSocket upgrade.
   \end{itemize}
 \end{description}
@@ -49,23 +49,23 @@ Endpoint & Purpose \\
 \subsubsection{SubmitOps rejected}
 
 \begin{description}
-\item[Symptom] The server broadcasts \texttt{Error} messages to the client.
+\item[Symptom] The server replies with a correlated \code{Error} to the client.
   The status line shows a conflict banner.
 \item[Error codes]
   \begin{description}
-  \item[\texttt{REVISION\_AHEAD}] Client's \texttt{baseRevision} exceeds
+  \item[\code{REVISION\_AHEAD}] Client's \code{baseRevision} exceeds
     server head. The client is ahead of the server --- this usually means
     the client missed a reconnect after a server state change. Solution: the
-    client should disconnect and reconnect (the server signals this by
-    broadcasting the error to all sessions).
-  \item[\texttt{PRECONDITION\_FAILED}] A referenced entity does not exist.
+    client should resynchronize with the server. The rejection is sent to
+    the submitting session and identifies its batch where available.
+  \item[\code{PRECONDITION\_FAILED}] A referenced entity does not exist.
     The op references an element, relationship, view, view object or
     connection that is not in the materialized graph and was not created
     earlier in the same batch. Common causes: deleting an entity on one
     client while another client edits a diagram object representing it;
     submitting a connection create before the relationship is committed.
     The conflicting outbox entry is dropped and surfaced in the UI.
-  \item[\texttt{LOCK\_CONFLICT}] Another client holds a notation lock on
+  \item[\code{LOCK\_CONFLICT}] Another client holds a notation lock on
     one of the targets. The client should retry after releasing and
     re-acquiring the lock. The conflicting outbox entry is dropped.
   \end{description}
@@ -78,19 +78,19 @@ Endpoint & Purpose \\
 \item[Cause] Bug in the apply path, manual Neo4j modification or failed
   partial writes.
 \item[Solution] Run a rebuild: \\
-  \texttt{curl -s -X POST http://localhost:8081/models/demo/rebuild}
+  \code{curl -s -X POST http://localhost:8081/models/demo/rebuild}
 \item[Verification] After rebuild, run integrity check again and verify
-  \texttt{issues} is empty.
+  \code{issues} is empty.
 \end{description}
 
 \subsubsection{Neo4j connection failure}
 
 \begin{description}
 \item[Symptom] Server logs show Neo4j connection errors. All operations fail.
-\item[Check] Is Neo4j running? \texttt{docker compose ps neo4j}. Check the
+\item[Check] Is Neo4j running? \code{docker compose ps neo4j}. Check the
   Neo4j browser at \url{http://localhost:7474}.
-\item[Check] Are credentials correct? Verify \texttt{NEO4J\_URI},
-  \texttt{NEO4J\_USER} and \texttt{NEO4J\_PASSWORD} match the running
+\item[Check] Are credentials correct? Verify \code{NEO4J\_URI},
+  \code{NEO4J\_USER} and \code{NEO4J\_PASSWORD} match the running
   instance.
 \item[Check] Is the Bolt port accessible? Default is 7687.
 \end{description}
@@ -100,14 +100,15 @@ Endpoint & Purpose \\
 \begin{description}
 \item[Symptom] Server logs show Kafka publish warnings. Other clients do not
   receive real-time updates from the submitter's client.
-\item[Impact] Submitting clients still receive \texttt{OpsAccepted} and can
-  continue editing. The server falls back to direct WebSocket broadcast for
-  \texttt{OpsBroadcast}, so clients on the same server instance still
-  receive updates.
-\item[Check] Is Kafka running? \texttt{docker compose ps kafka}. Check the
+\item[Impact] After a successful Neo4j commit, submitters can receive
+  \code{OpsAccepted} while other clients await fan-out. Pending payloads
+  remain durable and are retried in order after broker recovery or server
+  restart. A retry may duplicate a broadcast. Pruning cannot remove pending
+  publication payloads.
+\item[Check] Is Kafka running? \code{docker compose ps kafka}. Check the
   Kafka UI at \url{http://localhost:8080}.
 \item[Check] Do the required topics exist? Use \\
-  \texttt{docker compose exec kafka rpk topic list --brokers localhost:9092}.
+  \code{docker compose exec kafka rpk topic list --brokers localhost:9092}.
 \end{description}
 
 \subsubsection{Outbox filling up}
@@ -116,8 +117,8 @@ Endpoint & Purpose \\
 \item[Symptom] The Archi status line shows "Outbox near capacity". Local
   edits are being queued because the client is disconnected or the
   connection is flapping.
-\item[Impact] When the outbox reaches 1000 entries, the oldest entries are
-  silently dropped. The warning fires at 800 entries (80\%).
+\item[Impact] At 1000 entries, new enqueue is rejected and existing
+  uncommitted work is preserved. The warning fires at 800 entries (80\%).
 \item[Solution] Reconnect to the server so the outbox can drain. If
   connectivity is persistently poor, work in smaller edit batches and
   reconnect frequently.
@@ -128,10 +129,10 @@ Endpoint & Purpose \\
 \subsubsection{Cannot overwrite a model}
 
 \begin{description}
-\item[Symptom] Import with \texttt{?overwrite=true} returns 409.
+\item[Symptom] Import with \code{?overwrite=true} returns 409.
 \item[Cause] Active sessions exist on the target model.
 \item[Solution] Disconnect all clients from the model, verify with
-  \texttt{GET /admin/sessions}, then retry. If a session is stuck, force
+  \code{GET /admin/sessions}, then retry. If a session is stuck, force
   delete the model and re-import.
 \end{description}
 
@@ -143,16 +144,16 @@ The server emits structured logs. Key log categories:
 \toprule
 Logger & Content \\
 \midrule
-\texttt{org.gautelis.archimesh} & Application-level events: submit, accept,
+\code{org.gautelis.archimesh} & Application-level events: submit, accept,
   reject, join, disconnect, rebuild, compact, export, import, tags. \\
-\texttt{org.apache.kafka} & Kafka client logs (WARN by default). \\
-\texttt{admin\_audit} (INFO) & Admin API access audit events. \\
-\texttt{ws\_audit} (INFO) & WebSocket lifecycle audit events. \\
+\code{org.apache.kafka} & Kafka client logs (WARN by default). \\
+\code{admin\_audit} (INFO) & Admin API access audit events. \\
+\code{ws\_audit} (INFO) & WebSocket lifecycle audit events. \\
 \bottomrule
 \end{longtable}
 
-Set \texttt{ARCHIMESH\_LOG\_LEVEL=DEBUG} for detailed flow tracing including
-op-level detail. Note that DEBUG logging of \texttt{OpsBroadcast} messages
+Set \code{ARCHIMESH\_LOG\_LEVEL=DEBUG} for detailed flow tracing including
+op-level detail. Note that DEBUG logging of \code{OpsBroadcast} messages
 can produce very large log volumes on active models.
 
 Log format:
@@ -170,19 +171,46 @@ The client plugin writes to the Archi workspace log
 (\filepath{\textasciitilde/Archi/workspace/.metadata/.log}). Search for:
 
 \begin{itemize}
-\item \texttt{archimesh} --- all plugin log entries
-\item \texttt{Connected archimesh} --- successful connections
-\item \texttt{SubmitOps received} --- server acknowledging submits
-\item \texttt{Queued SubmitOps} --- entries moved to outbox
-\item \texttt{Outbox full} --- outbox dropping entries
-\item \texttt{Dropping stale} --- conflict resolution dropping an entry
-\item \texttt{Error stopping Archimesh} --- shutdown errors
+\item \code{archimesh} --- all plugin log entries
+\item \code{Connected archimesh} --- successful connections
+\item \code{SubmitOps received} --- server acknowledging submits
+\item \code{Queued SubmitOps} --- entries moved to outbox
+\item \code{Outbox full} --- capacity reached; existing entries preserved
+\item \code{Dropping stale} --- conflict resolution dropping an entry
+\item \code{Error stopping Archimesh} --- shutdown errors
 \end{itemize}
 
-The \texttt{scripts/check-archimesh-sanity.sh} script scans Archi workspace
+The \code{scripts/check-archimesh-sanity.sh} script scans Archi workspace
 logs for critical sync issues, integrity warnings and connection errors.
 
 \subsection{Recovery procedures}
+
+\subsubsection{Pruning makes no progress}
+
+Inspect the compact response's \code{note}, \code{checkpointRevision},
+\code{watermarkRevision} and \code{eligibleBatchCount}. With no checkpoint,
+all payloads remain. A recent-revision retention window can legitimately
+leave no whole eligible batch. The first unpublished or unclassified legacy
+batch blocks its own payload and every later one; restore Kafka delivery
+before retrying. Head/commit mismatch disables pruning.
+
+\subsubsection{Checkpoint or recovery coverage rejected}
+
+A damaged checksum, unsupported raw state, missing receipt interval or
+incomplete recovery tail is rejected. Do not bypass validation by clearing
+merge metadata or changing publication flags. Restore a known-good export or
+database backup. Data removed by an older server before any recovery checkpoint
+cannot be reconstructed from a partial log. Rebuild validates recovery data
+before replacement and rolls back transaction failures.
+
+\subsubsection{Scheduled maintenance does not run}
+
+It is disabled by default. Verify
+\code{ARCHIMESH\_CHECKPOINT\_MAINTENANCE\_ENABLED}, the interval and revision
+threshold, and the server's writer lease. The first pass waits one interval;
+large catalogs rotate across passes. Search for \code{Checkpoint maintenance}
+logs. Model-specific failures are isolated; later phases can be deferred even
+if earlier safe phases committed. See Section~\ref{sec:ScheduledMaintenance}.
 
 \subsubsection{Server restart}
 
@@ -193,7 +221,7 @@ If the server is restarted:
   "Disconnected" in the status line.
 \item Client outboxes start queuing local edits.
 \item When the server is back up, clients must manually reconnect.
-\item On reconnect, the client sends a \texttt{Join} with its cached
+\item On reconnect, the client sends a \code{Join} with its cached
   revision. The server sends a delta (if the revision gap is within the
   op-log window) or a full snapshot.
 \item The outbox drains automatically after reconnect and revision hints
@@ -206,13 +234,13 @@ If the Neo4j database is lost or irrecoverably corrupted:
 
 \begin{enumerate}
 \item Restore from the most recent export package using
-  \texttt{POST /admin/models/import}.
-\item If no export exists, the model timeline is lost. Re-register the
-  model and let clients push their local state as new submit batches.
-\item Clients with cached models can reconnect after server restore;
-  however, the server will have no op-log history, so the client must
-  discard its cache and cold-start with a snapshot from the server (which
-  will be empty for a newly registered model).
+  \code{POST /admin/models/import}.
+\item If no database backup or export exists, server checkpoints are lost
+  with that database. Preserve any local Archi files before reconnecting;
+  they cannot reconstruct the old accepted timeline or receipts.
+\item After restoring the server model, clients reconnect and receive a
+  complete delta or snapshot. A new empty model does not recover the old
+  timeline automatically from a client cache.
 \end{enumerate}
 
 \subsubsection{Full system recovery}
@@ -220,8 +248,8 @@ If the Neo4j database is lost or irrecoverably corrupted:
 In a disaster scenario where both Neo4j and the server are lost:
 
 \begin{enumerate}
-\item Restore infrastructure: \texttt{docker compose up -d}.
-\item Apply Neo4j schema: \texttt{docker compose exec -T neo4j cypher-shell ... < neo4j/schema.cypher}.
+\item Restore infrastructure: \code{docker compose up -d}.
+\item Apply Neo4j schema: \code{docker compose exec -T neo4j cypher-shell ... < neo4j/schema.cypher}.
 \item Start the server.
 \item Import the most recent model exports.
 \item Clients reconnect and receive snapshots from the restored server.
@@ -231,7 +259,7 @@ In a disaster scenario where both Neo4j and the server are lost:
 
 \begin{itemize}
 \item \textbf{Neo4j heap:} The materialized graph and op-log grow with model
-  activity. Monitor Neo4j heap usage and increase \texttt{NEO4J\_dbms\_memory\_heap\_max\_\_size}
+  activity. Monitor Neo4j heap usage and increase \code{NEO4J\_dbms\_memory\_heap\_max\_\_size}
   as needed.
 \item \textbf{Kafka retention:} Long Kafka retention on ops topics consumes
   disk. If rebuild is done from Neo4j (not Kafka), set shorter retention
@@ -242,6 +270,6 @@ In a disaster scenario where both Neo4j and the server are lost:
 \item \textbf{Poll interval:} The admin UI polls the server for status
   updates. Set the poll interval to 0 to disable auto-refresh if dashboard
   traffic is a concern.
-\item \textbf{Consistency checks:} Keep \texttt{ARCHIMESH\_CONSISTENCY\_CHECK}
+\item \textbf{Consistency checks:} Keep \code{ARCHIMESH\_CONSISTENCY\_CHECK}
   disabled in production unless debugging. It adds latency to every submit.
 \end{itemize}

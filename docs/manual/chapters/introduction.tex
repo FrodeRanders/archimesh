@@ -21,7 +21,7 @@ Archimesh provides five core capabilities:
   revision order so every client converges on the same model state.
 
 \item \textbf{Authoritative model storage.} Neo4j stores both the current
-  materialized model graph and the append-only operation log. The server is the
+  materialized graph, accepted history, recovery checkpoints and merge metadata. The server is the
   source of truth; local Archi files are treated as cache projections.
 
 \item \textbf{CRDT-informed merge.} The server applies Last-Writer-Wins (LWW)
@@ -32,7 +32,8 @@ Archimesh provides five core capabilities:
 \item \textbf{Offline resilience.} When a client loses its connection, local
   edits are queued in a bounded persistent outbox and replayed in FIFO order
   after reconnect. Replayed ops are rebased to the latest server revision before
-  send, and conflicting stale entries are deterministically dropped.
+  send. Transport retries preserve pending intent; correlated semantic/lock
+  conflicts are surfaced to the user and trigger projection recovery.
 
 \item \textbf{Operational visibility.} The admin API and admin UI expose model
   catalog, active sessions, recent activity, ACL management, audit trails,
@@ -75,16 +76,16 @@ Archimesh provides five core capabilities:
 \subsection{Terminology}
 
 \begin{description}
-\item[Model] A named linear revision timeline. One \texttt{HEAD}, zero or more
-  immutable tags, no branches. Identified by a stable \texttt{modelId}.
+\item[Model] A named linear revision timeline. One \code{HEAD}, zero or more
+  immutable tags, no branches. Identified by a stable \code{modelId}.
 \item[Operation (op)] A single Archimesh change: create, update or delete of an
   element, relationship, view, view object, connection, folder or property.
 \item[Op batch] A client-submitted group of operations sharing one
-  \texttt{opBatchId} for idempotency. The server assigns one contiguous
+  \code{opBatchId} for idempotency. The server assigns one contiguous
   revision range to the batch.
 \item[Revision] A monotonically increasing timeline position. Each op in a
   batch consumes one revision. The revision range is the authoritative ordering.
-\item[HEAD] The current tip of the model timeline. Only \texttt{HEAD} is
+\item[HEAD] The current tip of the model timeline. Only \code{HEAD} is
   writable; tagged revisions are read-only.
 \item[Tag] An immutable named pointer to a historical revision, stored with a
   snapshot of the model state at that point.
@@ -92,6 +93,11 @@ Archimesh provides five core capabilities:
   the op-log. Used for fast joins, exports and admin inspection.
 \item[Outbox] A bounded persistent FIFO queue on the client side that holds
   local edits while disconnected from the server.
+\item[Checkpoint] An immutable, checksummed raw projection at committed
+  revision C, including clocks, memberships and tombstones. Recovery restores
+  this base and replays the complete operation tail C+1 through HEAD.
+\item[Acceptance receipt] Retained batch ID and original revision range,
+  preserving retry deduplication after its operation payload has been pruned.
 \item[Compaction] Admin-controlled pruning of checkpoint-covered, published
   operation payloads below a retention watermark. Acceptance receipts and all
   merge metadata are retained for recovery and stale-write safety.

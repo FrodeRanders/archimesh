@@ -2,7 +2,9 @@
 \label{sec:Management}
 
 This chapter covers system management tasks: creating and deleting models,
-compactions, exports, imports, rebuilds, tags and integrity checks.
+checkpoints, payload pruning, scheduled maintenance, exports, imports,
+rebuilds, tags and integrity checks. API examples assume local development;
+add the identity headers or bearer token required by your deployment.
 
 \subsection{Model lifecycle}
 
@@ -18,8 +20,7 @@ Optionally provide a display name:
 
 \begin{lstlisting}[language=bash,caption={Register with name}]
 curl -s -X POST http://localhost:8081/admin/models/demo \
-  -H "Content-Type: application/json" \
-  -d '{"modelName":"Demo Model"}' | jq .
+  --get --data-urlencode 'modelName=Demo Model' | jq .
 \end{lstlisting}
 
 The creating user (resolved from the current identity) is seeded as the
@@ -37,7 +38,37 @@ Deletion is refused while the model has active sessions. To override:
 curl -s -X DELETE "http://localhost:8081/admin/models/demo?force=true" | jq .
 \end{lstlisting}
 
-\subsection{Compaction}
+\subsection{Recovery checkpoints}
+\label{sec:Checkpoints}
+
+A checkpoint is a durable recovery base at a committed revision C. It captures
+the raw graph projection: elements, relationships, folders, views, diagram
+objects, connections, their edges and properties, all field and membership
+clocks, property clocks, and tombstones. Orphan safety metadata is included.
+Catalog metadata, ACLs, tags and acceptance receipts are stored separately.
+
+The format \code{archimesh-checkpoint-v1} records model ID, revision,
+creation timestamp, raw state and a SHA-256 checksum over canonical JSON.
+Creation verifies that head and committed history agree and that receipt and
+recovery coverage are complete. Reading or restoring verifies checksum, scope,
+node identities, supported property types, labels and edge endpoints.
+Unsupported graph state fails creation before it can authorize pruning.
+The checksum detects accidental changes; it is not an authenticity signature.
+
+\begin{lstlisting}[language=bash,caption={Create and inspect a checkpoint}]
+curl -s -X POST http://localhost:8081/admin/models/demo/checkpoints | jq .
+curl -s http://localhost:8081/admin/models/demo/checkpoints/latest | jq .
+\end{lstlisting}
+
+Creation and inspection require model-admin access when authorization is
+enabled; global admins also have access. Inspection returns 404 when no
+checkpoint exists. Creating again at the same model/revision returns the
+existing immutable checkpoint. Tags serve a different purpose: they name
+historical client-facing snapshots and remain readable after payload pruning.
+
+\manualfigure{checkpoint-recovery}{Recovery from a checkpoint and complete tail; receipts preserve retry identity.}{checkpoint-recovery}
+
+\subsection{Compaction and payload pruning}
 
 Compaction removes checkpoint-covered, published operation payloads below a
 configurable retention watermark. Acceptance receipts, field and membership
@@ -46,42 +77,113 @@ clocks, property clocks (including orphans), and tombstones remain.
 \subsubsection{Running compaction}
 
 \begin{lstlisting}[language=bash,caption={Checkpoint, preview, and prune a model}]
+# Archive full history before the first checkpoint if required.
+curl -s http://localhost:8081/admin/models/demo/export -o demo-archive.json
 curl -s -X POST http://localhost:8081/admin/models/demo/checkpoints
+curl -s http://localhost:8081/admin/models/demo/checkpoints/latest
 curl -s -X POST \
   'http://localhost:8081/admin/models/demo/compact?retainRevisions=1000&dryRun=true'
 curl -s -X POST \
   'http://localhost:8081/admin/models/demo/compact?retainRevisions=1000'
 \end{lstlisting}
 
-The response reports \texttt{checkpointRevision}, \texttt{watermarkRevision},
-\texttt{eligibleBatchCount} before the run, \texttt{prunedBatchCount},
-\texttt{deletedOpCount}, \texttt{prunedThroughRevision}, \texttt{dryRun}, and
-an explanatory \texttt{note}. Preview returns zero deletion counts.
+The response reports \code{checkpointRevision}, \code{watermarkRevision},
+\code{eligibleBatchCount} before the run, \code{prunedBatchCount},
+\code{deletedOpCount}, \code{prunedThroughRevision}, \code{dryRun}, and
+an explanatory \code{note}. Preview returns zero deletion counts.
+\code{eligibleBatchCount} is measured before the run. Repeat applied calls
+until it reaches zero; a run can finish its selected batches while a larger
+backlog still remains.
+
+\manualfigure{pruning-safety}{Payload pruning gates, publication fencing and retained safety state.}{pruning-safety}
 
 \subsubsection{Compaction safety}
 
 \begin{itemize}
 \item Without a verified checkpoint, no payloads are removed.
 \item Only whole batches ending at or below both the checkpoint and
-  \texttt{latestCommitRevision - retainRevisions} are eligible.
+  \code{latestCommitRevision - retainRevisions} are eligible.
 \item The first unpublished (or unclassified legacy) batch fences later pruning.
   Head/commit disagreement disables pruning.
-\item Each applied call handles at most \texttt{app.compaction.max-batches-per-run}
+\item Each applied call handles at most \code{app.compaction.max-batches-per-run}
   batches (default 100). Repeat until no eligible batches remain.
 \item Commit acceptance receipts remain; only Op nodes and stored batch payloads
   are removed. All clocks and tombstones remain for stale-write/delete safety.
-\item Archive full history before pruning if individual old operations are needed.
+\item Archive full history before creating the first checkpoint if individual
+  old operations are needed: checkpointed exports omit the covered prefix
+  payloads even if those payloads have not yet been pruned.
   Checkpoints share the model database and do not replace off-system backups.
 \end{itemize}
 
 Checkpoint capture and recovery use memory proportional to the model and run
-under the existing authoritative service serialization. Optional scheduled
-maintenance is disabled by default. It rotates through bounded model sets,
-creates checkpoints after a revision threshold, prunes covered payloads, and
-retains the newest configured checkpoint count (at least one). Cleanup verifies
-the newest base and complete tail first. Receipts and CRDT metadata remain;
-metadata garbage collection is not implemented. See
-\filepath{docs/checkpoint-pruning.md} for configuration and archive requirements.
+under the existing service serialization; large models can pause edits.
+The deletion limit bounds batches, not bytes or transaction duration. A large
+single batch can still be expensive. Receipts and all CRDT metadata remain;
+metadata garbage collection is not implemented.
+
+\subsection{Optional scheduled maintenance}
+\label{sec:ScheduledMaintenance}
+
+Scheduled maintenance is disabled by default. Enabling it applies the policy
+to all registered models and does not create an external archive. The first
+pass starts after the configured interval. One background thread rotates
+through a bounded set of models from the sorted catalog, resuming from durable
+model state on subsequent passes. Rotation restarts from the first model
+after server restart.
+
+\begin{longtable}{p{43mm}p{111mm}}
+\toprule
+Property suffix & Environment variable and default \\
+\midrule
+\endhead
+\code{enabled} & \code{ARCHIMESH\_CHECKPOINT\_MAINTENANCE\_ENABLED} = \code{false} \\
+\code{interval-seconds} & \code{ARCHIMESH\_CHECKPOINT\_INTERVAL\_SECONDS} = \code{300} \\
+\code{min-revisions} & \code{ARCHIMESH\_CHECKPOINT\_MIN\_REVISIONS} = \code{1000} \\
+\code{retain-checkpoints} & \code{ARCHIMESH\_CHECKPOINT\_RETAIN\_COUNT} = \code{2} \\
+\code{models-per-run} & \code{ARCHIMESH\_CHECKPOINT\_MODELS\_PER\_RUN} = \code{10} \\
+\bottomrule
+\end{longtable}
+
+The property prefix for this table is
+\code{app.checkpoints.maintenance.}. The interval is a delay in seconds
+between completed passes. The revision threshold counts accepted revisions
+since the latest checkpoint, or since revision zero for the first one.
+Empty models are not automatically checkpointed. Models below the threshold
+can still finish pruning if they already have a checkpoint.
+
+Payload retention uses \code{app.compaction.retain-revisions}
+(\code{ARCHIMESH\_COMPACTION\_RETAIN\_REVISIONS}, default 1000).
+The per-model pruning limit is \code{app.compaction.max-batches-per-run}
+(\code{ARCHIMESH\_COMPACTION\_MAX\_BATCHES}, default 100). Enabled scheduler
+policy values must be positive; revision retention may be zero.
+
+\begin{lstlisting}[language=bash,caption={Example opt-in policy, exported before server startup}]
+export ARCHIMESH_CHECKPOINT_MAINTENANCE_ENABLED=true
+export ARCHIMESH_CHECKPOINT_INTERVAL_SECONDS=300
+export ARCHIMESH_CHECKPOINT_MIN_REVISIONS=1000
+export ARCHIMESH_CHECKPOINT_RETAIN_COUNT=2
+export ARCHIMESH_CHECKPOINT_MODELS_PER_RUN=10
+export ARCHIMESH_COMPACTION_RETAIN_REVISIONS=1000
+export ARCHIMESH_COMPACTION_MAX_BATCHES=100
+\end{lstlisting}
+
+\manualfigure{maintenance}{Optional per-model maintenance phases and policy gates.}{maintenance}
+
+Each visit takes the service's timeline serialization and checks the writer
+lease. It optionally creates a checkpoint, prunes one bounded payload set,
+then removes up to 100 older checkpoints while retaining the newest configured
+count. Cleanup verifies the latest checkpoint, contiguous acceptance receipts
+and complete tail first. The keep count must be at least one. Manual
+checkpoints participate in the same retention policy when scheduling is enabled.
+
+These phases commit separately. A later failure leaves earlier safe work
+committed; the next visit resumes. Individual model failures are logged and do
+not starve other models. Lease loss stops processing further models, and the
+database mutations also check the lease. Significant results appear in server
+logs and model activity. The worker stops on shutdown. Without scheduling,
+older checkpoints accumulate; acceptance receipts and merge metadata always
+accumulate in the current implementation. See
+\filepath{docs/checkpoint-pruning.md} for the corresponding Markdown runbook.
 
 \subsection{Export}
 
@@ -95,18 +197,18 @@ curl -s http://localhost:8081/admin/models/demo/export | jq .
 The export package contains:
 
 \begin{description}
-\item[\texttt{format}] Package format identifier (\texttt{archi-model-export-v1} or \texttt{archi-model-export-v2}).
-\item[\texttt{exportedAt}] UTC timestamp.
-\item[\texttt{model}] Model catalog metadata (modelId, modelName, headRevision).
-\item[\texttt{accessControl}] Per-model ACL snapshot (optional).
-\item[\texttt{snapshot}] Materialized current state at HEAD. Contains
+\item[\code{format}] Package format identifier (\code{archi-model-export-v1} or \code{archi-model-export-v2}).
+\item[\code{exportedAt}] UTC timestamp.
+\item[\code{model}] Model catalog metadata (modelId, modelName, headRevision).
+\item[\code{accessControl}] Per-model ACL snapshot (optional).
+\item[\code{snapshot}] Materialized current state at HEAD. Contains
   folders, elements, relationships, views, view objects, connections,
   folder memberships and view object child members.
-\item[\texttt{checkpoint}, \texttt{receipts}] V2 recovery state and prefix acceptance ranges.
-\item[\texttt{opBatches}] Ordered complete history (v1) or checkpoint tail (v2). Each batch
+\item[\code{checkpoint}, \code{receipts}] V2 recovery state and prefix acceptance ranges.
+\item[\code{opBatches}] Ordered complete history (v1) or checkpoint tail (v2). Each batch
   contains modelId, opBatchId, baseRevision, assignedRevisionRange,
   timestamp and the ops array with normalized causal metadata.
-\item[\texttt{tags}] Immutable tags with their historical snapshots.
+\item[\code{tags}] Immutable tags with their historical snapshots.
 \end{description}
 
 The package format is documented in detail in \filepath{server/EXPORT\_FORMAT.md}.
@@ -137,14 +239,14 @@ curl -s -X POST http://localhost:8081/admin/models/import \
 \subsubsection{Import behavior}
 
 \begin{itemize}
-\item The \texttt{format} field must be \texttt{archi-model-export-v1} or \texttt{archi-model-export-v2}.
-\item \texttt{model.modelId} must be present.
-\item Existing models are rejected unless \texttt{?overwrite=true}.
+\item The \code{format} field must be \code{archi-model-export-v1} or \code{archi-model-export-v2}.
+\item \code{model.modelId} must be present.
+\item Existing models are rejected unless \code{?overwrite=true}.
 \item Overwrite is rejected if the target model has active sessions.
 \item V2 overwrite restores the destination in one transaction; failure rolls it back.
 \item ACLs are restored if present in the package.
-\item Op batches are restored first, then head revision is set from the
-  imported history.
+\item V1 replays complete history; v2 restores the raw checkpoint, prefix
+  receipts and complete tail. The resulting head matches the exported head.
 \item Tags are restored after the model timeline.
 \end{itemize}
 
@@ -162,6 +264,13 @@ V1 requires complete op-log history for non-empty models. V2 requires a verified
 checkpoint at C, acceptance receipts covering 1..C, and a complete tail
 C+1..HEAD. The tail can be empty when C equals HEAD. Tags retain their stored
 historical snapshots independently of pruned operations.
+
+To restore v2 under another model ID, change only \code{model.modelId}.
+The importer verifies the original checkpoint, rebinds model-scoped state,
+tail batches and tag snapshots, and computes the destination checkpoint's
+checksum. Do not manually edit checkpoint state or its checksum. V2 packages
+preserve recovery state and timeline identity; they omit individual operation
+payloads at or before C.
 
 \subsection{Rebuild}
 
@@ -199,8 +308,8 @@ capture known-good states for later reference or checkout.
 
 \begin{lstlisting}[language=bash,caption={Create a tag}]
 curl -s -X POST http://localhost:8081/admin/models/demo/tags \
-  -H "Content-Type: application/json" \
-  -d '{"tagName":"v1.2","description":"Sprint 12 baseline"}' | jq .
+  --get --data-urlencode 'tagName=v1.2' \
+  --data-urlencode 'description=Sprint 12 baseline' | jq .
 \end{lstlisting}
 
 The tag captures the current HEAD revision and stores a snapshot of the
@@ -209,28 +318,28 @@ materialized state at that point.
 \subsubsection{Reading at a tag}
 
 Clients can join at a tagged revision by specifying the tag name as the
-\texttt{ref} in the \texttt{Join} message. The snapshot endpoint also accepts
-\texttt{?ref=<tagName>}:
+\code{ref} in the \code{Join} message. The snapshot endpoint also accepts
+\code{?ref=<tagName>}:
 
 \begin{lstlisting}[language=bash,caption={Read snapshot at tag}]
 curl -s "http://localhost:8081/models/demo/snapshot?ref=v1.2" | jq .
 \end{lstlisting}
 
 Tagged refs are read-only. Writes, locks and presence are only allowed on
-\texttt{HEAD}.
+\code{HEAD}.
 
 \subsubsection{Tag naming}
 
 Use descriptive names that remain meaningful outside the codebase:
 
 \begin{itemize}
-\item \texttt{v1.2} --- version numbers
-\item \texttt{milestone-3} --- project milestones
-\item \texttt{approved-2026-03-08} --- date-stamped approvals
+\item \code{v1.2} --- version numbers
+\item \code{milestone-3} --- project milestones
+\item \code{approved-2026-03-08} --- date-stamped approvals
 \end{itemize}
 
 Tag deletion is disabled by default. Re-enable it only with
-\texttt{app.tags.allow-delete=true} if you explicitly want mutable tag
+\code{app.tags.allow-delete=true} if you explicitly want mutable tag
 administration.
 
 \subsection{Integrity checks}
@@ -246,7 +355,7 @@ The response reports:
 
 \begin{itemize}
 \item Missing references: entities that reference ids not present in the
-  graph (e.g. a view object whose \texttt{representsId} points to a deleted
+  graph (e.g. a view object whose \code{representsId} points to a deleted
   element).
 \item Orphan nodes: materialized nodes not reachable from the model root.
 \item Dangling relationships: relationships where source or target element
@@ -255,15 +364,17 @@ The response reports:
 
 Integrity issues indicate either a bug in the apply path or manual Neo4j
 modifications. If issues are found, run a rebuild to reconstruct the
-materialized state from the op-log.
+materialized state from a verified checkpoint plus complete tail, or full log
+when no checkpoint exists. Invalid recovery coverage is rejected before
+projection replacement.
 
 \subsection{Consistency checks}
 
 Optional post-commit consistency checks can be enabled with
-\texttt{ARCHIMESH\_CONSISTENCY\_CHECK=true}. When enabled, the server runs
-a lightweight consistency verification after each \texttt{SubmitOps}
-commit, comparing the materialized state against the expected state derived
-from the op-log. Failures are logged at WARN level.
+\code{ARCHIMESH\_CONSISTENCY\_CHECK=true}. When enabled, the server runs
+a lightweight consistency verification after each \code{SubmitOps}
+commit, checking head alignment and referential integrity. This is not a full
+state comparison against a fresh replay. Failures are logged at WARN level.
 
 This is disabled by default because it adds latency to every submit.
 Enable it during debugging or after infrastructure changes.
@@ -297,10 +408,11 @@ curl -s http://localhost:8081/admin/models/demo/status | jq .
 The response includes:
 
 \begin{itemize}
-\item \texttt{modelId}, \texttt{modelName}
-\item \texttt{headRevision}
+\item \code{modelId}, \code{modelName}
+\item \code{headRevision}
 \item Element, relationship, view, folder, view object and connection counts
 \item Consistency check results
-\item Compaction status (last compaction timestamp, watermark, commits removed)
-\item Active session count
+\item Use the model window and checkpoint summary for maintenance activity;
+  pruning responses carry the actual watermark and payload deletion counts.
+\item Use the sessions endpoint for active session details.
 \end{itemize}

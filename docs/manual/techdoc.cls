@@ -84,7 +84,7 @@
 \RequirePackage[pdftex]{hyperref}
 % Paragraph layout
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{0.65\baselineskip plus 0.1\baselineskip minus 0.05\baselineskip}
+\setlength{\parskip}{0.5\baselineskip plus 0.1\baselineskip minus 0.05\baselineskip}
 \setlist[itemize]{itemsep=0.15\baselineskip,topsep=0.3\baselineskip,parsep=0pt,partopsep=0pt}
 \setlist[enumerate]{itemsep=0.15\baselineskip,topsep=0.3\baselineskip,parsep=0pt,partopsep=0pt}
 \setlist[description]{style=unboxed,leftmargin=0pt,labelsep=0.5em,itemsep=0.1\baselineskip,topsep=0.2\baselineskip,parsep=0pt,partopsep=0pt}
@@ -215,13 +215,13 @@
 % ---------------------------------------------------------------------------
 % --- FRONT PAGE
 % ---------------------------------------------------------------------------
-\newcommand{\mychaptertitlefont}{\fontseries{s}\fontsize{20}{24}\selectfont}
+\newcommand{\mychaptertitlefont}{\fontseries{m}\fontsize{20}{24}\selectfont}
 \newcommand{\mytitlefont}{\fontseries{b}\sc\fontsize{15}{24}\selectfont}
-\newcommand{\mysubtitlefont}{\fontseries{s}\fontsize{13}{16}\selectfont}
-\newcommand{\authorfont}{\fontseries{s}\fontsize{14}{14}\selectfont}
-\newcommand{\largefont}{\fontseries{s}\fontsize{18}{14}\selectfont}
-\newcommand{\bigfont}{\fontseries{s}\fontsize{23}{14}\selectfont}
-\newcommand{\biggerfont}{\fontseries{s}\fontsize{26}{22}\selectfont}
+\newcommand{\mysubtitlefont}{\fontseries{m}\fontsize{13}{16}\selectfont}
+\newcommand{\authorfont}{\fontseries{m}\fontsize{14}{14}\selectfont}
+\newcommand{\largefont}{\fontseries{m}\fontsize{18}{14}\selectfont}
+\newcommand{\bigfont}{\fontseries{m}\fontsize{23}{14}\selectfont}
+\newcommand{\biggerfont}{\fontseries{m}\fontsize{26}{22}\selectfont}
 
 \makeatletter
 \def\title#1{\gdef\@thetitle{#1}}

@@ -6,6 +6,26 @@
 \usepackage{booktabs}
 \usepackage{nameref}
 \usepackage{url}
+\usepackage{xurl}
+\usepackage{microtype}
+\usepackage{needspace}
+\usepackage[section]{placeins}
+
+% Break technical identifiers and endpoint paths inside narrow table cells.
+\DeclareRobustCommand{\code}[1]{\nolinkurl{#1}}
+\setlength{\tabcolsep}{5pt}
+\setlength{\emergencystretch}{1.5em}
+\newcommand{\manualfigure}[4][0.95\linewidth]{%
+    \begin{figure}[htbp]
+        \centering
+        \includegraphics[width=#1,height=0.76\textheight,keepaspectratio]{figures/#2.pdf}
+        \caption{#3}
+        \label{fig:#4}
+    \end{figure}%
+}
+\hypersetup{pdftitle={Archimesh Manual},pdfauthor={Frode Randers},
+    pdfsubject={Architecture, collaboration, checkpoint recovery and operations},
+    colorlinks=true,linkcolor=iptoMuted,urlcolor=iptoAccent,citecolor=iptoMuted}
 
 \definecolor{codegreen}{rgb}{0,0.6,0}
 \definecolor{codegray}{rgb}{0.5,0.5,0.5}
@@ -48,6 +68,8 @@
     \newpage
     \renewcommand\contentsname{Contents}
     \tableofcontents
+    \newpage
+    \listoffigures
     \newpage
 
     \input{chapters/introduction.tex}

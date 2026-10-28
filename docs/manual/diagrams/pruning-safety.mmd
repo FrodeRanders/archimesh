@@ -1,0 +1,8 @@
+flowchart TB
+    P["Preview or apply pruning"] --> V{"Verified checkpoint and\naligned head / commit horizon?"}
+    V -->|"No"| Keep["Keep all operation payloads"]
+    V -->|"Yes"| Select["Cutoff = min(checkpoint C, HEAD - retention)\nSelect whole batches up to configured limit\nStop before first unpublished or unclassified batch"]
+    Select --> Mode{"Preview only?"}
+    Mode -->|"Yes"| Report["Report eligibility\nNo model-data changes"]
+    Mode -->|"No"| Delete["Delete Op nodes and batchJson\nMark payloadPruned; persist progress"]
+    Delete --> Retain["Keep receipts, clocks, tombstones,\ntags and recovery checkpoint"]

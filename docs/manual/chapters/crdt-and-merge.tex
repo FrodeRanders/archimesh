@@ -8,7 +8,7 @@ explicit locks.
 
 \subsection{Causal identity}
 
-Every operation carries a \texttt{causal} object:
+Every operation carries a \code{causal} object:
 
 \begin{lstlisting}[caption={Causal metadata}]
 {
@@ -18,74 +18,74 @@ Every operation carries a \texttt{causal} object:
 }
 \end{lstlisting}
 
-If the client omits \texttt{causal}, the server fills it deterministically
+If the client omits \code{causal}, the server fills it deterministically
 from the assigned revision range. The comparison rule for Last-Writer-Wins:
 
 \begin{quote}
 \texttt{(lamportA,{} clientIdA)} wins over \texttt{(lamportB,{} clientIdB)} iff
-\texttt{lamportA > lamportB}, or \texttt{lamportA == lamportB} and
-\texttt{clientIdA >= clientIdB} (lexicographic).
+\code{lamportA > lamportB}, or \code{lamportA == lamportB} and
+\code{clientIdA >= clientIdB} (lexicographic).
 \end{quote}
 
 \subsection{Merge types by domain}
 
 \subsubsection{Semantic element fields}
 
-Fields: \texttt{name}, \texttt{documentation}.
+Fields: \code{name}, \code{documentation}.
 
 \begin{itemize}
 \item Type: LWW Register per field per element.
-\item Metadata: field clock map \texttt{elementId -> \{ field -> (lamport, clientId) \}}.
+\item Metadata: field clock map \code{elementId -> \{ field -> (lamport, clientId) \}}.
 \item Merge: apply incoming field if the incoming tuple wins the field clock;
   otherwise ignore.
 \end{itemize}
 
 \subsubsection{Relationship fields}
 
-Fields: \texttt{name}, \texttt{documentation}, \texttt{sourceId},
-\texttt{targetId}.
+Fields: \code{name}, \code{documentation}, \code{sourceId},
+\code{targetId}.
 
 Same LWW register semantics as elements, with per-field clocks stored on the
-\texttt{:Relationship} node.
+\code{:Relationship} node.
 
 \subsubsection{Diagram notation fields}
 
 View objects and connections use per-field LWW registers for:
 
 \begin{description}
-\item[View objects] \texttt{x}, \texttt{y}, \texttt{width}, \texttt{height},
-  \texttt{type}, \texttt{alpha}, \texttt{lineAlpha}, \texttt{lineWidth},
-  \texttt{lineStyle}, \texttt{textAlignment}, \texttt{textPosition},
-  \texttt{gradient}, \texttt{iconVisibleState},
-  \texttt{deriveElementLineColor}, \texttt{fillColor}, \texttt{lineColor},
-  \texttt{font}, \texttt{fontColor}, \texttt{iconColor},
-  \texttt{imagePath}, \texttt{imagePosition}, \texttt{name},
-  \texttt{documentation}.
-\item[Connections] \texttt{type}, \texttt{nameVisible},
-  \texttt{textAlignment}, \texttt{textPosition}, \texttt{lineWidth},
-  \texttt{name}, \texttt{lineColor}, \texttt{font}, \texttt{fontColor},
-  \texttt{documentation}, \texttt{bendpoints}.
+\item[View objects] \code{x}, \code{y}, \code{width}, \code{height},
+  \code{type}, \code{alpha}, \code{lineAlpha}, \code{lineWidth},
+  \code{lineStyle}, \code{textAlignment}, \code{textPosition},
+  \code{gradient}, \code{iconVisibleState},
+  \code{deriveElementLineColor}, \code{fillColor}, \code{lineColor},
+  \code{font}, \code{fontColor}, \code{iconColor},
+  \code{imagePath}, \code{imagePosition}, \code{name},
+  \code{documentation}.
+\item[Connections] \code{type}, \code{nameVisible},
+  \code{textAlignment}, \code{textPosition}, \code{lineWidth},
+  \code{name}, \code{lineColor}, \code{font}, \code{fontColor},
+  \code{documentation}, \code{bendpoints}.
 \end{description}
 
 Per-field notation clocks are stored as properties on the
-\texttt{:ViewObject} and \texttt{:Connection} nodes (e.g.
-\texttt{notation\_lamport\_x}, \texttt{notation\_clientId\_x}).
+\code{:ViewObject} and \code{:Connection} nodes (e.g.
+\code{notation\_lamport\_x}, \code{notation\_clientId\_x}).
 
 \subsubsection{View object child membership}
 
-Type: OR-set. Operations: \texttt{AddViewObjectChildMember},
-\texttt{RemoveViewObjectChildMember}.
+Type: OR-set. Operations: \code{AddViewObjectChildMember},
+\code{RemoveViewObjectChildMember}.
 
-Member clocks are stored via \texttt{:PropertyClock} nodes in the
-\texttt{VIEWOBJECT\_CHILD} namespace. Materialized as
-\texttt{(:ViewObject)-[:CHILD\_MEMBER]->(:ViewObject)} edges.
+Member clocks are stored via \code{:PropertyClock} nodes in the
+\code{VIEWOBJECT\_CHILD} namespace. Materialized as
+\code{(:ViewObject)-[:CHILD\_MEMBER]->(:ViewObject)} edges.
 
 \subsubsection{Property set membership}
 
-Type: OR-set. Operations: \texttt{AddPropertySetMember},
-\texttt{RemovePropertySetMember}.
+Type: OR-set. Operations: \code{AddPropertySetMember},
+\code{RemovePropertySetMember}.
 
-Member clocks are stored via \texttt{:PropertyClock} nodes.
+Member clocks are stored via \code{:PropertyClock} nodes.
 Materialized as canonical JSON string arrays in the snapshot/export output.
 
 \subsection{Delete semantics --- tombstones}
@@ -100,11 +100,11 @@ operation's causal clock:
 Rules:
 
 \begin{itemize}
-\item \texttt{Delete*} always records or updates the tombstone (even if the
+\item \code{Delete*} always records or updates the tombstone (even if the
   entity was already missing).
-\item Stale \texttt{Update*} or \texttt{Create*} (with a causal clock older
+\item Stale \code{Update*} or \code{Create*} (with a causal clock older
   than the tombstone) is ignored --- preventing resurrection.
-\item A newer \texttt{Create*} (with a causal clock that beats the tombstone)
+\item A newer \code{Create*} (with a causal clock that beats the tombstone)
   may clear the tombstone and recreate the entity.
 \end{itemize}
 
@@ -114,22 +114,22 @@ under the watermark but \emph{retained} for delete safety.
 \subsection{Notation field validation}
 
 The server validates notation field keys against a whitelist defined in
-\texttt{NotationMetadata}. Operations containing unknown notation keys are
-rejected with \texttt{PRECONDITION\_FAILED}. This prevents clients from
+\code{NotationMetadata}. Operations containing unknown notation keys are
+rejected with \code{PRECONDITION\_FAILED}. This prevents clients from
 emitting fields the server cannot merge deterministically.
 
 The whitelist covers all currently supported notation fields for view objects
 and connections. The notation inventory is kept in parity across:
 
 \begin{itemize}
-\item Server runtime whitelist constants (\texttt{ArchimeshService}).
-\item JSON schema definitions (\texttt{schemas/ops.json}).
+\item Server runtime whitelist constants (\code{ArchimeshService}).
+\item JSON schema definitions (\code{schemas/ops.json}).
 \item Client serializer/deserializer field coverage.
 \item Client inventory test expectations \\
-  (\texttt{OpMapperNotationInventoryTest}).
+  (\code{OpMapperNotationInventoryTest}).
 \end{itemize}
 
-The script \texttt{scripts/check-notation-parity.sh} verifies this parity
+The script \code{scripts/check-notation-parity.sh} verifies this parity
 and is wired into the preflight hardening checks.
 
 \subsection{Lock model}
@@ -137,14 +137,14 @@ and is wired into the preflight hardening checks.
 Lease-based locks are used for notation-sensitive edits:
 
 \begin{itemize}
-\item Operations requiring locks: \texttt{UpdateViewObjectOpaque},
-  \texttt{UpdateConnectionOpaque}.
+\item Operations requiring locks: \code{UpdateViewObjectOpaque},
+  \code{UpdateConnectionOpaque}.
 \item Lock targets are the affected view object or connection ids.
 \item Default TTL: 10 seconds.
 \item A client must hold the lock for a target before submitting an opaque
   notation update for that target.
 \item If another client holds a conflicting lock, the submit is rejected
-  with \texttt{LOCK\_CONFLICT}.
+  with \code{LOCK\_CONFLICT}.
 \item Locks are automatically released on WebSocket close.
 \item Locks are advisory, not enforced by the merge layer --- they reduce
   destructive interleaving on noisy diagram edits while keeping semantic
