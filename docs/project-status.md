@@ -4,12 +4,12 @@ Archimesh is at a tested stopping point for the current checkpoint, delivery, an
 
 ## Code and branch state
 
-The delivery/recovery work was developed on `feature/delivery-isolation`, based on `main` at `bb5b0f7`, and is being integrated into `main` for this handoff:
+The delivery/recovery work was developed on `feature/delivery-isolation`, based on `main` at `bb5b0f7`, and was fast-forwarded into `main` for this handoff:
 
 - `3964b65` isolates durable delivery by model with fair, bounded workers.
 - The subsequent recovery commit contains the process-crash drill, fresh-infrastructure server gate, repository-test isolation, runbook, and updated manual, including this handoff.
 
-Resume from `main` after this handoff. Check `git status --short --branch` and `git log -5 --oneline` for the final commit and remote synchronization state. No push is performed as part of this handoff. Generated test evidence and build outputs are ignored; source, fixtures, build scripts, diagram sources, rendered figures, and the manual PDF are versioned.
+Resume from `main` after this handoff. Check `git status --short --branch` and `git log -5 --oneline` for the final commit and remote synchronization state. The merged feature branch can be removed after verifying the push. Generated test evidence and build outputs are ignored; source, fixtures, build scripts, diagram sources, rendered figures, and the manual PDF are versioned.
 
 ## Verified behavior
 
