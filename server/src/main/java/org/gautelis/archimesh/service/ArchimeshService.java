@@ -860,6 +860,28 @@ public class ArchimeshService {
         return neo4jRepository.latestCheckpoint(id).map(ModelCheckpoint::summary);
     }
 
+    /** One serialized model maintenance pass; callers decide scheduling and model fairness. */
+    public synchronized CheckpointMaintenanceResult maintainCheckpoints(String modelId, long minRevisions, int retainCheckpoints) {
+        if (minRevisions < 1 || retainCheckpoints < 1) throw new IllegalArgumentException("Checkpoint policy values must be positive");
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
+        String id = normalizeModelId(modelId);
+        ensureRegisteredModelForAdmin(id);
+        var previous = neo4jRepository.latestCheckpoint(id);
+        long base = previous.map(ModelCheckpoint::revision).orElse(0L);
+        long head = neo4jRepository.readHeadRevision(id);
+        if (base > head) throw new IllegalStateException("Checkpoint is ahead of model head");
+        boolean create = head - base >= minRevisions;
+        if (create) base = createModelCheckpoint(id).revision();
+        if (!create && previous.isEmpty()) return new CheckpointMaintenanceResult(id,false,0,0,0,0);
+        var pruning = compactModelMetadata(id,null,false);
+        long removed = neo4jRepository.pruneCheckpoints(id,retainCheckpoints);
+        var result = new CheckpointMaintenanceResult(id,create,base,pruning.prunedBatchCount(),pruning.deletedOpCount(),removed);
+        if (create || pruning.prunedBatchCount() > 0 || removed > 0) {
+            recordActivity(id,"CheckpointMaintenance",result.toString());
+        }
+        return result;
+    }
+
     /**
      * Prunes checkpoint-covered, published operation payloads below the retention
      * watermark while retaining acceptance receipts and all merge metadata.

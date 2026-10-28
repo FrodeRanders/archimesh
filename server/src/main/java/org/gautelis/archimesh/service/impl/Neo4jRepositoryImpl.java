@@ -68,7 +68,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
         readSupport = new Neo4jReadSupport(objectMapper);
         opLogSupport = new Neo4jOpLogSupport();
         checkpointSupport = new Neo4jCheckpointSupport(objectMapper);
-        compactionSupport = new Neo4jCompactionSupport(checkpointSupport, compactionBatchLimit);
+        compactionSupport = new Neo4jCompactionSupport(checkpointSupport, compactionBatchLimit, this::requireWriterLease);
         LOG.debug("Neo4j repository ready at {}", uri);
     }
 
@@ -154,11 +154,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
     public void commitBatch(String modelId, String opBatchId, RevisionRange range, JsonNode opBatch) {
         try (var session = requireDriver("commitBatch").session()) {
             session.executeWrite(tx -> {
-                if (runtimeLeaseOwner != null && !tx.run("MATCH (r:ArchimeshRuntime {id:$key,owner:$owner}) "
-                                + "WHERE r.expiresAt >= datetime().epochMillis RETURN r",
-                        Map.of("key", runtimeLeaseKey, "owner", runtimeLeaseOwner)).hasNext()) {
-                    throw new IllegalStateException("Authoritative writer lease expired");
-                }
+                requireWriterLease(tx);
                 // Acquire the model's write lock before reading its head. A competing server can
                 // never commit an overlapping range, even if its in-process cache is stale.
                 var row = tx.run("MATCH (m:Model {modelId:$modelId}) "
@@ -684,6 +680,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
         try (var session = requireDriver("createCheckpoint").session()) {
             session.run("CREATE CONSTRAINT model_checkpoint_revision IF NOT EXISTS FOR (c:ModelCheckpoint) REQUIRE (c.modelId,c.revision) IS UNIQUE").consume();
             return session.executeWrite(tx -> {
+                requireWriterLease(tx);
                 long head = tx.run("MATCH (m:Model {modelId:$modelId}) WHERE coalesce(m.registered,false)=true "
                         + "SET m.commitFence=coalesce(m.commitFence,0)+1 RETURN coalesce(m.headRevision,0) AS head",
                         Map.of("modelId", modelId)).single().get("head").asLong();
@@ -724,6 +721,39 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
     }
 
     @Override
+    public long pruneCheckpoints(String modelId, int retainCount) {
+        if (retainCount < 1) throw new IllegalArgumentException("At least one checkpoint must be retained");
+        try (var session = requireDriver("pruneCheckpoints").session()) {
+            return session.executeWrite(tx -> {
+                requireWriterLease(tx);
+                long head = tx.run("MATCH (m:Model {modelId:$modelId}) "
+                        + "SET m.commitFence=coalesce(m.commitFence,0)+1 RETURN coalesce(m.headRevision,0) AS head",
+                        Map.of("modelId",modelId)).single().get("head").asLong();
+                var latest = checkpointSupport.latest(tx,modelId);
+                if (latest.isEmpty()) return 0L;
+                if (latest.get().revision() > head) throw new IllegalStateException("Checkpoint is ahead of model head");
+                // Do not discard recovery bases if receipts or the latest checkpoint's tail are incomplete.
+                verifyCheckpointHistory(tx,modelId,latest.get().revision(),head);
+                var ids = tx.run("MATCH (c:ModelCheckpoint {modelId:$modelId}) WITH c ORDER BY c.revision DESC "
+                        + "SKIP $retain LIMIT 100 RETURN elementId(c) AS id",
+                        Map.of("modelId",modelId,"retain",retainCount)).list(row -> row.get("id").asString());
+                tx.run("UNWIND $ids AS id MATCH (c:ModelCheckpoint) WHERE elementId(c)=id DETACH DELETE c",
+                        Map.of("ids",ids)).consume();
+                return (long) ids.size();
+            });
+        }
+    }
+
+    private void requireWriterLease(TransactionContext tx) {
+        String owner = runtimeLeaseOwner;
+        if (owner != null && !tx.run("MATCH (r:ArchimeshRuntime {id:$key,owner:$owner}) "
+                        + "WHERE r.expiresAt >= datetime().epochMillis RETURN r",
+                Map.of("key",runtimeLeaseKey,"owner",owner)).hasNext()) {
+            throw new IllegalStateException("Authoritative writer lease expired");
+        }
+    }
+
+    @Override
     public List<BatchReceipt> loadReceipts(String modelId, long throughRevision) {
         try (var session = requireDriver("loadReceipts").session()) {
             return session.executeRead(tx -> tx.run("MATCH (c:Commit {modelId:$modelId}) WHERE c.revisionTo <= $through "
@@ -746,7 +776,11 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
         }
         try (var session = requireDriver("rebuildProjection").session()) {
             session.executeWrite(tx -> {
+                requireWriterLease(tx);
                 tx.run("MATCH (m:Model {modelId:$modelId}) SET m.commitFence=coalesce(m.commitFence,0)+1", Map.of("modelId",modelId));
+                long committed = tx.run("MATCH (c:Commit {modelId:$modelId}) RETURN coalesce(max(c.revisionTo),0) AS head",
+                        Map.of("modelId",modelId)).single().get("head").asLong();
+                if (committed != head) throw new IllegalStateException("Committed history changed; retry rebuild");
                 clearProjection(tx, modelId);
                 if (checkpoint != null) {
                     // clearProjection creates canonical roots; the checkpoint supplies its exact raw folder state.
@@ -789,6 +823,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
         try (var session = requireDriver("importCheckpointModel").session()) {
             session.run("CREATE CONSTRAINT model_checkpoint_revision IF NOT EXISTS FOR (c:ModelCheckpoint) REQUIRE (c.modelId,c.revision) IS UNIQUE").consume();
             session.executeWrite(tx -> {
+                requireWriterLease(tx);
                 boolean exists = tx.run("MATCH (m:Model {modelId:$modelId}) RETURN m",Map.of("modelId",modelId)).hasNext();
                 if (exists && !overwrite) throw new IllegalStateException("Model already exists");
                 if (exists) deleteModel(tx,modelId);

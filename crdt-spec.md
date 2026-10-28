@@ -233,7 +233,8 @@ P0 means required to claim CRDT correctness for currently-supported ops; P1 mean
     - property clocks (`PropertyClock`) retained, including orphan clocks.
   - Done: preview/apply controls, checkpoint-plus-tail rebuild, v2 checkpoint export/import, and snapshot fallback after pruning.
   - Done: admin endpoint/reporting exists for compaction runs and reclaimed metadata.
-  - Remaining: define a safe metadata garbage-collection protocol, automatic checkpoint retention, and gather long-running workload evidence. Checkpoints and acceptance receipts currently accumulate; bounded payload deletion does not bound total metadata cardinality.
+  - Done: optional scheduled checkpoint creation, bounded payload pruning, and retention of the newest checkpoints; disabled by default and fenced by the authoritative writer lease.
+  - Remaining: define a safe metadata garbage-collection protocol and gather long-running workload evidence. Acceptance receipts and CRDT metadata accumulate; bounded payload deletion does not bound total metadata cardinality.
 - Primary files:
   - `server/src/main/java/org/gautelis/archimesh/service/impl/Neo4jRepositoryImpl.java`
   - `server/src/main/java/org/gautelis/archimesh/endpoint/AdminEndpoint.java`

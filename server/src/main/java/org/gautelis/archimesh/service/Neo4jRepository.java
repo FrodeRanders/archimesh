@@ -59,6 +59,11 @@ public interface Neo4jRepository {
 
     default Optional<ModelCheckpoint> latestCheckpoint(String modelId) { return Optional.empty(); }
 
+    /** Retains at least the newest checkpoint, deleting at most 100 older checkpoints per call. */
+    default long pruneCheckpoints(String modelId, int retainCount) {
+        throw new UnsupportedOperationException("Checkpoint retention is unavailable");
+    }
+
     default List<BatchReceipt> loadReceipts(String modelId, long throughRevision) { return List.of(); }
 
     default void importCheckpointModel(AdminModelExport exportPackage, boolean overwrite) {

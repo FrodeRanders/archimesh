@@ -189,6 +189,8 @@ curl -s -X POST "http://localhost:8081/admin/models/demo/compact?retainRevisions
 
 Each applied pruning transaction handles at most `app.compaction.max-batches-per-run` batches (default `100`; `ARCHIMESH_COMPACTION_MAX_BATCHES`). Payloads require checkpoint coverage and confirmed publication. Receipts, clocks, and tombstones remain. Repeated calls resume from durable state. See [checkpoint maintenance](../docs/checkpoint-pruning.md) for recovery, archive requirements, legacy publication handling, and current limits.
 
+For scheduled maintenance, set `ARCHIMESH_CHECKPOINT_MAINTENANCE_ENABLED=true` (default `false`). Defaults are a 300-second interval, a 1000-revision checkpoint threshold, two retained checkpoints, and ten models per pass. The same retention/publication rules apply. Configure the policy and archive requirements using the [scheduler reference](../docs/checkpoint-pruning.md#optional-scheduled-maintenance); enabling it applies to all registered models.
+
 Get aggregated admin status (snapshot counts + consistency):
 
 ```bash

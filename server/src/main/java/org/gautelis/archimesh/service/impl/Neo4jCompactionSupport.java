@@ -8,18 +8,22 @@ import java.util.Map;
 import java.util.List;
 import org.neo4j.driver.TransactionContext;
 import java.util.function.Function;
+import java.util.function.Consumer;
 
 final class Neo4jCompactionSupport {
     private final Neo4jCheckpointSupport checkpoints;
     private final int batchLimit;
+    private final Consumer<TransactionContext> requireWriterLease;
 
-    Neo4jCompactionSupport(Neo4jCheckpointSupport checkpoints, int batchLimit) {
+    Neo4jCompactionSupport(Neo4jCheckpointSupport checkpoints, int batchLimit, Consumer<TransactionContext> requireWriterLease) {
         this.checkpoints = checkpoints;
         this.batchLimit = Math.max(1, batchLimit);
+        this.requireWriterLease = requireWriterLease;
     }
 
     AdminCompactionStatus compactMetadata(Session session, String modelId, long retainRevisions, boolean dryRun) {
         Function<TransactionContext, AdminCompactionStatus> compact = tx -> {
+            if (!dryRun) requireWriterLease.accept(tx);
             if (!dryRun) tx.run("MATCH (m:Model {modelId:$modelId}) SET m.commitFence=coalesce(m.commitFence,0)+1",
                     Map.of("modelId",modelId)).consume();
             Record revisions = tx.run("MATCH (m:Model {modelId:$modelId}) OPTIONAL MATCH (c:Commit {modelId:$modelId}) "

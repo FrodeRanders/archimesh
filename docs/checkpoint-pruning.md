@@ -1,6 +1,6 @@
 # Checkpoints and operation payload pruning
 
-Archimesh can replace an old operation prefix with a durable recovery checkpoint. This is an explicit model-admin maintenance operation. It reduces operation payload storage while preserving current model state, merge behavior, retry deduplication, and tagged snapshots.
+Archimesh can replace an old operation prefix with a durable recovery checkpoint. Maintenance is available as model-admin operations or through an opt-in server scheduler. It reduces operation payload storage while preserving current model state, merge behavior, retry deduplication, and tagged snapshots.
 
 ## Recovery data
 
@@ -13,7 +13,7 @@ flowchart LR
     Prefix["Accepted operations 1..C"] --> Capture["Capture committed projection<br/>and merge metadata"]
     Capture --> CP[("Immutable checkpoint C<br/>Verified checksum")]
     Prefix --> Receipts[("Retained batch IDs<br/>and acceptance ranges")]
-    Capture --> Prune["Prune published payloads<br/>in bounded transactions"]
+    CP --> Prune["Prune published payloads<br/>in bounded transactions"]
     CP --> Restore["Restore checkpoint"]
     Tail["Complete operations C+1..HEAD"] --> Replay["Replay tail"]
     Restore --> Replay
@@ -62,8 +62,28 @@ Existing reconnect logic detects a missing delta prefix and sends a current snap
 
 Exports without checkpoints use the existing `archi-model-export-v1` package. Checkpointed exports use `archi-model-export-v2`, containing the checkpoint, prefix acceptance receipts, a complete tail, current snapshot, catalog/ACL data, and tag snapshots. V2 restore validates coverage and restores the model in one transaction; a failed overwrite leaves the destination unchanged. Changing `model.modelId` imports into another model namespace: the server verifies the source checkpoint and rebinds it with a new checksum. See [export format](../server/EXPORT_FORMAT.md).
 
+## Optional scheduled maintenance
+
+The scheduler is **disabled by default**. Enable it through server configuration after deciding how to archive historical operations. Enabling applies the policy to all registered models; it does not create an external archive. The first scheduled pass starts after the configured interval.
+
+| Property | Environment variable | Default | Meaning |
+| --- | --- | --- | --- |
+| `app.checkpoints.maintenance.enabled` | `ARCHIMESH_CHECKPOINT_MAINTENANCE_ENABLED` | `false` | Enable creation, payload pruning, and old-checkpoint cleanup. |
+| `app.checkpoints.maintenance.interval-seconds` | `ARCHIMESH_CHECKPOINT_INTERVAL_SECONDS` | `300` | Delay between completed passes. |
+| `app.checkpoints.maintenance.min-revisions` | `ARCHIMESH_CHECKPOINT_MIN_REVISIONS` | `1000` | Minimum new revisions since the latest checkpoint, or since revision zero for the first one. |
+| `app.checkpoints.maintenance.retain-checkpoints` | `ARCHIMESH_CHECKPOINT_RETAIN_COUNT` | `2` | Number of newest checkpoints to keep per model; must be at least one. |
+| `app.checkpoints.maintenance.models-per-run` | `ARCHIMESH_CHECKPOINT_MODELS_PER_RUN` | `10` | Maximum models visited per pass, rotating through the sorted catalog. |
+| `app.compaction.retain-revisions` | `ARCHIMESH_COMPACTION_RETAIN_REVISIONS` | `1000` | Recent revision window whose payloads remain. |
+| `app.compaction.max-batches-per-run` | `ARCHIMESH_COMPACTION_MAX_BATCHES` | `100` | Maximum payload batches pruned per visited model. |
+
+Enabled scheduler policy values must be positive; revision retention may be zero. A model below the checkpoint threshold is still eligible for pruning and cleanup if it already has a checkpoint. Repeated visits finish a backlog without requiring another checkpoint or a new edit. No checkpoint is created for an empty model automatically.
+
+Each model visit acquires the service's timeline serialization, checks the writer lease, optionally captures a new checkpoint, prunes one bounded payload set, then cleans up older checkpoints. Before checkpoint cleanup, the repository verifies the newest checkpoint, contiguous acceptance receipts, and complete tail. At most 100 old checkpoints are removed per model visit; the newest configured count is always kept. Tags, acceptance receipts, and CRDT metadata are unaffected. Manual checkpoints participate in the same retention policy when scheduling is enabled.
+
+These phases commit separately. If a later phase fails, completed safe work remains committed and the next visit resumes from durable state. A failure in one model is logged and does not starve other models. A lost writer lease stops further model processing; maintenance mutations also verify the lease in their database transactions. The worker runs on one background thread and stops on server shutdown. Significant results appear in server logs and model activity; no maintenance cursor is needed for recovery. Rotation restarts from the first model after server restart.
+
 ## First-version limits
 
-Creation, pruning, and rebuild run under the authoritative service's existing serialization. Capturing a large projection or restoring it can pause edits and uses memory proportional to the model. Deletion is bounded by batch count; checkpoint capture/restore is not streamed. All older checkpoints and acceptance receipts are retained. There is no checkpoint scheduler, automatic checkpoint retention, CRDT metadata garbage collection, or multi-writer protocol in this version. These storage costs should be measured before choosing an automated policy.
+Creation, pruning, and rebuild run under the authoritative service's existing serialization. Capturing a large projection or restoring it can pause edits and uses memory proportional to the model. Deletion is bounded by batch count; checkpoint capture/restore is not streamed. The scheduler loads the model catalog each pass. Acceptance receipts accumulate indefinitely; older checkpoints accumulate when scheduled maintenance is disabled. CRDT metadata garbage collection and a multi-writer protocol remain unimplemented. Measure these costs before enabling an automated policy.
 
 Models whose historical operation data was removed by an older implementation need a complete backup/export restore before creating their first checkpoint; the server rejects incomplete recovery coverage. Unclassified legacy publication state remains protected and requires a deliberate migration rather than a pruning bypass.

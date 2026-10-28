@@ -75,9 +75,13 @@ an explanatory \texttt{note}. Preview returns zero deletion counts.
 \end{itemize}
 
 Checkpoint capture and recovery use memory proportional to the model and run
-under the existing authoritative service serialization. Older checkpoints and
-receipts accumulate; automatic retention and CRDT metadata collection are not
-implemented. See \filepath{docs/checkpoint-pruning.md} for the full workflow.
+under the existing authoritative service serialization. Optional scheduled
+maintenance is disabled by default. It rotates through bounded model sets,
+creates checkpoints after a revision threshold, prunes covered payloads, and
+retains the newest configured checkpoint count (at least one). Cleanup verifies
+the newest base and complete tail first. Receipts and CRDT metadata remain;
+metadata garbage collection is not implemented. See
+\filepath{docs/checkpoint-pruning.md} for configuration and archive requirements.
 
 \subsection{Export}
 

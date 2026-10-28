@@ -202,4 +202,62 @@ class CheckpointIntegrationTest {
         Assertions.assertEquals(0,repository.compactMetadata(model,0).prunedBatchCount());
     }
 
+    @Test
+    void checkpointRetentionPreservesNewestRecoveryBaseAndAcceptanceReceipts() throws Exception {
+        for (String id : new String[]{"one","two","three"}) {
+            commit(id,create(id)); repository.markBroadcastPublished(model,id); repository.createCheckpoint(model);
+        }
+        repository.compactMetadata(model,0);
+        Assertions.assertEquals(1,repository.pruneCheckpoints(model,2));
+        Assertions.assertEquals(3,repository.latestCheckpoint(model).orElseThrow().revision());
+        Assertions.assertEquals(1,repository.pruneCheckpoints(model,1));
+        Assertions.assertEquals(0,repository.pruneCheckpoints(model,1));
+        Assertions.assertThrows(IllegalArgumentException.class,() -> repository.pruneCheckpoints(model,0));
+        Assertions.assertEquals(3,repository.loadReceipts(model,head).size());
+        var expected = repository.loadSnapshot(model);
+        repository.rebuildProjection(model,repository.latestCheckpoint(model).orElseThrow(),json.createArrayNode(),head);
+        Assertions.assertEquals(expected,repository.loadSnapshot(model));
+    }
+
+    @Test
+    void checkpointRetentionRejectsDamagedLatestBaseAndIncompleteTail() throws Exception {
+        commit("one",create("a")); repository.createCheckpoint(model);
+        commit("two",create("b")); repository.createCheckpoint(model);
+        commit("tail",create("c"));
+        try (var driver = org.neo4j.driver.GraphDatabase.driver(repository.uri,org.neo4j.driver.AuthTokens.basic(repository.username,repository.password));
+             var session = driver.session()) {
+            session.run("MATCH (c:Commit {modelId:$modelId,opBatchId:'tail'})-[:HAS_OP]->(o:Op) DETACH DELETE o",
+                    java.util.Map.of("modelId",model)).consume();
+            Assertions.assertThrows(IllegalStateException.class,() -> repository.pruneCheckpoints(model,1));
+            session.run("MATCH (c:ModelCheckpoint {modelId:$modelId,revision:2}) SET c.sha256='damaged'",
+                    java.util.Map.of("modelId",model)).consume();
+            Assertions.assertThrows(RuntimeException.class,() -> repository.pruneCheckpoints(model,1));
+            Assertions.assertEquals(2,session.run("MATCH (c:ModelCheckpoint {modelId:$modelId}) RETURN count(c) AS n",
+                    java.util.Map.of("modelId",model)).single().get("n").asInt());
+        }
+    }
+
+    @Test
+    void expiredDatabaseLeaseRejectsMaintenanceWritesWithoutChanges() throws Exception {
+        commit("one",create("a")); repository.markBroadcastPublished(model,"one");
+        var checkpoint = repository.createCheckpoint(model);
+        commit("tail",create("b")); repository.markBroadcastPublished(model,"tail");
+        repository.runtimeLeaseKey = "checkpoint-lease-"+UUID.randomUUID();
+        String owner = UUID.randomUUID().toString();
+        Assertions.assertTrue(repository.acquireServerLease(owner,30_000));
+        try (var driver = org.neo4j.driver.GraphDatabase.driver(repository.uri,org.neo4j.driver.AuthTokens.basic(repository.username,repository.password));
+             var session = driver.session()) {
+            session.run("MATCH (r:ArchimeshRuntime {id:$key}) SET r.expiresAt=0",
+                    java.util.Map.of("key",repository.runtimeLeaseKey)).consume();
+        }
+        Assertions.assertThrows(IllegalStateException.class,() -> repository.createCheckpoint(model));
+        Assertions.assertThrows(IllegalStateException.class,() -> repository.compactMetadata(model,0));
+        Assertions.assertThrows(IllegalStateException.class,() -> repository.pruneCheckpoints(model,1));
+        Assertions.assertThrows(IllegalStateException.class,() -> repository.rebuildProjection(model,checkpoint,
+                repository.loadOpBatches(model,2,head),head));
+        Assertions.assertEquals(1,repository.latestCheckpoint(model).orElseThrow().revision());
+        Assertions.assertEquals(2,repository.loadOpBatches(model,1,head).size());
+        Assertions.assertEquals(head,repository.readHeadRevision(model));
+    }
+
 }

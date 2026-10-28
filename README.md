@@ -112,6 +112,7 @@ The admin UI/API provides model provisioning, ACL management, immutable tags, ac
 - Operation publication is durable and at least once. Lock/presence events use their own Kafka topics; lock leases and live sessions are process-local state.
 - Rebuild verifies the latest checkpoint and complete, contiguous operation tail before replacing the projection in one transaction. Without a checkpoint it requires the full operation history. V2 checkpoint import also restores in one transaction.
 - Manual pruning removes only whole, published batches covered by a verified checkpoint and the requested retention policy. It retains acceptance receipts, all clocks, and tombstones. Stale reconnects receive a snapshot when their delta history has been pruned. Archive full history before pruning if individual old operations are needed.
+- Scheduled checkpoint creation, payload pruning, and retention of older checkpoints are configurable and disabled by default. The worker rotates through bounded model sets, preserves the newest recovery base, and resumes after failures or restart. See [scheduled maintenance configuration](docs/checkpoint-pruning.md#optional-scheduled-maintenance).
 
 The [architecture document](architecture.md#supported-deployment-and-recovery) includes recovery and publication-failure diagrams, deployment boundaries, and known operational gaps.
 
