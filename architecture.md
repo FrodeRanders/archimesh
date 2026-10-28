@@ -245,7 +245,9 @@ Supporting collaborators:
   - checkout delta reads
   - consistency checks
 - `Neo4jCompactionSupport`
-  - metadata compaction
+  - bounded checkpoint-covered operation payload pruning; retains receipts and merge metadata
+- `Neo4jCheckpointSupport`
+  - lossless projection capture, checksum validation, and raw graph restoration
 
 Supporting invariant source:
 
@@ -326,17 +328,17 @@ This range is used for:
 The system keeps both:
 
 - a materialized snapshot-like graph in Neo4j
-- an append-only op-log
+- an accepted op-log whose old payloads can be replaced by durable checkpoints
 
 Why both exist:
 
 - the materialized graph makes joins, exports, and admin inspection fast
-- the op-log preserves the authoritative committed history
+- retained acceptance receipts preserve the committed timeline; checkpoints plus the operation tail preserve recovery state
 
 This is why export packages contain:
 
 - current snapshot
-- full op batches
+- full op batches, or a checkpoint with prefix receipts and a complete operation tail
 - tag snapshots
 
 ## Tags
@@ -601,9 +603,9 @@ The current client implementation does not yet include reconnect jitter. This is
 
 Use one authoritative Archimesh server per Neo4j repository. A renewable database writer lease rejects a second active server; commits check the lease and lock the model head. The service serializes timeline operations within the active server. Horizontal active-active operation is not supported.
 
-Snapshot reads use one database transaction and carry property values, field clocks, collection membership clocks, and tombstones. Incomplete delta windows fall back to a snapshot. Rebuild validates the entire contiguous history before replacing the projection in one transaction. Import also requires contiguous history.
+Snapshot reads use one database transaction and carry property values, field clocks, collection membership clocks, and tombstones. Incomplete delta windows fall back to a snapshot, including after pruning. Rebuild verifies the latest checkpoint and its complete contiguous tail before replacing the projection in one transaction. With no checkpoint, recovery requires the full log from revision 1.
 
-Compaction retains the complete op-log, field clocks, and tombstones. It can reclaim orphaned property clocks and reports metadata eligibility, but cannot prune recovery history until durable checkpoints are implemented. Models compacted by an older server may require restoration from a complete export or backup; a missing history segment is rejected rather than replayed destructively.
+Manual compaction prunes only published batch payloads covered by a verified checkpoint and the revision retention policy. Acceptance receipts, all field/property/member clocks, and tombstones remain. Capture includes orphan safety metadata. Models compacted by an older server may require restoration from a complete export or backup before their first checkpoint; missing recovery coverage is rejected. See [checkpoint maintenance](docs/checkpoint-pruning.md) for the workflow and limits.
 
 The plugin discovers readable models through `GET /models` and reads tags through `GET /models/{modelId}/tags`. Admin routes retain their stronger authorization requirements.
 
@@ -630,20 +632,21 @@ A crash after Kafka accepts a record but before Neo4j records publication comple
 
 ### Projection rebuild and compaction
 
-Rebuild uses the accepted log as its source. Validation happens before clearing anything, and the replacement projection is applied within a single database transaction. An incomplete log is an error even if its latest revision matches the model head.
+Rebuild uses the latest immutable checkpoint at revision C and the accepted operation tail C+1..HEAD. C is zero when no checkpoint exists. Validation happens before clearing anything, and the replacement projection is applied within a single database transaction. An incomplete tail is an error even if its latest revision matches the model head.
 
 ```mermaid
 flowchart TB
-    Rebuild["Authorized rebuild request"] --> Load["Load accepted batches through latest committed revision"]
-    Load --> Complete{"Contiguous ranges<br/>and expected op counts?"}
+    Rebuild["Authorized rebuild request"] --> Load["Verify latest checkpoint C<br/>Load tail C+1..HEAD"]
+    Load --> Complete{"Valid checkpoint and complete tail?<br/>Contiguous ranges and expected op counts"}
     Complete -->|"No"| Reject["Reject rebuild<br/>Preserve existing projection"]
-    Complete -->|"Yes"| Tx["One Neo4j write transaction:<br/>clear projection, replay all batches, set head"]
+    Complete -->|"Yes"| Tx["One Neo4j write transaction:<br/>clear, restore checkpoint, replay tail, set head"]
     Tx --> Result{"Transaction succeeds?"}
     Result -->|"No"| Rollback["Roll back replacement<br/>Preserve existing projection"]
     Result -->|"Yes"| Check["Refresh revision cache and check consistency"]
-    Compact["Metadata compaction"] --> Keep["Retain op-log, field clocks and tombstones"]
-    Compact --> Orphans["Reclaim eligible orphan property clocks"]
-    Keep -.->|"Preserves rebuild source"| Load
+    Capture["Create checkpoint at committed HEAD"] --> Durable[("Verified immutable checkpoint")]
+    Durable --> Compact["Preview or prune covered published payloads<br/>Whole batches; bounded run"]
+    Compact --> Keep["Retain acceptance receipts,<br/>all clocks and tombstones"]
+    Durable -.->|"Recovery base"| Load
 ```
 
-The current consistency checks examine head alignment and referential integrity. The complete-history guard additionally prevents rebuilding a partial model from a truncated log. No checkpoint-based history-pruning path is implemented; a complete backup/export is needed to recover history removed by an older version.
+The current consistency checks examine head alignment and referential integrity. Recovery validation prevents rebuilding a partial model from a truncated tail. Checkpointed export/import uses format v2 to transfer the checkpoint, prefix receipts, tail, ACLs, and stored tag snapshots; v1 complete-history packages remain supported. A full-history archive must be taken before pruning if old individual operations are needed later. Checkpoints and receipts accumulate in this first manual implementation; CRDT metadata collection and automatic checkpoint retention remain future work.

@@ -203,8 +203,10 @@ Endpoint & Method & Purpose \\
   (snapshot + op-log + tags + ACL). \\
 \texttt{/admin/models/import?overwrite=true|false} & POST & Import a model
   package. \\
+\texttt{/admin/models/\{modelId\}/checkpoints} & POST & Create immutable checkpoint. \\
+\texttt{/admin/models/\{modelId\}/checkpoints/latest} & GET & Latest checkpoint summary. \\
 \texttt{/admin/models/\{modelId\}/compact} & POST & Run compaction on
-  the model (prune old op-log entries and merge metadata). \\
+  the model (prune covered published payloads; supports dryRun). \\
 \texttt{/admin/auth/diagnostics} & GET & Authorization diagnostics:
   resolved identity, subject, normalized roles. \\
 \texttt{/admin/sessions} & GET & Active WebSocket sessions across all

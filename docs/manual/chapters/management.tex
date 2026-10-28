@@ -39,50 +39,45 @@ curl -s -X DELETE "http://localhost:8081/admin/models/demo?force=true" | jq .
 
 \subsection{Compaction}
 
-Compaction prunes old op-log entries and merge metadata below a configurable
-retention watermark to bound storage growth.
+Compaction removes checkpoint-covered, published operation payloads below a
+configurable retention watermark. Acceptance receipts, field and membership
+clocks, property clocks (including orphans), and tombstones remain.
 
 \subsubsection{Running compaction}
 
-\begin{lstlisting}[language=bash,caption={Compact a model}]
-curl -s -X POST http://localhost:8081/admin/models/demo/compact | jq .
+\begin{lstlisting}[language=bash,caption={Checkpoint, preview, and prune a model}]
+curl -s -X POST http://localhost:8081/admin/models/demo/checkpoints
+curl -s -X POST \
+  'http://localhost:8081/admin/models/demo/compact?retainRevisions=1000&dryRun=true'
+curl -s -X POST \
+  'http://localhost:8081/admin/models/demo/compact?retainRevisions=1000'
 \end{lstlisting}
 
-The response reports:
-
-\begin{itemize}
-\item \texttt{modelId}
-\item \texttt{headRevision} --- current model head
-\item \texttt{committedHorizon} --- revision below which compaction can safely operate
-\item \texttt{retainRevisions} --- how many recent revisions are preserved
-\item \texttt{watermarkRevision} --- revisions below this are eligible for pruning
-\item \texttt{commitsRemoved} --- number of commit nodes deleted
-\item \texttt{opsRemoved} --- number of op nodes deleted
-\item \texttt{propertyClocksRemoved} --- number of orphan PropertyClock
-  nodes removed
-\item \texttt{tombstonesEligible} --- number of tombstones eligible under
-  watermark but retained for delete safety
-\item \texttt{clockFieldsEligible} --- number of field clock metadata
-  entries eligible under watermark but retained
-\end{itemize}
+The response reports \texttt{checkpointRevision}, \texttt{watermarkRevision},
+\texttt{eligibleBatchCount} before the run, \texttt{prunedBatchCount},
+\texttt{deletedOpCount}, \texttt{prunedThroughRevision}, \texttt{dryRun}, and
+an explanatory \texttt{note}. Preview returns zero deletion counts.
 
 \subsubsection{Compaction safety}
 
-Compaction is designed to be safe by default:
-
 \begin{itemize}
-\item Only commits and ops with revision below the watermark are removed.
-\item The watermark is derived from the committed revision horizon
-  (\texttt{latestCommitRevision - retainRevisions}).
-\item Tombstones are \emph{never} removed by compaction. They are reported
-  as eligible but retained to prevent stale resurrection.
-\item Field clocks (\texttt{*\_lamport}, \texttt{*\_clientId}) on
-  materialized nodes are retained.
-\item Only orphan \texttt{PropertyClock} nodes (no longer referenced by any
-  materialized entity) below the watermark are pruned.
-\item Compaction never allows a stale \texttt{Create*} or \texttt{Update*}
-  to beat a logically newer delete.
+\item Without a verified checkpoint, no payloads are removed.
+\item Only whole batches ending at or below both the checkpoint and
+  \texttt{latestCommitRevision - retainRevisions} are eligible.
+\item The first unpublished (or unclassified legacy) batch fences later pruning.
+  Head/commit disagreement disables pruning.
+\item Each applied call handles at most \texttt{app.compaction.max-batches-per-run}
+  batches (default 100). Repeat until no eligible batches remain.
+\item Commit acceptance receipts remain; only Op nodes and stored batch payloads
+  are removed. All clocks and tombstones remain for stale-write/delete safety.
+\item Archive full history before pruning if individual old operations are needed.
+  Checkpoints share the model database and do not replace off-system backups.
 \end{itemize}
+
+Checkpoint capture and recovery use memory proportional to the model and run
+under the existing authoritative service serialization. Older checkpoints and
+receipts accumulate; automatic retention and CRDT metadata collection are not
+implemented. See \filepath{docs/checkpoint-pruning.md} for the full workflow.
 
 \subsection{Export}
 
@@ -96,14 +91,15 @@ curl -s http://localhost:8081/admin/models/demo/export | jq .
 The export package contains:
 
 \begin{description}
-\item[\texttt{format}] Package format identifier (\texttt{archi-model-export-v1}).
+\item[\texttt{format}] Package format identifier (\texttt{archi-model-export-v1} or \texttt{archi-model-export-v2}).
 \item[\texttt{exportedAt}] UTC timestamp.
 \item[\texttt{model}] Model catalog metadata (modelId, modelName, headRevision).
 \item[\texttt{accessControl}] Per-model ACL snapshot (optional).
 \item[\texttt{snapshot}] Materialized current state at HEAD. Contains
   folders, elements, relationships, views, view objects, connections,
   folder memberships and view object child members.
-\item[\texttt{opBatches}] Ordered committed op-log history. Each batch
+\item[\texttt{checkpoint}, \texttt{receipts}] V2 recovery state and prefix acceptance ranges.
+\item[\texttt{opBatches}] Ordered complete history (v1) or checkpoint tail (v2). Each batch
   contains modelId, opBatchId, baseRevision, assignedRevisionRange,
   timestamp and the ops array with normalized causal metadata.
 \item[\texttt{tags}] Immutable tags with their historical snapshots.
@@ -116,7 +112,7 @@ The package format is documented in detail in \filepath{server/EXPORT\_FORMAT.md
 \begin{itemize}
 \item Model id and name
 \item Head revision
-\item Full committed op-log history
+\item Complete recovery data: full history or checkpoint plus tail and receipts
 \item Current materialized state
 \item Folders and folder memberships
 \item Views, view objects, connections and notation payloads
@@ -137,11 +133,11 @@ curl -s -X POST http://localhost:8081/admin/models/import \
 \subsubsection{Import behavior}
 
 \begin{itemize}
-\item The \texttt{format} field must be \texttt{archi-model-export-v1}.
+\item The \texttt{format} field must be \texttt{archi-model-export-v1} or \texttt{archi-model-export-v2}.
 \item \texttt{model.modelId} must be present.
 \item Existing models are rejected unless \texttt{?overwrite=true}.
 \item Overwrite is rejected if the target model has active sessions.
-\item If overwriting, the existing model is deleted first.
+\item V2 overwrite restores the destination in one transaction; failure rolls it back.
 \item ACLs are restored if present in the package.
 \item Op batches are restored first, then head revision is set from the
   imported history.
@@ -158,16 +154,16 @@ curl -s -X POST "http://localhost:8081/admin/models/import?overwrite=true" \
 
 \subsubsection{Import requirements}
 
-For non-empty models, the package must include \texttt{opBatches}. Import
-rejects packages that have a non-zero head revision, non-empty materialized
-content or historical tags but no op-log history. This prevents restoring
-current state while silently losing the committed revision history.
+V1 requires complete op-log history for non-empty models. V2 requires a verified
+checkpoint at C, acceptance receipts covering 1..C, and a complete tail
+C+1..HEAD. The tail can be empty when C equals HEAD. Tags retain their stored
+historical snapshots independently of pruned operations.
 
 \subsection{Rebuild}
 
-Rebuild clears the materialized state for a model and replays the entire
-op-log to reconstruct it. This is useful after corruption or for verifying
-that the op-log faithfully reproduces the materialized state.
+Rebuild verifies the latest checkpoint and its complete operation tail before
+replacing the materialized projection in one transaction. Without a checkpoint,
+it requires the complete log from revision 1. A failed replacement rolls back.
 
 \begin{lstlisting}[language=bash,caption={Rebuild a model}]
 curl -s -X POST http://localhost:8081/models/demo/rebuild | jq .
@@ -184,8 +180,8 @@ Rebuild behavior:
 \begin{enumerate}
 \item Clears all materialized nodes for the model (elements, relationships,
   views, view objects, connections, folders and metadata).
-\item Recreates built-in root folders.
-\item Replays all committed ops from the op-log in revision order.
+\item Restores the raw checkpoint, or creates built-in roots when no checkpoint exists.
+\item Replays the complete tail after the checkpoint in revision order.
 \item Updates head revision to match the highest committed revision.
 \item Tags are unaffected (they are stored separately).
 \end{enumerate}

@@ -32,6 +32,9 @@ FOR (c:Commit) REQUIRE (c.modelId, c.opBatchId) IS UNIQUE;
 CREATE CONSTRAINT model_tag_name IF NOT EXISTS
 FOR (t:ModelTag) REQUIRE (t.modelId, t.tagName) IS UNIQUE;
 
+CREATE CONSTRAINT model_checkpoint_revision IF NOT EXISTS
+FOR (c:ModelCheckpoint) REQUIRE (c.modelId, c.revision) IS UNIQUE;
+
 CREATE INDEX commit_model_rev IF NOT EXISTS
 FOR (c:Commit) ON (c.modelId, c.revisionFrom, c.revisionTo);
 

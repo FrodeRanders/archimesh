@@ -292,6 +292,7 @@ final class Neo4jReadSupport {
         List<Record> records = session.executeRead(tx -> tx.run("""
                             MATCH (c:Commit {modelId: $modelId})
                             WHERE c.revisionFrom >= $fromRevision AND c.revisionTo <= $toRevision
+                              AND coalesce(c.payloadPruned, false) = false
                             OPTIONAL MATCH (c)-[:HAS_OP]->(o:Op)
                             WITH c, o
                             ORDER BY c.revisionFrom ASC, o.seq ASC

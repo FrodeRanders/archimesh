@@ -9,6 +9,8 @@
   import { selectedModelId } from '$lib/stores/selection.js';
   import {
     compactModel,
+    createModelCheckpoint,
+    fetchModelCheckpoint,
     createModel,
     deleteModel,
     fetchModelWindow,
@@ -25,6 +27,12 @@
   let renameValue = '';
   let compactRetain = '0';
   let deleteForce = false;
+  let checkpoint = null;
+  let compactionResult = null;
+  let maintenanceBusy = false;
+
+  $: visibleCompaction = compactionResult?.modelId === $selectedModelId
+    && Number(compactionResult.retainRevisions) === Number(compactRetain || 0) ? compactionResult : null;
 
   const refresh = async () => {
     pageStatus = 'Refreshing model lifecycle data...';
@@ -34,10 +42,13 @@
         selectedModelId.set(overview[0].modelId);
       }
       if ($selectedModelId) {
-        selectedWindow = await fetchModelWindow($selectedModelId, 25);
+        [selectedWindow, checkpoint] = await Promise.all([
+          fetchModelWindow($selectedModelId, 25), fetchModelCheckpoint($selectedModelId)
+        ]);
         renameValue = selectedWindow?.modelName || '';
       } else {
         selectedWindow = null;
+        checkpoint = null;
       }
       pageStatus = `Updated ${new Date().toLocaleTimeString()}`;
     } catch (err) {
@@ -98,19 +109,30 @@
     }
   };
 
-  const submitCompact = async () => {
-    if (!$selectedModelId) {
-      pageStatus = 'Select a model first.';
-      return;
-    }
-    pageStatus = `Compacting ${$selectedModelId}...`;
+  const submitCheckpoint = async () => {
+    if (!$selectedModelId) return;
+    maintenanceBusy = true;
+    pageStatus = `Creating recovery checkpoint for ${$selectedModelId}...`;
     try {
-      await compactModel($selectedModelId, compactRetain || '0');
+      const result = await createModelCheckpoint($selectedModelId);
+      compactionResult = null;
       await refresh();
-      pageStatus = `Model ${$selectedModelId} compacted`;
-    } catch (err) {
-      pageStatus = err.message;
-    }
+      pageStatus = `Checkpoint created at revision ${result.revision}. Existing checkpoints are immutable.`;
+    } catch (err) { pageStatus = err.message; }
+    finally { maintenanceBusy = false; }
+  };
+
+  const submitCompact = async (dryRun) => {
+    if (!$selectedModelId) return;
+    maintenanceBusy = true;
+    pageStatus = dryRun ? 'Previewing payload pruning...' : 'Pruning checkpoint-covered payloads...';
+    try {
+      const result = await compactModel($selectedModelId, compactRetain || '0', dryRun);
+      compactionResult = result;
+      if (!dryRun) await refresh();
+      pageStatus = result.note;
+    } catch (err) { pageStatus = err.message; }
+    finally { maintenanceBusy = false; }
   };
 
   const submitDelete = async () => {
@@ -213,16 +235,30 @@
       </div>
     </Panel>
 
-    <Panel title="Maintenance" subtitle="Repository maintenance for the selected model.">
+    <Panel title="Maintenance" subtitle="Create a recovery checkpoint, preview pruning, then reclaim covered operation payloads. Acceptance receipts and merge metadata are retained.">
       <div class="stack">
+        <div class="line"><strong>Latest checkpoint</strong><span>{checkpoint ? `Revision ${checkpoint.revision}` : 'No checkpoint yet'}</span></div>
+        {#if checkpoint}
+          <div class="line"><strong>Checkpoint created</strong><span>{checkpoint.createdAt}</span></div>
+        {/if}
         <label>
-          <span>Compact retain revisions</span>
+          <span>Recent revisions to retain as operation payloads</span>
           <input type="number" min="0" bind:value={compactRetain} />
         </label>
         <div class="actions">
-          <button class="secondary" on:click={submitRebuild} disabled={!$selectedModelId}>Rebuild State</button>
-          <button class="primary" on:click={submitCompact} disabled={!$selectedModelId}>Compact History</button>
+          <button class="secondary" on:click={submitRebuild} disabled={!$selectedModelId || maintenanceBusy}>Rebuild State</button>
+          <button class="secondary" on:click={submitCheckpoint} disabled={!$selectedModelId || maintenanceBusy}>Create Checkpoint</button>
+          <button class="secondary" on:click={() => submitCompact(true)} disabled={!$selectedModelId || maintenanceBusy}>Preview Pruning</button>
+          <button class="primary" on:click={() => submitCompact(false)} disabled={!$selectedModelId || !checkpoint || maintenanceBusy}>Prune Covered Payloads</button>
         </div>
+        {#if visibleCompaction}
+          <div class="line"><strong>Run</strong><span>{visibleCompaction.dryRun ? 'Preview only' : 'Applied'}</span></div>
+          <div class="line"><strong>Eligible batches before run</strong><span>{visibleCompaction.eligibleBatchCount}</span></div>
+          <div class="line"><strong>Pruned batches / operations</strong><span>{visibleCompaction.prunedBatchCount} / {visibleCompaction.deletedOpCount}</span></div>
+          <div class="line"><strong>Pruned through revision</strong><span>{visibleCompaction.prunedThroughRevision}</span></div>
+          <p class="help">{visibleCompaction.note}</p>
+        {/if}
+        <p class="help">Pruning runs in bounded batches and pauses before unpublished changes. Repeat a run to reclaim remaining eligible payloads. Individual operations pruned from history remain available only in a separate archive.</p>
       </div>
     </Panel>
   </div>

@@ -92,7 +92,7 @@ Archimesh provides five core capabilities:
   the op-log. Used for fast joins, exports and admin inspection.
 \item[Outbox] A bounded persistent FIFO queue on the client side that holds
   local edits while disconnected from the server.
-\item[Compaction] Admin-controlled pruning of old op-log commits and merge
-  metadata below a configurable retention watermark. Tombstones are retained
-  for delete safety.
+\item[Compaction] Admin-controlled pruning of checkpoint-covered, published
+  operation payloads below a retention watermark. Acceptance receipts and all
+  merge metadata are retained for recovery and stale-write safety.
 \end{description}

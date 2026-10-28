@@ -13,7 +13,7 @@ flowchart TB
     Clients["Archi clients<br/>Archimesh plugin in each client"]
     Admin["Browser<br/>Svelte admin UI"]
     Server["One authoritative Quarkus server<br/>API, collaboration service,<br/>durable delivery and WebSocket fan-out"]
-    DB[("Neo4j<br/>Model graph, op-log, merge metadata,<br/>tags, ACLs and publication intents")]
+    DB[("Neo4j<br/>Model graph, checkpoints, op-log,<br/>merge metadata, tags, ACLs and publication intents")]
     Kafka[("Kafka<br/>Per-model ops, locks and presence")]
 
     Clients <-->|"WebSocket + model discovery HTTP"| Server
@@ -103,15 +103,15 @@ Notation updates use `UpdateViewObjectOpaque` and `UpdateConnectionOpaque` paylo
 
 Authorization supports bootstrap identities for local development, trusted proxy headers, and OIDC/JWT identities. When authorization is enabled, model ACLs govern model access and can override generic reader/writer roles. Global admins retain administrative access; catalog filtering lets ordinary users discover the models they may read.
 
-The admin UI/API provides model provisioning, ACL management, immutable tags, active sessions, audit/diagnostic views, package export/import, rebuild, and metadata compaction. Export packages contain model metadata, ACLs, current state, complete replay history, and tag snapshots. Import rejects an existing model unless overwrite is requested and rejects overwrite while live sessions exist. See [server API and identity setup](server/README.md) and [export format](server/EXPORT_FORMAT.md).
+The admin UI/API provides model provisioning, ACL management, immutable tags, active sessions, audit/diagnostic views, package export/import, checkpoint creation, pruning previews, and rebuild. Export packages contain model metadata, ACLs, current state, recovery data, and tag snapshots. Recovery uses either a complete operation log or a checkpoint with prefix acceptance receipts and a complete operation tail. Import rejects an existing model unless overwrite is requested and rejects overwrite while live sessions exist. See [server API and identity setup](server/README.md), [export format](server/EXPORT_FORMAT.md), and the [checkpoint maintenance workflow](docs/checkpoint-pruning.md).
 
 ## Reliability and deployment
 
 - Run **one authoritative server per Neo4j repository**. A renewable database writer lease enforces this topology; timeline operations are serialized in the active server.
 - Each model's ops topic needs **one Kafka partition** to preserve order. Topic names follow `archimesh.model.<modelId>.<ops|locks|presence>`.
 - Operation publication is durable and at least once. Lock/presence events use their own Kafka topics; lock leases and live sessions are process-local state.
-- Rebuild checks for complete, contiguous history before replacing the projection in one transaction. Import also requires complete replay history.
-- Compaction retains the recovery op-log, field clocks, and tombstones. Checkpoint-based history pruning remains future work. History removed by older compaction cannot be reconstructed from a partial log; restore a complete export or backup.
+- Rebuild verifies the latest checkpoint and complete, contiguous operation tail before replacing the projection in one transaction. Without a checkpoint it requires the full operation history. V2 checkpoint import also restores in one transaction.
+- Manual pruning removes only whole, published batches covered by a verified checkpoint and the requested retention policy. It retains acceptance receipts, all clocks, and tombstones. Stale reconnects receive a snapshot when their delta history has been pruned. Archive full history before pruning if individual old operations are needed.
 
 The [architecture document](architecture.md#supported-deployment-and-recovery) includes recovery and publication-failure diagrams, deployment boundaries, and known operational gaps.
 
@@ -144,6 +144,7 @@ These scripts are the supported release gate entrypoints. [The sanity checklist]
 | --- | --- |
 | [architecture.md](architecture.md) | Component wiring, state ownership, identity, checkout, history, and recovery flows. |
 | [crdt-spec.md](crdt-spec.md) | Merge rules, implemented domains, correctness expectations, and remaining work. |
+| [docs/checkpoint-pruning.md](docs/checkpoint-pruning.md) | Checkpoint creation, bounded payload pruning, recovery, and operational limits. |
 | [client/](client/README.md) | Archi plugin, target-platform setup, pinned build, and client tests. |
 | [server/](server/README.md) | Quarkus endpoints, services, persistence, identity setup, and server tests. |
 | [admin-web/](admin-web/README.md) | Svelte administration UI. |

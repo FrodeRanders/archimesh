@@ -291,19 +291,50 @@ public class AdminEndpoint {
      */
     public AdminCompactionStatus compact(@PathParam("modelId") String modelId,
                                          @QueryParam("retainRevisions") Long retainRevisions,
+                                         @QueryParam("dryRun") Boolean dryRun,
                                          @Context HttpHeaders headers,
                                          @Context SecurityContext securityContext) {
         authorizationService.requireRestAllowed(headers, securityContext, AuthorizationAction.ADMIN_MODEL_COMPACT, modelId, null);
         // Compaction reclaims eligible metadata/op-log history according to committed-horizon watermark policy
         var subject = authorizationService.currentRestSubject(headers, securityContext);
-        AdminCompactionStatus result = archimeshService.compactModelMetadata(modelId, retainRevisions);
+        AdminCompactionStatus result = archimeshService.compactModelMetadata(modelId, retainRevisions, Boolean.TRUE.equals(dryRun));
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("retainRevisions", result.retainRevisions());
         context.put("executed", result.executed());
         context.put("deletedCommitCount", result.deletedCommitCount());
         context.put("deletedOpCount", result.deletedOpCount());
+        context.put("checkpointRevision", result.checkpointRevision());
+        context.put("prunedBatchCount", result.prunedBatchCount());
+        context.put("dryRun", result.dryRun());
         audit("AdminModelCompact", modelId, subject.userId(), context);
         return result;
+    }
+
+    @POST
+    @Path("/models/{modelId}/checkpoints")
+    @Produces(MediaType.APPLICATION_JSON)
+    public CheckpointSummary checkpoint(@PathParam("modelId") String modelId,
+                                         @Context HttpHeaders headers, @Context SecurityContext securityContext) {
+        authorizationService.requireRestAllowed(headers,securityContext,AuthorizationAction.ADMIN_MODEL_CHECKPOINT_CREATE,modelId,null);
+        try {
+            CheckpointSummary result = archimeshService.createModelCheckpoint(modelId);
+            audit("AdminModelCheckpoint",modelId,authorizationService.currentRestSubject(headers,securityContext).userId(),
+                    Map.of("revision",result.revision(),"sha256",result.sha256()));
+            return result;
+        } catch (IllegalArgumentException e) {
+            throw new WebApplicationException(e.getMessage(),Response.Status.BAD_REQUEST);
+        } catch (IllegalStateException e) {
+            throw new WebApplicationException(e.getMessage(),Response.Status.CONFLICT);
+        }
+    }
+
+    @GET
+    @Path("/models/{modelId}/checkpoints/latest")
+    @Produces(MediaType.APPLICATION_JSON)
+    public CheckpointSummary latestCheckpoint(@PathParam("modelId") String modelId,
+                                               @Context HttpHeaders headers, @Context SecurityContext securityContext) {
+        authorizationService.requireRestAllowed(headers,securityContext,AuthorizationAction.ADMIN_MODEL_CHECKPOINT_READ,modelId,null);
+        return archimeshService.getLatestModelCheckpoint(modelId).orElseThrow(() -> new NotFoundException("Model has no checkpoint"));
     }
 
     @GET

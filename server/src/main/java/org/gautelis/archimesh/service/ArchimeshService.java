@@ -37,6 +37,7 @@ public class ArchimeshService {
     private static final int DEFAULT_WINDOW_LIMIT = 25;
     private static final String HEAD_REF = "HEAD";
     private static final String MODEL_EXPORT_FORMAT = "archi-model-export-v1";
+    private static final String CHECKPOINT_EXPORT_FORMAT = "archi-model-export-v2";
 
     @Inject
     ValidationService validationService;
@@ -709,9 +710,13 @@ public class ArchimeshService {
         ensureRegisteredModelForAdmin(normalizedModelId);
         JsonNode snapshot = neo4jRepository.loadSnapshot(normalizedModelId);
         long headRevision = resolvedHeadRevision(normalizedModelId, snapshot);
-        JsonNode opBatches = headRevision > 0L
-                ? neo4jRepository.loadOpBatches(normalizedModelId, 1L, headRevision)
-                : JsonNodeFactory.instance.arrayNode();
+        ModelCheckpoint checkpoint = neo4jRepository.latestCheckpoint(normalizedModelId).orElse(null);
+        long base = checkpoint == null ? 0L : checkpoint.revision();
+        JsonNode opBatches = neo4jRepository.loadOpBatches(normalizedModelId, base+1, headRevision);
+        if (base > headRevision || !coversRevisions(opBatches,base+1,headRevision)) {
+            throw new IllegalStateException("Cannot export: recovery history is incomplete");
+        }
+        List<BatchReceipt> receipts = checkpoint == null ? List.of() : neo4jRepository.loadReceipts(normalizedModelId,base);
         List<ModelTagExportEntry> tags = neo4jRepository.listModelTags(normalizedModelId).stream()
                 .map(tag -> new ModelTagExportEntry(
                         tag.modelId(),
@@ -722,13 +727,15 @@ public class ArchimeshService {
                         neo4jRepository.loadTaggedSnapshot(normalizedModelId, tag.tagName())))
                 .toList();
         return new AdminModelExport(
-                MODEL_EXPORT_FORMAT,
+                checkpoint == null ? MODEL_EXPORT_FORMAT : CHECKPOINT_EXPORT_FORMAT,
                 Instant.now().toString(),
                 new ModelCatalogEntry(normalizedModelId, neo4jRepository.readModelName(normalizedModelId), headRevision),
                 getModelAccessControl(normalizedModelId),
                 snapshot,
                 opBatches,
-                tags);
+                tags,
+                checkpoint,
+                checkpoint == null ? null : receipts);
     }
 
     /**
@@ -740,7 +747,7 @@ public class ArchimeshService {
         if (exportPackage == null) {
             throw new IllegalArgumentException("Import payload is required.");
         }
-        if (!MODEL_EXPORT_FORMAT.equals(exportPackage.format())) {
+        if (!MODEL_EXPORT_FORMAT.equals(exportPackage.format()) && !CHECKPOINT_EXPORT_FORMAT.equals(exportPackage.format())) {
             throw new IllegalArgumentException("Unsupported import format: " + exportPackage.format());
         }
         if (exportPackage.model() == null) {
@@ -755,6 +762,19 @@ public class ArchimeshService {
         }
         if (exists && sessionRegistry.sessionCount(modelId) > 0) {
             throw new IllegalStateException("Model has active sessions; close clients before overwriting.");
+        }
+
+        if (CHECKPOINT_EXPORT_FORMAT.equals(exportPackage.format())) {
+            neo4jRepository.importCheckpointModel(exportPackage,overwrite);
+            revisionService.clearModel(modelId);
+            idempotencyService.clearModel(modelId);
+            modelAccessControlCache.remove(modelId);
+            registeredModelCache.add(modelId);
+            int batches = exportPackage.opBatches().size();
+            int tags = exportPackage.tags() == null ? 0 : exportPackage.tags().size();
+            recordActivity(modelId,"ImportModel","checkpointRevision="+exportPackage.checkpoint().revision()+" tailBatches="+batches);
+            return new AdminModelImportResult(modelId,exists,exportPackage.model().headRevision(),batches,tags,
+                    "Model restored from checkpoint and subsequent history.");
         }
 
         if (exists) {
@@ -825,16 +845,36 @@ public class ArchimeshService {
                 exists ? "Model overwritten from import package." : "Model imported from package.");
     }
 
+    public synchronized CheckpointSummary createModelCheckpoint(String modelId) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
+        String id = normalizeModelId(modelId);
+        ensureRegisteredModelForAdmin(id);
+        ModelCheckpoint checkpoint = neo4jRepository.createCheckpoint(id);
+        recordActivity(id,"CreateCheckpoint","revision="+checkpoint.revision()+" sha256="+checkpoint.sha256());
+        return checkpoint.summary();
+    }
+
+    public synchronized Optional<CheckpointSummary> getLatestModelCheckpoint(String modelId) {
+        String id = normalizeModelId(modelId);
+        ensureRegisteredModelForAdmin(id);
+        return neo4jRepository.latestCheckpoint(id).map(ModelCheckpoint::summary);
+    }
+
     /**
-     * Compacts metadata and op-log history for a model, deleting commits and ops below
-     * a configurable retention watermark to reclaim storage.
+     * Prunes checkpoint-covered, published operation payloads below the retention
+     * watermark while retaining acceptance receipts and all merge metadata.
      */
     public synchronized AdminCompactionStatus compactModelMetadata(String modelId, Long retainRevisionsOverride) {
+        return compactModelMetadata(modelId,retainRevisionsOverride,false);
+    }
+
+    public synchronized AdminCompactionStatus compactModelMetadata(String modelId, Long retainRevisionsOverride, boolean dryRun) {
+        ensureRegisteredModelForAdmin(modelId);
         if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         long retainRevisions = retainRevisionsOverride == null
                 ? defaultCompactionRetainRevisions
                 : Math.max(0L, retainRevisionsOverride);
-        AdminCompactionStatus status = neo4jRepository.compactMetadata(modelId, retainRevisions);
+        AdminCompactionStatus status = neo4jRepository.compactMetadata(modelId, retainRevisions,dryRun);
         recordActivity(modelId, "CompactMetadata",
                 "retainRevisions=" + retainRevisions
                         + " committedHorizon=" + status.committedHorizonRevision()
@@ -850,21 +890,23 @@ public class ArchimeshService {
     }
 
     /**
-     * Clears the materialized graph state and rebuilds it from scratch by replaying all
-     * commit batches from the op-log.
+     * Replaces the projection transactionally from the latest checkpoint and complete
+     * operation tail, or from complete history when no checkpoint exists.
      */
     public synchronized RebuildStatus rebuildMaterializedState(String modelId) {
         if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         long latestCommitRevision = neo4jRepository.readLatestCommitRevision(modelId);
-        JsonNode history = neo4jRepository.loadOpBatches(modelId, 1, latestCommitRevision);
-        if (latestCommitRevision > 0 && !coversRevisions(history, 1, latestCommitRevision)) {
-            throw new IllegalStateException("Cannot rebuild: complete op-log history is unavailable");
+        ModelCheckpoint checkpoint = neo4jRepository.latestCheckpoint(modelId).orElse(null);
+        long base = checkpoint == null ? 0 : checkpoint.revision();
+        JsonNode history = neo4jRepository.loadOpBatches(modelId, base+1, latestCommitRevision);
+        if (base > latestCommitRevision || !coversRevisions(history, base+1, latestCommitRevision)) {
+            throw new IllegalStateException("Cannot rebuild: complete checkpoint recovery history is unavailable");
         }
-        neo4jRepository.rebuildProjection(modelId, history, latestCommitRevision);
+        neo4jRepository.rebuildProjection(modelId, checkpoint, history, latestCommitRevision);
 
         int appliedBatchCount = 0;
         int appliedOpCount = 0;
-        long rebuiltHeadRevision = 0L;
+        long rebuiltHeadRevision = base;
 
         if (latestCommitRevision > 0) {
             JsonNode opBatches = history;
@@ -894,7 +936,7 @@ public class ArchimeshService {
                 "requestedToRevision=" + latestCommitRevision + " rebuiltHeadRevision=" + rebuiltHeadRevision
                         + " appliedBatchCount=" + appliedBatchCount + " appliedOpCount=" + appliedOpCount
                         + " consistent=" + consistent);
-        return new RebuildStatus(modelId, latestCommitRevision, rebuiltHeadRevision, appliedBatchCount, appliedOpCount, consistent);
+        return new RebuildStatus(modelId, latestCommitRevision, rebuiltHeadRevision, appliedBatchCount, appliedOpCount, consistent,base);
     }
 
     private int countArray(JsonNode node, String field) {
@@ -1091,6 +1133,42 @@ public class ArchimeshService {
     }
 
     private void validateImportPayload(AdminModelExport exportPackage) {
+        if (CHECKPOINT_EXPORT_FORMAT.equals(exportPackage.format())) {
+            ModelCheckpoint checkpoint = exportPackage.checkpoint();
+            CheckpointCodec.verify(checkpoint);
+            long base = checkpoint.revision();
+            if (exportPackage.opBatches() == null || !exportPackage.opBatches().isArray()
+                    || base > exportPackage.model().headRevision() || !coversRevisions(exportPackage.opBatches(),base+1,exportPackage.model().headRevision())) {
+                throw new IllegalArgumentException("Import requires complete history after the checkpoint");
+            }
+            Set<String> ids = new HashSet<>();
+            long next = 1;
+            if (exportPackage.receipts() == null) throw new IllegalArgumentException("Checkpoint import requires acceptance receipts");
+            for (BatchReceipt receipt : exportPackage.receipts()) {
+                if (receipt == null || receipt.opBatchId() == null || receipt.opBatchId().isBlank()
+                        || !ids.add(receipt.opBatchId()) || receipt.revisionFrom() != next
+                        || receipt.revisionTo() < next || receipt.revisionTo() > base || receipt.timestamp() == null) {
+                    throw new IllegalArgumentException("Invalid or incomplete checkpoint acceptance receipts");
+                }
+                next = receipt.revisionTo()+1;
+            }
+            if (next != base+1) throw new IllegalArgumentException("Acceptance receipts do not cover the checkpoint");
+            for (JsonNode batch : exportPackage.opBatches()) {
+                if (!ids.add(requireText(batch,"opBatchId"))) throw new IllegalArgumentException("Duplicate imported batch identity");
+            }
+            if (exportPackage.tags() != null) {
+                Set<String> names = new HashSet<>();
+                for (ModelTagExportEntry tag : exportPackage.tags()) {
+                    if (tag == null || tag.tagName() == null || tag.tagName().isBlank() || !names.add(tag.tagName())
+                            || HEAD_REF.equalsIgnoreCase(tag.tagName()) || tag.revision() < 0 || tag.revision() > exportPackage.model().headRevision()
+                            || tag.snapshot() == null || !tag.snapshot().isObject() || tag.createdAt() == null) {
+                        throw new IllegalArgumentException("Invalid checkpoint export tag");
+                    }
+                }
+            }
+            return;
+        }
+        if (exportPackage.checkpoint() != null) throw new IllegalArgumentException("A checkpoint requires export format v2");
         JsonNode opBatches = exportPackage.opBatches();
         boolean hasOpBatches = opBatches != null && opBatches.isArray() && !opBatches.isEmpty();
         if (hasOpBatches) {
@@ -2127,7 +2205,7 @@ public class ArchimeshService {
     }
 
     static boolean coversRevisions(JsonNode batches, long from, long to) {
-        if (from > to) return true;
+        if (from > to) return batches != null && batches.isArray() && batches.isEmpty();
         if (batches == null || !batches.isArray()) return false;
         long next = from;
         for (JsonNode batch : batches) {

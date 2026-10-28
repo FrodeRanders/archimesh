@@ -218,8 +218,9 @@ P0 means required to claim CRDT correctness for currently-supported ops; P1 mean
   - added admin compaction endpoint (`POST /admin/models/{modelId}/compact`) with run reporting;
   - compaction watermark now derived from committed revision horizon (`latestCommitRevision - retainRevisions`), with head + horizon reported in admin status;
   - first safe compaction pass implemented:
-    - retains op-log commits/ops until durable recovery checkpoints are available,
-    - prunes orphan `PropertyClock` entries below watermark,
+    - stores immutable checksummed raw-graph recovery checkpoints,
+    - prunes whole published payload batches covered by a checkpoint and retention policy, in bounded runs,
+    - retains acceptance receipts and all `PropertyClock` entries, including orphan safety metadata,
     - retains tombstones intentionally for delete safety.
   - tombstones now persist `updatedRevision` metadata (when assigned revision range is available during apply), and compaction reports tombstones eligible under watermark while still retaining them by policy.
   - compaction now also reports eligible field-clock metadata entries (`*_lamport` on materialized nodes) under watermark while retaining those field clocks for conservative safety.
@@ -229,9 +230,10 @@ P0 means required to claim CRDT correctness for currently-supported ops; P1 mean
   - Done: retention policy is defined and implemented for:
     - tombstones (`*Tombstone` nodes) retained for delete safety (eligibility reported),
     - field clocks (`*_lamport`, `*_clientId`) retained conservatively (eligibility reported),
-    - property clocks (`PropertyClock`) pruned when orphaned/eligible under watermark.
+    - property clocks (`PropertyClock`) retained, including orphan clocks.
+  - Done: preview/apply controls, checkpoint-plus-tail rebuild, v2 checkpoint export/import, and snapshot fallback after pruning.
   - Done: admin endpoint/reporting exists for compaction runs and reclaimed metadata.
-  - Remaining: gather/track long-running workload evidence that metadata growth remains operationally bounded in production-like usage.
+  - Remaining: define a safe metadata garbage-collection protocol, automatic checkpoint retention, and gather long-running workload evidence. Checkpoints and acceptance receipts currently accumulate; bounded payload deletion does not bound total metadata cardinality.
 - Primary files:
   - `server/src/main/java/org/gautelis/archimesh/service/impl/Neo4jRepositoryImpl.java`
   - `server/src/main/java/org/gautelis/archimesh/endpoint/AdminEndpoint.java`
@@ -303,6 +305,6 @@ P0 means required to claim CRDT correctness for currently-supported ops; P1 mean
 - Errors include `opBatchId`; uncorrelated or unrelated errors cannot remove outbox entries.
 - Client local writes seed their merge clocks. Own accepted echoes reconcile normally, and observing remote causal metadata advances the outgoing Lamport clock.
 - Snapshots include property state, field/member clocks and tombstones; applied revision advances after application, with gaps requesting catch-up.
-- Compaction preserves replay history. Rebuild/import require complete contiguous history; rebuild replaces the projection transactionally.
+- Compaction preserves checkpoint-plus-tail recovery and acceptance receipts. Rebuild and v2 import require a valid checkpoint with complete contiguous tail (or full history for v1); projection replacement is transactional. See [checkpoint workflow](docs/checkpoint-pruning.md).
 - The supported deployment has one authoritative server, enforced with a renewable database writer lease.
 - `scripts/validate-local.sh ws` builds the plugin with its pinned Maven wrapper and executes all client tests, server unit/infrastructure tests, and websocket/authorization integration tests.

@@ -35,6 +35,9 @@ final class Neo4jOpLogSupport {
                           modelId: $modelId,
                           opBatchId: $opBatchId
                         })
+                            ON CREATE SET c.published = true,
+                                          c.payloadPruned = false,
+                                          c.opCount = $opCount
                         SET c.revisionFrom = $from,
                             c.revisionTo = $to,
                             c.ts = $ts
@@ -49,6 +52,7 @@ final class Neo4jOpLogSupport {
                         "to", range.to(),
                         "prevTo", range.from() - 1,
                         "opBatchId", opBatchId,
+                            "opCount", opBatch.path("ops").size(),
                         "ts", opBatch.path("timestamp").asText()
                 ));
 

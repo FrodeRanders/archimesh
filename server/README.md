@@ -153,7 +153,7 @@ Maintainer invariants:
     - publish via Kafka abstraction
     - broadcast acceptance (`OpsAccepted`)
 - Neo4j implementation writes commit/op log and applies core materialized state operations.
-- Rebuild API clears materialized nodes (elements/relationships/views subtree) and replays op-log commits.
+- Rebuild API restores the latest checkpoint and replays its complete op-log tail, or replays the complete log when no checkpoint exists, in one transaction.
 - If an op omits `causal`, the server fills it (`clientId`, `lamport`, `opId`) before persisting/broadcasting.
 - `CreateViewObject` and `UpdateViewObjectOpaque` now use LWW merge for geometry fields
   (`x`, `y`, `width`, `height`) using tuple `(lamport, clientId)`.
@@ -172,11 +172,22 @@ Get canonical snapshot from Neo4j materialized state:
 curl -s "http://localhost:8081/models/demo/snapshot" | jq .
 ```
 
-Rebuild materialized state from op-log:
+Rebuild materialized state from checkpoint plus tail (or complete op-log):
 
 ```bash
 curl -s -X POST "http://localhost:8081/models/demo/rebuild" | jq .
 ```
+
+Create a checkpoint, inspect it, and preview/apply covered payload pruning (model-admin access required):
+
+```bash
+curl -s -X POST "http://localhost:8081/admin/models/demo/checkpoints" | jq .
+curl -s "http://localhost:8081/admin/models/demo/checkpoints/latest" | jq .
+curl -s -X POST "http://localhost:8081/admin/models/demo/compact?retainRevisions=1000&dryRun=true" | jq .
+curl -s -X POST "http://localhost:8081/admin/models/demo/compact?retainRevisions=1000" | jq .
+```
+
+Each applied pruning transaction handles at most `app.compaction.max-batches-per-run` batches (default `100`; `ARCHIMESH_COMPACTION_MAX_BATCHES`). Payloads require checkpoint coverage and confirmed publication. Receipts, clocks, and tombstones remain. Repeated calls resume from durable state. See [checkpoint maintenance](../docs/checkpoint-pruning.md) for recovery, archive requirements, legacy publication handling, and current limits.
 
 Get aggregated admin status (snapshot counts + consistency):
 

@@ -8,6 +8,9 @@ import org.gautelis.archimesh.model.ModelAccessControl;
 import org.gautelis.archimesh.model.ModelCatalogEntry;
 import org.gautelis.archimesh.model.ModelTagEntry;
 import org.gautelis.archimesh.model.RevisionRange;
+import org.gautelis.archimesh.model.ModelCheckpoint;
+import org.gautelis.archimesh.model.BatchReceipt;
+import org.gautelis.archimesh.model.AdminModelExport;
 import org.gautelis.archimesh.service.Neo4jRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -40,6 +43,9 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
     @ConfigProperty(name = "app.neo4j.password", defaultValue = "devpassword")
     String password;
 
+    @ConfigProperty(name = "app.compaction.max-batches-per-run", defaultValue = "100")
+    int compactionBatchLimit = 100;
+
     @Inject
     ObjectMapper objectMapper;
 
@@ -48,6 +54,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
     private Neo4jReadSupport readSupport;
     private Neo4jCompactionSupport compactionSupport;
     private Neo4jOpLogSupport opLogSupport;
+    private Neo4jCheckpointSupport checkpointSupport;
     private volatile String runtimeLeaseOwner;
     String runtimeLeaseKey = "writer";
 
@@ -59,8 +66,9 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
         driver = GraphDatabase.driver(uri, AuthTokens.basic(username, password));
         materializedStateSupport = new Neo4jMaterializedStateSupport(objectMapper);
         readSupport = new Neo4jReadSupport(objectMapper);
-        compactionSupport = new Neo4jCompactionSupport();
         opLogSupport = new Neo4jOpLogSupport();
+        checkpointSupport = new Neo4jCheckpointSupport(objectMapper);
+        compactionSupport = new Neo4jCompactionSupport(checkpointSupport, compactionBatchLimit);
         LOG.debug("Neo4j repository ready at {}", uri);
     }
 
@@ -641,34 +649,13 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
      */
     @Override
     public AdminCompactionStatus compactMetadata(String modelId, long retainRevisions) {
-        long safeRetain = Math.max(0L, retainRevisions);
-        long headRevision = readHeadRevision(modelId);
-        long committedHorizonRevision = Math.max(0L, readLatestCommitRevision(modelId));
-        long watermarkRevision = Math.max(0L, committedHorizonRevision - safeRetain);
-        if (driver == null) {
-            return new AdminCompactionStatus(
-                    modelId, headRevision, committedHorizonRevision, watermarkRevision, safeRetain,
-                    0L, 0L, 0L, 0L, 0L, 0L, false, "Neo4j driver unavailable");
-        }
-        try (var session = driver.session()) {
-            return compactionSupport.compactMetadata(
-                    session, modelId, headRevision, committedHorizonRevision, watermarkRevision, safeRetain);
-        } catch (Exception e) {
-            LOG.warn("Compaction failed for model={} watermarkRevision={}", modelId, watermarkRevision, e);
-            return new AdminCompactionStatus(
-                    modelId,
-                    headRevision,
-                    committedHorizonRevision,
-                    watermarkRevision,
-                    safeRetain,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    0L,
-                    false,
-                    "Compaction failed: " + e.getClass().getSimpleName());
+        return compactMetadata(modelId, retainRevisions, false);
+    }
+
+    @Override
+    public AdminCompactionStatus compactMetadata(String modelId, long retainRevisions, boolean dryRun) {
+        try (var session = requireDriver("compactMetadata").session()) {
+            return compactionSupport.compactMetadata(session, modelId, Math.max(0,retainRevisions), dryRun);
         }
     }
 
@@ -693,11 +680,79 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
     }
 
     @Override
+    public ModelCheckpoint createCheckpoint(String modelId) {
+        try (var session = requireDriver("createCheckpoint").session()) {
+            session.run("CREATE CONSTRAINT model_checkpoint_revision IF NOT EXISTS FOR (c:ModelCheckpoint) REQUIRE (c.modelId,c.revision) IS UNIQUE").consume();
+            return session.executeWrite(tx -> {
+                long head = tx.run("MATCH (m:Model {modelId:$modelId}) WHERE coalesce(m.registered,false)=true "
+                        + "SET m.commitFence=coalesce(m.commitFence,0)+1 RETURN coalesce(m.headRevision,0) AS head",
+                        Map.of("modelId", modelId)).single().get("head").asLong();
+                long committed = tx.run("MATCH (c:Commit {modelId:$modelId}) RETURN coalesce(max(c.revisionTo),0) AS head",
+                        Map.of("modelId",modelId)).single().get("head").asLong();
+                if (head != committed) throw new IllegalStateException("Cannot checkpoint a model whose committed history and head disagree");
+                var previous = checkpointSupport.latest(tx, modelId);
+                if (previous.isPresent() && previous.get().revision() > head) throw new IllegalStateException("Checkpoint is ahead of the model head");
+                verifyCheckpointHistory(tx, modelId, previous.map(c -> c.revision()).orElse(0L), head);
+                if (previous.isPresent() && previous.get().revision() == head) return previous.get();
+                ModelCheckpoint checkpoint = checkpointSupport.capture(tx, modelId, head);
+                checkpointSupport.persist(tx, checkpoint);
+                return checkpoint;
+            });
+        }
+    }
+
+    private void verifyCheckpointHistory(TransactionContext tx, String modelId, long base, long head) {
+        long next = 1L;
+        for (Record row : tx.run("MATCH (c:Commit {modelId:$modelId}) OPTIONAL MATCH (c)-[:HAS_OP]->(o:Op) "
+                + "RETURN c.revisionFrom AS start,c.revisionTo AS end,coalesce(c.payloadPruned,false) AS pruned,count(o) AS ops "
+                + "ORDER BY start",Map.of("modelId",modelId)).list()) {
+            long start = row.get("start").asLong(), end = row.get("end").asLong();
+            if (start != next || end < start || (end > base && (row.get("pruned").asBoolean()
+                    || row.get("ops").asLong() != end-start+1))) {
+                throw new IllegalStateException("Cannot checkpoint: recovery history or acceptance receipts are incomplete");
+            }
+            next = end+1;
+        }
+        if (next != head+1) throw new IllegalStateException("Cannot checkpoint: acceptance receipts do not cover the model head");
+    }
+
+    @Override
+    public Optional<ModelCheckpoint> latestCheckpoint(String modelId) {
+        try (var session = requireDriver("latestCheckpoint").session()) {
+            return session.executeRead(tx -> checkpointSupport.latest(tx, modelId));
+        }
+    }
+
+    @Override
+    public List<BatchReceipt> loadReceipts(String modelId, long throughRevision) {
+        try (var session = requireDriver("loadReceipts").session()) {
+            return session.executeRead(tx -> tx.run("MATCH (c:Commit {modelId:$modelId}) WHERE c.revisionTo <= $through "
+                    + "RETURN c.opBatchId AS id, c.revisionFrom AS start, c.revisionTo AS end, coalesce(c.ts,'') AS ts ORDER BY c.revisionFrom",
+                    Map.of("modelId",modelId,"through",throughRevision)).list(row -> new BatchReceipt(row.get("id").asString(),
+                    row.get("start").asLong(), row.get("end").asLong(), row.get("ts").asString())));
+        }
+    }
+
+    @Override
     public void rebuildProjection(String modelId, JsonNode history, long head) {
+        rebuildProjection(modelId, null, history, head);
+    }
+
+    @Override
+    public void rebuildProjection(String modelId, ModelCheckpoint checkpoint, JsonNode history, long head) {
+        if (checkpoint != null) {
+            Neo4jCheckpointSupport.validate(checkpoint);
+            if (!modelId.equals(checkpoint.modelId()) || checkpoint.revision() > head) throw new IllegalArgumentException("Checkpoint revision/model mismatch");
+        }
         try (var session = requireDriver("rebuildProjection").session()) {
             session.executeWrite(tx -> {
                 tx.run("MATCH (m:Model {modelId:$modelId}) SET m.commitFence=coalesce(m.commitFence,0)+1", Map.of("modelId",modelId));
                 clearProjection(tx, modelId);
+                if (checkpoint != null) {
+                    // clearProjection creates canonical roots; the checkpoint supplies its exact raw folder state.
+                    tx.run("MATCH (f:Folder {modelId:$modelId}) DETACH DELETE f", Map.of("modelId",modelId));
+                    checkpointSupport.restore(tx, checkpoint);
+                }
                 for (JsonNode batch : history) materializedStateSupport.applyBatch(tx, modelId, batch);
                 tx.run("MATCH (m:Model {modelId:$modelId}) SET m.headRevision=$head", Map.of("modelId",modelId,"head",head));
                 return null;
@@ -711,48 +766,80 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
      */
     @Override
     public void deleteModel(String modelId) {
-        LOG.warn("deleteModel: modelId={}", modelId);
+        LOG.warn("deleteModel: modelId={}",modelId);
         try (var session = requireDriver("deleteModel").session()) {
-            session.executeWrite(tx -> {
-                tx.run("""
-                        MATCH (c:Commit {modelId: $modelId})
-                        OPTIONAL MATCH (c)-[:HAS_OP]->(o:Op)
-                        DETACH DELETE o, c
-                        """, Map.of("modelId", modelId));
+            session.executeWrite(tx -> { deleteModel(tx,modelId); return null; });
+        }
+    }
 
-                tx.run("""
-                        MATCH (m:Model {modelId: $modelId})
-                        OPTIONAL MATCH (m)-[:HAS_VIEW]->(v:View)
-                        OPTIONAL MATCH (m)-[:HAS_FOLDER]->(f:Folder)
-                        OPTIONAL MATCH (v)-[:CONTAINS]->(contained)
-                        OPTIONAL MATCH (m)-[:HAS_ELEMENT]->(e:Element)
-                        OPTIONAL MATCH (m)-[:HAS_REL]->(r:Relationship)
-                        OPTIONAL MATCH (m)-[:HAS_RELATIONSHIP_TOMBSTONE]->(rt:RelationshipTombstone)
-                        OPTIONAL MATCH (m)-[:HAS_ELEMENT_TOMBSTONE]->(t:ElementTombstone)
-                        OPTIONAL MATCH (m)-[:HAS_VIEW_TOMBSTONE]->(vt:ViewTombstone)
-                        OPTIONAL MATCH (m)-[:HAS_VIEWOBJECT_TOMBSTONE]->(vot:ViewObjectTombstone)
-                        OPTIONAL MATCH (m)-[:HAS_CONNECTION_TOMBSTONE]->(ct:ConnectionTombstone)
-                        OPTIONAL MATCH (m)-[:HAS_PROPERTY_CLOCK]->(pc:PropertyClock)
-                        WITH m,
-                             [x IN collect(DISTINCT contained) WHERE x IS NOT NULL] +
-                             [x IN collect(DISTINCT f) WHERE x IS NOT NULL] +
-                             [x IN collect(DISTINCT v) WHERE x IS NOT NULL] +
-                             [x IN collect(DISTINCT e) WHERE x IS NOT NULL] +
-                             [x IN collect(DISTINCT r) WHERE x IS NOT NULL] +
-                             [x IN collect(DISTINCT rt) WHERE x IS NOT NULL] +
-                             [x IN collect(DISTINCT vt) WHERE x IS NOT NULL] +
-                             [x IN collect(DISTINCT vot) WHERE x IS NOT NULL] +
-                             [x IN collect(DISTINCT ct) WHERE x IS NOT NULL] +
-                             [x IN collect(DISTINCT pc) WHERE x IS NOT NULL] +
-                             [x IN collect(DISTINCT t) WHERE x IS NOT NULL] AS nodes
-                        FOREACH (x IN nodes | DETACH DELETE x)
-                        DETACH DELETE m
-                        """, Map.of("modelId", modelId));
+    private void deleteModel(TransactionContext tx, String modelId) {
+        tx.run("MATCH (c:Commit {modelId:$modelId}) OPTIONAL MATCH (c)-[:HAS_OP]->(o:Op) DETACH DELETE o",
+                Map.of("modelId",modelId)).consume();
+        // Include independent tags/checkpoints and orphaned projection metadata, not only root-reachable nodes.
+        tx.run("MATCH (n {modelId:$modelId}) DETACH DELETE n",Map.of("modelId",modelId)).consume();
+    }
+
+    @Override
+    public void importCheckpointModel(AdminModelExport exportPackage, boolean overwrite) {
+        ModelCheckpoint original = exportPackage.checkpoint();
+        Neo4jCheckpointSupport.validate(original);
+        String modelId = exportPackage.model().modelId();
+        ModelCheckpoint checkpoint = org.gautelis.archimesh.service.CheckpointCodec.retarget(original,modelId);
+        Neo4jCheckpointSupport.validate(checkpoint);
+        try (var session = requireDriver("importCheckpointModel").session()) {
+            session.run("CREATE CONSTRAINT model_checkpoint_revision IF NOT EXISTS FOR (c:ModelCheckpoint) REQUIRE (c.modelId,c.revision) IS UNIQUE").consume();
+            session.executeWrite(tx -> {
+                boolean exists = tx.run("MATCH (m:Model {modelId:$modelId}) RETURN m",Map.of("modelId",modelId)).hasNext();
+                if (exists && !overwrite) throw new IllegalStateException("Model already exists");
+                if (exists) deleteModel(tx,modelId);
+                Map<String,Object> params = new HashMap<>();
+                params.put("modelId",modelId);
+                params.put("modelName",normalizeModelName(exportPackage.model().modelName()));
+                params.put("now",Instant.now().toString());
+                params.put("head",exportPackage.model().headRevision());
+                params.put("checkpointRevision",checkpoint.revision());
+                var acl = exportPackage.accessControl();
+                params.put("admins",acl == null ? List.of() : new ArrayList<>(acl.adminUsers()));
+                params.put("writers",acl == null ? List.of() : new ArrayList<>(acl.writerUsers()));
+                params.put("readers",acl == null ? List.of() : new ArrayList<>(acl.readerUsers()));
+                tx.run("CREATE (m:Model {modelId:$modelId,registered:true,headRevision:$head,prunedThroughRevision:$checkpointRevision, "
+                        + "adminUsers:$admins,writerUsers:$writers,readerUsers:$readers,createdAt:$now,updatedAt:$now}) "
+                        + "SET m.modelName=$modelName",params).consume();
+                for (BatchReceipt receipt : exportPackage.receipts()) {
+                    tx.run("MATCH (m:Model {modelId:$modelId}) CREATE (c:Commit {modelId:$modelId,opBatchId:$id, "
+                            + "revisionFrom:$start,revisionTo:$end,opCount:$count,ts:$ts,published:true,payloadPruned:true}) "
+                            + "CREATE (m)-[:HAS_COMMIT]->(c)",Map.of("modelId",modelId,"id",receipt.opBatchId(),
+                            "start",receipt.revisionFrom(),"end",receipt.revisionTo(),"count",receipt.revisionTo()-receipt.revisionFrom()+1,
+                            "ts",receipt.timestamp())).consume();
+                }
+                tx.run("MATCH (a:Commit {modelId:$modelId}), (b:Commit {modelId:$modelId}) WHERE a.revisionTo=b.revisionFrom-1 "
+                        + "MERGE (a)-[:NEXT]->(b)",Map.of("modelId",modelId)).consume();
+                checkpointSupport.restore(tx,checkpoint);
+                checkpointSupport.persist(tx,checkpoint);
+                for (JsonNode sourceBatch : exportPackage.opBatches()) {
+                    var batch = ((com.fasterxml.jackson.databind.node.ObjectNode)sourceBatch).deepCopy().put("modelId",modelId);
+                    RevisionRange range = new RevisionRange(batch.path("assignedRevisionRange").path("from").asLong(),
+                            batch.path("assignedRevisionRange").path("to").asLong());
+                    opLogSupport.appendOpLog(tx,modelId,batch.path("opBatchId").asText(),range,batch);
+                    materializedStateSupport.applyBatch(tx,modelId,batch);
+                }
+                if (exportPackage.tags() != null) for (var tag : exportPackage.tags()) {
+                    Map<String,Object> tagParams = new HashMap<>();
+                    tagParams.put("modelId",modelId);
+                    tagParams.put("name",tag.tagName());
+                    tagParams.put("description",normalizeTagDescription(tag.description()));
+                    tagParams.put("revision",tag.revision());
+                    tagParams.put("createdAt",tag.createdAt());
+                    JsonNode tagged = tag.snapshot().deepCopy();
+                    if (tagged.isObject()) ((com.fasterxml.jackson.databind.node.ObjectNode)tagged).put("modelId",modelId);
+                    tagParams.put("snapshot",tagged.toString());
+                    tx.run("CREATE (t:ModelTag {modelId:$modelId,tagName:$name,revision:$revision,snapshotJson:$snapshot}) "
+                            + "SET t.description=$description,t.createdAt=$createdAt",tagParams).consume();
+                }
                 return null;
             });
-        } catch (Exception e) {
-            LOG.warn("deleteModel failed for model={}", modelId, e);
-            throw writeFailure("deleteModel", modelId, e);
+        } catch (Exception failure) {
+            throw writeFailure("importCheckpointModel",modelId,failure);
         }
     }
 

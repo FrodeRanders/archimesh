@@ -16,6 +16,37 @@ The format is intended for:
 
 It is not a partial patch format. It represents one whole model timeline package.
 
+## Format versions and checkpoint recovery
+
+The server emits `archi-model-export-v1` when no checkpoint exists and `archi-model-export-v2` when a checkpoint exists. Both are accepted on import. The v1 fields and full-history requirements below remain supported.
+
+V2 adds two required fields:
+
+- `checkpoint`: an `archimesh-checkpoint-v1` object with `format`, `modelId`, `revision`, `createdAt`, `sha256`, and `state`. State contains raw projection `nodes` and `edges`, preserving properties, clocks, tombstones, and memberships. Each node has `key`, `label`, and `properties`; each edge has `from`, `to`, `type`, and `properties`. The root model endpoint is the reserved key `model`.
+- `receipts`: ordered acceptance records for every batch through checkpoint revision C, each with `opBatchId`, `revisionFrom`, `revisionTo`, and `timestamp`. They cover revisions 1..C exactly and preserve retry deduplication. For C=0 this is an empty array.
+
+In v2, `opBatches` contains only the complete tail C+1..`model.headRevision`, with whole batch boundaries and matching operation counts. An empty tail is valid when C equals HEAD, even for a non-empty model. The current `snapshot`, `accessControl`, and `tags` remain in the package. Restore uses the raw checkpoint and tail as its recovery source; the current snapshot is a convenience representation. Tagged historical snapshots remain independently available even when their old operation payloads are absent.
+
+Example field arrangement (illustrative; the checksum and state must come from a real export):
+
+```text
+format: archi-model-export-v2
+model: {modelId: demo, modelName: Demo, headRevision: 43}
+checkpoint: {format: archimesh-checkpoint-v1, modelId: demo,
+             revision: 42, createdAt: ..., sha256: ..., state: {nodes: [...], edges: [...]}}
+receipts: [all batch IDs and acceptance ranges covering 1..42]
+opBatches: [complete accepted batch at revision 43]
+snapshot: current client-facing state at 43
+accessControl: model ACL
+tags: stored historical snapshots
+```
+
+Import verifies the checkpoint checksum, graph schema/model scope, receipt continuity and unique IDs, exact tail coverage, and tag metadata. V2 model creation/overwrite, graph restore, receipts, tail, ACLs, and tags are committed in one Neo4j transaction; a failed overwrite leaves the destination intact. Existing destinations still require `overwrite=true` and no live sessions.
+
+To import under another ID, change only `model.modelId`. The server verifies the original checkpoint, rebinds its model-scoped nodes to the destination, and computes a new checksum. Source tail batches and tag snapshots are also rebound. Do not manually change the raw checkpoint or its checksum.
+
+V2 is a recoverable state-and-timeline package; it does not preserve individual operation payloads at or before C. Archive a v1 full-history export before creating the first checkpoint if those payloads are required. Retained receipt IDs and ranges are still exported. See [checkpoint maintenance and limits](../docs/checkpoint-pruning.md).
+
 ## Revisions and revision ranges
 
 The Archimesh server uses a linear revision timeline per model.
@@ -117,11 +148,11 @@ Their meanings are:
 
 For a healthy export:
 
-- `model.headRevision` should match the highest committed revision in `opBatches`
+- `model.headRevision` should match the highest committed revision in `opBatches`, or C for a v2 package with an empty tail
 - `snapshot.headRevision` should represent the same current head state
 - tag revisions should be less than or equal to `model.headRevision`
 
-### Why import requires op-log history for non-empty models
+### Why v1 import requires op-log history for non-empty models
 
 For a non-empty model, snapshot alone is not enough to restore the linear revision timeline faithfully.
 
@@ -137,7 +168,7 @@ This is deliberate. It prevents restoring current state while silently losing th
 
 ## Top-level shape
 
-The server currently emits:
+The v1 package shape is:
 
 ```json
 {
@@ -347,7 +378,7 @@ Each connection contains:
 
 Ordered committed op-log history for the model timeline.
 
-This is the authoritative replay history used during import and rebuild. Import requires it for any non-empty model package.
+This is the authoritative replay history used during import and rebuild: full history in v1, or the complete checkpoint tail in v2.
 
 Each batch contains:
 
@@ -368,7 +399,7 @@ Semantics:
 - import appends these batches to the op log, applies them to materialized state, and restores head revision from the highest assigned range
 - see [Revisions and revision ranges](#revisions-and-revision-ranges) for how `baseRevision` and `assignedRevisionRange` differ
 
-If `opBatches` is empty, import only accepts the package if the model is effectively empty:
+For v1, if `opBatches` is empty, import only accepts the package if the model is effectively empty:
 
 - `headRevision == 0`
 - no materialized snapshot content

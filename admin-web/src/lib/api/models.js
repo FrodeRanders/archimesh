@@ -38,11 +38,20 @@ export const rebuildModel = (modelId) => fetchJson(
   `/admin/models/${encodeURIComponent(modelId)}/rebuild-and-status`,
   { method: 'POST', action: 'Rebuild model' }
 );
-export const compactModel = (modelId, retainRevisions) => fetchJson(
-  `/admin/models/${encodeURIComponent(modelId)}/compact?retainRevisions=${encodeURIComponent(retainRevisions)}`,
+export const compactModel = (modelId, retainRevisions, dryRun = false) => fetchJson(
+  `/admin/models/${encodeURIComponent(modelId)}/compact?retainRevisions=${encodeURIComponent(retainRevisions)}&dryRun=${dryRun}`,
   { method: 'POST', action: 'Compact model' }
 );
 export const deleteModel = (modelId, force) => fetchJson(
   `/admin/models/${encodeURIComponent(modelId)}?force=${force ? 'true' : 'false'}`,
   { method: 'DELETE', action: 'Delete model' }
+);
+
+export const fetchModelCheckpoint = (modelId) => fetchJson(
+  `/admin/models/${encodeURIComponent(modelId)}/checkpoints/latest`,
+  { action: 'Checkpoint status', allowNotFound: true }
+);
+export const createModelCheckpoint = (modelId) => fetchJson(
+  `/admin/models/${encodeURIComponent(modelId)}/checkpoints`,
+  { method: 'POST', action: 'Create checkpoint' }
 );

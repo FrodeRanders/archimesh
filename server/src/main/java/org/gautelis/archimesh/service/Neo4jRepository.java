@@ -6,6 +6,9 @@ import org.gautelis.archimesh.model.ModelAccessControl;
 import org.gautelis.archimesh.model.ModelCatalogEntry;
 import org.gautelis.archimesh.model.ModelTagEntry;
 import org.gautelis.archimesh.model.RevisionRange;
+import org.gautelis.archimesh.model.ModelCheckpoint;
+import org.gautelis.archimesh.model.BatchReceipt;
+import org.gautelis.archimesh.model.AdminModelExport;
 
 import java.util.Optional;
 import java.util.List;
@@ -44,6 +47,28 @@ public interface Neo4jRepository {
     JsonNode loadOpBatches(String modelId, long fromRevisionInclusive, long toRevisionInclusive);
 
     AdminCompactionStatus compactMetadata(String modelId, long retainRevisions);
+
+    default AdminCompactionStatus compactMetadata(String modelId, long retainRevisions, boolean dryRun) {
+        if (dryRun) throw new UnsupportedOperationException("Compaction preview is unavailable");
+        return compactMetadata(modelId, retainRevisions);
+    }
+
+    default ModelCheckpoint createCheckpoint(String modelId) {
+        throw new UnsupportedOperationException("Checkpoints are unavailable");
+    }
+
+    default Optional<ModelCheckpoint> latestCheckpoint(String modelId) { return Optional.empty(); }
+
+    default List<BatchReceipt> loadReceipts(String modelId, long throughRevision) { return List.of(); }
+
+    default void importCheckpointModel(AdminModelExport exportPackage, boolean overwrite) {
+        throw new UnsupportedOperationException("Checkpoint import is unavailable");
+    }
+
+    default void rebuildProjection(String modelId, ModelCheckpoint checkpoint, JsonNode history, long head) {
+        if (checkpoint != null) throw new UnsupportedOperationException("Checkpoint restore is unavailable");
+        rebuildProjection(modelId, history, head);
+    }
 
     default void rebuildProjection(String modelId, JsonNode history, long head) {
         throw new UnsupportedOperationException("Atomic rebuild is required");

@@ -23,9 +23,9 @@ coordinator and specialized support classes:
 \item[\texttt{Neo4jReadSupport}] Snapshot export, checkout delta reads,
   consistency checks. Reads materialized state and converts it to the JSON
   snapshot/export format.
-\item[\texttt{Neo4jCompactionSupport}] Metadata compaction. Prunes old
-  commits and property clocks below the retention watermark. Reports
-  eligibility of tombstones and field clocks for future compaction.
+\item[\texttt{Neo4jCompactionSupport}] Bounded pruning of published
+  operation payloads covered by a verified checkpoint and retention watermark.
+  Retains acceptance receipts, clocks, and tombstones.
 \end{description}
 
 \subsection{Graph model}
@@ -204,8 +204,8 @@ Property merge state is stored in dedicated metadata nodes:
 \end{lstlisting}
 
 Anchored via \texttt{(:Model)-[:HAS\_PROPERTY\_CLOCK]->(:PropertyClock)}.
-Supports LWW and OR-set style property semantics. Compaction may prune old
-property clocks below the retention watermark.
+Supports LWW and OR-set style property semantics. Compaction retains all
+property clocks, including orphan safety metadata.
 
 \subsection{Neo4j constraints}
 

@@ -6,6 +6,11 @@ public record RebuildStatus(
         long rebuiltHeadRevision,
         int appliedBatchCount,
         int appliedOpCount,
-        boolean consistent) {
+        boolean consistent,
+        long checkpointRevision) {
+    public RebuildStatus(String modelId, long requestedToRevision, long rebuiltHeadRevision,
+            int appliedBatchCount, int appliedOpCount, boolean consistent) {
+        this(modelId, requestedToRevision, rebuiltHeadRevision, appliedBatchCount, appliedOpCount, consistent, 0);
+    }
 }
 

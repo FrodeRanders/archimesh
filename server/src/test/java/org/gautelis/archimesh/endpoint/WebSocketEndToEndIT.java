@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.quarkus.test.common.http.TestHTTPResource;
 import io.quarkus.test.junit.QuarkusTest;
+import jakarta.inject.Inject;
+import org.gautelis.archimesh.service.ArchimeshService;
+import org.gautelis.archimesh.service.Neo4jRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Assumptions;
@@ -33,6 +36,9 @@ class WebSocketEndToEndIT {
 
     private WebSocket ws1;
     private WebSocket ws2;
+    @Inject ArchimeshService service;
+    @Inject Neo4jRepository repository;
+    private String checkpointModel;
 
     @AfterEach
     void closeSockets() {
@@ -42,6 +48,40 @@ class WebSocketEndToEndIT {
         if (ws2 != null) {
             ws2.sendClose(WebSocket.NORMAL_CLOSURE, "done").join();
         }
+        if (checkpointModel != null) service.deleteModel(checkpointModel, true);
+    }
+
+    @Test
+    void staleReconnectAfterPruningGetsSnapshotAndRetryKeepsOriginalAcceptance() throws Exception {
+        assumeEnabled();
+        checkpointModel = "ws-checkpoint-" + UUID.randomUUID();
+        registerModel(checkpointModel, "Checkpoint reconnect");
+        String batchId = UUID.randomUUID().toString();
+        String submission = submitOpsMessage(batchId);
+        String elementId = MAPPER.readTree(submission).path("payload").path("ops").get(0).path("element").path("id").asText();
+        var listener = new QueueingListener();
+        ws1 = HttpClient.newHttpClient().newWebSocketBuilder().buildAsync(wsUri(checkpointModel), listener).join();
+        ws1.sendText(joinMessage("u1", "s1"), true).join();
+        Assertions.assertNotNull(waitForAnyType(listener, 10, "CheckoutSnapshot", "CheckoutDelta"));
+        ws1.sendText(submission, true).join();
+        JsonNode accepted = waitForType(listener, "OpsAccepted", 15);
+        Assertions.assertNotNull(accepted);
+        service.createModelCheckpoint(checkpointModel);
+        repository.markBroadcastPublished(checkpointModel, batchId);
+        Assertions.assertEquals(1, service.compactModelMetadata(checkpointModel, 0L).prunedBatchCount());
+
+        var reconnect = new QueueingListener();
+        ws2 = HttpClient.newHttpClient().newWebSocketBuilder().buildAsync(wsUri(checkpointModel), reconnect).join();
+        ws2.sendText(joinMessage("u2", "s2", 0L), true).join();
+        JsonNode checkout = waitForAnyType(reconnect, 10, "CheckoutSnapshot", "CheckoutDelta");
+        Assertions.assertNotNull(checkout);
+        Assertions.assertEquals("CheckoutSnapshot", checkout.path("type").asText());
+        Assertions.assertTrue(checkout.toString().contains(elementId));
+        ws1.sendText(submission, true).join();
+        JsonNode retry = waitForType(listener, "OpsAccepted", 10);
+        Assertions.assertNotNull(retry);
+        Assertions.assertEquals(accepted.path("payload"), retry.path("payload"));
+        Assertions.assertEquals(1, repository.readHeadRevision(checkpointModel));
     }
 
     @Test

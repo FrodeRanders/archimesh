@@ -237,8 +237,8 @@ In a disaster scenario where both Neo4j and the server are lost:
   disk. If rebuild is done from Neo4j (not Kafka), set shorter retention
   for ops topics.
 \item \textbf{Compaction frequency:} Run compaction periodically on active
-  models to bound op-log growth. The compaction reports the number of
-  pruned commits and remaining eligible metadata.
+  models after creating a verified checkpoint to reclaim published payloads.
+  Review eligible and pruned batch counts; receipts and merge metadata remain.
 \item \textbf{Poll interval:} The admin UI polls the server for status
   updates. Set the poll interval to 0 to disable auto-refresh if dashboard
   traffic is a concern.

@@ -3,62 +3,64 @@ package org.gautelis.archimesh.service.impl;
 import org.gautelis.archimesh.model.AdminCompactionStatus;
 import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.Map;
+import java.util.List;
+import org.neo4j.driver.TransactionContext;
+import java.util.function.Function;
 
 final class Neo4jCompactionSupport {
-    private static final Logger LOG = LoggerFactory.getLogger(Neo4jCompactionSupport.class);
+    private final Neo4jCheckpointSupport checkpoints;
+    private final int batchLimit;
 
-    AdminCompactionStatus compactMetadata(
-            Session session,
-            String modelId,
-            long headRevision,
-            long committedHorizonRevision,
-            long watermarkRevision,
-            long retainRevisions) {
-        if (session == null) {
-            return new AdminCompactionStatus(
-                    modelId, headRevision, committedHorizonRevision, watermarkRevision, retainRevisions,
-                    0L, 0L, 0L, 0L, 0L, 0L, false, "Neo4j session unavailable");
-        }
+    Neo4jCompactionSupport(Neo4jCheckpointSupport checkpoints, int batchLimit) {
+        this.checkpoints = checkpoints;
+        this.batchLimit = Math.max(1, batchLimit);
+    }
 
-        LOG.info("Compaction start: modelId={} headRevision={} committedHorizonRevision={} watermarkRevision={} retainRevisions={}",
-                modelId, headRevision, committedHorizonRevision, watermarkRevision, retainRevisions);
-
-        return session.executeWrite(tx -> {
+    AdminCompactionStatus compactMetadata(Session session, String modelId, long retainRevisions, boolean dryRun) {
+        Function<TransactionContext, AdminCompactionStatus> compact = tx -> {
+            if (!dryRun) tx.run("MATCH (m:Model {modelId:$modelId}) SET m.commitFence=coalesce(m.commitFence,0)+1",
+                    Map.of("modelId",modelId)).consume();
+            Record revisions = tx.run("MATCH (m:Model {modelId:$modelId}) OPTIONAL MATCH (c:Commit {modelId:$modelId}) "
+                    + "RETURN coalesce(m.headRevision,0) AS head, coalesce(max(c.revisionTo),0) AS committed, "
+                    + "coalesce(m.prunedThroughRevision,0) AS pruned", Map.of("modelId",modelId)).single();
+            long headRevision = revisions.get("head").asLong();
+            long committedHorizonRevision = revisions.get("committed").asLong();
+            boolean aligned = headRevision == committedHorizonRevision;
+            long watermarkRevision = Math.max(0L, committedHorizonRevision - retainRevisions);
+            long previouslyPruned = revisions.get("pruned").asLong();
+            var checkpoint = checkpoints.latest(tx, modelId);
+            long checkpointRevision = checkpoint.map(c -> c.revision()).orElse(0L);
+            if (checkpointRevision > headRevision) throw new IllegalStateException("Checkpoint is ahead of model head");
+            long cutoff = aligned ? Math.min(checkpointRevision, watermarkRevision) : 0L;
+            // Never cross an unacknowledged (or unclassified legacy) publication.
+            var pending = tx.run("MATCH (c:Commit {modelId:$modelId}) WHERE c.revisionFrom <= $cutoff "
+                    + "AND coalesce(c.published,false)=false RETURN min(c.revisionFrom) AS firstPending",
+                    Map.of("modelId",modelId,"cutoff",cutoff)).single().get("firstPending");
+            if (!pending.isNull()) cutoff = Math.min(cutoff,pending.asLong()-1);
+            Map<String,Object> pruneParams = Map.of("modelId",modelId,"cutoff",cutoff,"limit",batchLimit);
+            long eligibleBatches = tx.run("MATCH (c:Commit {modelId:$modelId}) WHERE c.revisionTo <= $cutoff "
+                    + "AND coalesce(c.payloadPruned,false)=false RETURN count(c) AS count",pruneParams).single().get("count").asLong();
+            List<Record> batches = tx.run("MATCH (c:Commit {modelId:$modelId}) WHERE c.revisionTo <= $cutoff "
+                    + "AND coalesce(c.payloadPruned,false)=false WITH c ORDER BY c.revisionFrom LIMIT $limit "
+                    + "OPTIONAL MATCH (c)-[:HAS_OP]->(o:Op) RETURN c.opBatchId AS id, c.revisionTo AS last, count(o) AS ops "
+                    + "ORDER BY c.revisionTo",pruneParams).list();
+            long selectedOps = batches.stream().mapToLong(row -> row.get("ops").asLong()).sum();
+            long prunedThrough = previouslyPruned;
+            if (!dryRun && !batches.isEmpty()) {
+                List<String> ids = batches.stream().map(row -> row.get("id").asString()).toList();
+                tx.run("UNWIND $ids AS batch MATCH (c:Commit {modelId:$modelId,opBatchId:batch}) "
+                        + "OPTIONAL MATCH (c)-[:HAS_OP]->(o:Op) DETACH DELETE o WITH DISTINCT c "
+                        + "SET c.payloadPruned=true REMOVE c.batchJson",Map.of("modelId",modelId,"ids",ids)).consume();
+                prunedThrough = Math.max(previouslyPruned,batches.getLast().get("last").asLong());
+                tx.run("MATCH (m:Model {modelId:$modelId}) SET m.prunedThroughRevision=$revision",
+                        Map.of("modelId",modelId,"revision",prunedThrough)).consume();
+            }
+            long deletedCommitCount = 0L; // Compact acceptance receipts are retained indefinitely.
+            long deletedOpCount = dryRun ? 0L : selectedOps;
+            long deletedPropertyClockCount = 0L; // Checkpoint pruning does not garbage-collect CRDT metadata.
             Map<String, Object> params = Map.of("modelId", modelId, "watermark", watermarkRevision);
-
-            // History is the only rebuild/import source. Until durable checkpoints include
-            // every merge clock and tombstone, pruning it would destroy recoverability.
-            long deletedCommitCount = 0L;
-            long deletedOpCount = 0L;
-
-            // Property clocks can only be removed once the target object is gone; otherwise they are still part of
-            // the LWW merge contract even if they are older than the watermark.
-            Record propertyClockCounts = tx.run("""
-                    MATCH (m:Model {modelId: $modelId})-[:HAS_PROPERTY_CLOCK]->(p:PropertyClock)
-                    WHERE coalesce(p.updatedRevision, 0) <= $watermark
-                      AND NOT EXISTS { MATCH (m)-[:HAS_ELEMENT]->(:Element {id: p.targetId}) }
-                      AND NOT EXISTS { MATCH (m)-[:HAS_REL]->(:Relationship {id: p.targetId}) }
-                      AND NOT EXISTS { MATCH (m)-[:HAS_VIEW]->(:View {id: p.targetId}) }
-                      AND NOT EXISTS { MATCH (m)-[:HAS_VIEW]->(:View)-[:CONTAINS]->(:ViewObject {id: p.targetId}) }
-                      AND NOT EXISTS { MATCH (m)-[:HAS_VIEW]->(:View)-[:CONTAINS]->(:Connection {id: p.targetId}) }
-                    RETURN count(p) AS propertyClockCount
-                    """, params).single();
-            long deletedPropertyClockCount = propertyClockCounts.get("propertyClockCount").asLong(0L);
-
-            tx.run("""
-                    MATCH (m:Model {modelId: $modelId})-[:HAS_PROPERTY_CLOCK]->(p:PropertyClock)
-                    WHERE coalesce(p.updatedRevision, 0) <= $watermark
-                      AND NOT EXISTS { MATCH (m)-[:HAS_ELEMENT]->(:Element {id: p.targetId}) }
-                      AND NOT EXISTS { MATCH (m)-[:HAS_REL]->(:Relationship {id: p.targetId}) }
-                      AND NOT EXISTS { MATCH (m)-[:HAS_VIEW]->(:View {id: p.targetId}) }
-                      AND NOT EXISTS { MATCH (m)-[:HAS_VIEW]->(:View)-[:CONTAINS]->(:ViewObject {id: p.targetId}) }
-                      AND NOT EXISTS { MATCH (m)-[:HAS_VIEW]->(:View)-[:CONTAINS]->(:Connection {id: p.targetId}) }
-                    DETACH DELETE p
-                    """, params);
 
             Record fieldClockCounts = tx.run("""
                     CALL {
@@ -190,7 +192,13 @@ final class Neo4jCompactionSupport {
                     true,
                     // Field-clock and tombstone eligibility is reported so operators can see reclaimable state even
                     // though the compactor intentionally keeps the safety metadata in place.
-                    "Compaction completed; op-log, tombstones and field clocks retained for recovery");
-        });
+                    (!aligned ? "Head/commit mismatch: payload pruning disabled. " : "")
+                            + (checkpoint.isEmpty() ? "No checkpoint: operation payloads retained. " : "Checkpoint covers revision " + checkpointRevision + ". ")
+                            + (dryRun ? "Preview: would prune " + batches.size() + " batches / " + selectedOps + " operations. "
+                            : "Pruned " + batches.size() + " batches / " + selectedOps + " operations. ")
+                            + "Acceptance receipts, clocks and tombstones retained; " + Math.max(0,eligibleBatches-batches.size()) + " eligible batches remain after this bounded run.",
+                    checkpointRevision, eligibleBatches, dryRun ? 0L : batches.size(), dryRun, prunedThrough);
+        };
+        return dryRun ? session.executeRead(compact::apply) : session.executeWrite(compact::apply);
     }
 }

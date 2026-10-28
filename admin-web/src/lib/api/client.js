@@ -48,6 +48,7 @@ export const fetchJson = async (url, options = {}) => {
     ...options,
     headers: currentHeaders(options.headers || {})
   });
+  if (response.status === 404 && options.allowNotFound) return null;
   if (!response.ok) {
     const detail = (await response.text()).trim();
     throw new Error(describeHttpFailure(options.action || 'Request', response.status, detail || response.statusText));

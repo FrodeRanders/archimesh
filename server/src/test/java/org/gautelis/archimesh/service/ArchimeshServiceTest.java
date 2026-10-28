@@ -275,8 +275,10 @@ class ArchimeshServiceTest {
         ArrayNode opBatches = objectMapper.createArrayNode();
         ObjectNode exportedBatch = objectMapper.createObjectNode();
         exportedBatch.put("opBatchId", "b1");
-        exportedBatch.set("assignedRevisionRange", objectMapper.createObjectNode().put("from", 1).put("to", 1));
-        exportedBatch.set("ops", objectMapper.createArrayNode());
+        exportedBatch.set("assignedRevisionRange", objectMapper.createObjectNode().put("from", 1).put("to", 2));
+        exportedBatch.set("ops", objectMapper.createArrayNode()
+                .add(objectMapper.createObjectNode().put("type","CreateElement"))
+                .add(objectMapper.createObjectNode().put("type","UpdateElement")));
         opBatches.add(exportedBatch);
         neo.opBatchesToReturn = opBatches;
         service.createModelTag("demo", "release-1", "Release 1");
