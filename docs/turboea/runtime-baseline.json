@@ -1,0 +1,386 @@
+{
+  "card_type_keys": [
+    "Application",
+    "BusinessCapability",
+    "BusinessContext",
+    "BusinessProcess",
+    "DataObject",
+    "ITComponent",
+    "Initiative",
+    "Interface",
+    "Objective",
+    "Organization",
+    "Platform",
+    "Provider",
+    "TechCategory"
+  ],
+  "checks": [
+    {
+      "check": "health",
+      "passed": true
+    },
+    {
+      "check": "cards require authentication",
+      "passed": true,
+      "status": 401
+    },
+    {
+      "check": "fresh-instance registration",
+      "passed": true
+    },
+    {
+      "check": "login",
+      "passed": true
+    },
+    {
+      "check": "refresh with bearer token",
+      "passed": true
+    },
+    {
+      "check": "metamodel types",
+      "passed": true
+    },
+    {
+      "check": "metamodel relation types",
+      "passed": true
+    },
+    {
+      "check": "card create",
+      "passed": true
+    },
+    {
+      "check": "external_id does not deduplicate card create",
+      "passed": true
+    },
+    {
+      "check": "one-based pagination envelope",
+      "passed": true
+    },
+    {
+      "check": "card PATCH replaces attributes",
+      "passed": true
+    },
+    {
+      "check": "omitted top-level fields survive PATCH",
+      "passed": true
+    },
+    {
+      "check": "application relation type available",
+      "passed": true
+    },
+    {
+      "check": "relation create",
+      "passed": true
+    },
+    {
+      "check": "sequential relation create reuses ordered typed pair",
+      "passed": true
+    },
+    {
+      "check": "relation PATCH replaces attributes",
+      "passed": true
+    },
+    {
+      "check": "relations list is an array",
+      "passed": true
+    },
+    {
+      "check": "SSE rejects bearer-only authentication",
+      "passed": true,
+      "status": 401
+    },
+    {
+      "check": "SSE accepts cookie authentication",
+      "passed": true
+    }
+  ],
+  "date": "2026-11-11",
+  "deployment": "local source build; isolated Compose project archimesh-turboea-m0; fresh volumes; development mode",
+  "health": {
+    "status": "ok",
+    "version": "2.194.0"
+  },
+  "openapi_sha256": "7bc206059561ec09581e1b67a9d442d6c9083a9f0dc118602f9abceaabd8bcf4",
+  "relation_type_used_by_probe": "relAppSuccessor",
+  "relation_types": [
+    {
+      "cardinality": "n:m",
+      "key": "relObjectiveToBC",
+      "source_type_key": "Objective",
+      "target_type_key": "BusinessCapability"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relPlatformToObjective",
+      "source_type_key": "Platform",
+      "target_type_key": "Objective"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relPlatformToApp",
+      "source_type_key": "Platform",
+      "target_type_key": "Application"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relPlatformToITC",
+      "source_type_key": "Platform",
+      "target_type_key": "ITComponent"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relInitiativeToObjective",
+      "source_type_key": "Initiative",
+      "target_type_key": "Objective"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relInitiativeToPlatform",
+      "source_type_key": "Initiative",
+      "target_type_key": "Platform"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relInitiativeToBC",
+      "source_type_key": "Initiative",
+      "target_type_key": "BusinessCapability"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relInitiativeToApp",
+      "source_type_key": "Initiative",
+      "target_type_key": "Application"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relInitiativeToInterface",
+      "source_type_key": "Initiative",
+      "target_type_key": "Interface"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relInitiativeToDataObj",
+      "source_type_key": "Initiative",
+      "target_type_key": "DataObject"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relInitiativeToITC",
+      "source_type_key": "Initiative",
+      "target_type_key": "ITComponent"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relOrgToObjective",
+      "source_type_key": "Organization",
+      "target_type_key": "Objective"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relOrgToInitiative",
+      "source_type_key": "Organization",
+      "target_type_key": "Initiative"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relOrgToBizCtx",
+      "source_type_key": "Organization",
+      "target_type_key": "BusinessContext"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relOrgToApp",
+      "source_type_key": "Organization",
+      "target_type_key": "Application"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relOrgToITC",
+      "source_type_key": "Organization",
+      "target_type_key": "ITComponent"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relAppToBC",
+      "source_type_key": "Application",
+      "target_type_key": "BusinessCapability"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relAppToBizCtx",
+      "source_type_key": "Application",
+      "target_type_key": "BusinessContext"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relAppToInterface",
+      "source_type_key": "Application",
+      "target_type_key": "Interface"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relAppToDataObj",
+      "source_type_key": "Application",
+      "target_type_key": "DataObject"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relAppToITC",
+      "source_type_key": "Application",
+      "target_type_key": "ITComponent"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relITCToTechCat",
+      "source_type_key": "ITComponent",
+      "target_type_key": "TechCategory"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relITCToPlatform",
+      "source_type_key": "ITComponent",
+      "target_type_key": "Platform"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relInterfaceToDataObj",
+      "source_type_key": "Interface",
+      "target_type_key": "DataObject"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relInterfaceToITC",
+      "source_type_key": "Interface",
+      "target_type_key": "ITComponent"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProviderToInitiative",
+      "source_type_key": "Provider",
+      "target_type_key": "Initiative"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProviderToApp",
+      "source_type_key": "Provider",
+      "target_type_key": "Application"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProviderToITC",
+      "source_type_key": "Provider",
+      "target_type_key": "ITComponent"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relBizCtxToBC",
+      "source_type_key": "BusinessContext",
+      "target_type_key": "BusinessCapability"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProcessToBC",
+      "source_type_key": "BusinessProcess",
+      "target_type_key": "BusinessCapability"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProcessToApp",
+      "source_type_key": "BusinessProcess",
+      "target_type_key": "Application"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProcessToDataObj",
+      "source_type_key": "BusinessProcess",
+      "target_type_key": "DataObject"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProcessToITC",
+      "source_type_key": "BusinessProcess",
+      "target_type_key": "ITComponent"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProcessDependency",
+      "source_type_key": "BusinessProcess",
+      "target_type_key": "BusinessProcess"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProcessToOrg",
+      "source_type_key": "BusinessProcess",
+      "target_type_key": "Organization"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProcessToInitiative",
+      "source_type_key": "BusinessProcess",
+      "target_type_key": "Initiative"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProcessToObjective",
+      "source_type_key": "BusinessProcess",
+      "target_type_key": "Objective"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProcessToBizCtx",
+      "source_type_key": "BusinessProcess",
+      "target_type_key": "BusinessContext"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relAppSuccessor",
+      "source_type_key": "Application",
+      "target_type_key": "Application"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relITCSuccessor",
+      "source_type_key": "ITComponent",
+      "target_type_key": "ITComponent"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relInitiativeSuccessor",
+      "source_type_key": "Initiative",
+      "target_type_key": "Initiative"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relPlatformSuccessor",
+      "source_type_key": "Platform",
+      "target_type_key": "Platform"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProcessSuccessor",
+      "source_type_key": "BusinessProcess",
+      "target_type_key": "BusinessProcess"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relInterfaceSuccessor",
+      "source_type_key": "Interface",
+      "target_type_key": "Interface"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relDataObjectSuccessor",
+      "source_type_key": "DataObject",
+      "target_type_key": "DataObject"
+    },
+    {
+      "cardinality": "n:m",
+      "key": "relProcessCalls",
+      "source_type_key": "BusinessProcess",
+      "target_type_key": "BusinessProcess"
+    }
+  ],
+  "scope": "Synthetic fixtures and bootstrap admin only; production/delegated permissions and concurrency not verified",
+  "source_commit": "6d9220e52d47b41f9d79351ec3233ded1f76fdc6",
+  "static_contract_matches_after_version_normalization": true
+}

@@ -1,0 +1,769 @@
+{
+  "info": {
+    "title": "Turbo EA",
+    "version": "latest"
+  },
+  "missing": [],
+  "openapi": "3.1.0",
+  "operations": {
+    "GET /api/health": {
+      "declared_security": null,
+      "parameters": [],
+      "request": {},
+      "responses": {
+        "200": {
+          "application/json": {}
+        }
+      }
+    },
+    "GET /api/v1/cards": {
+      "declared_security": null,
+      "parameters": [
+        {
+          "in": "query",
+          "name": "type",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        {
+          "in": "query",
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        {
+          "in": "query",
+          "name": "search",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search"
+          }
+        },
+        {
+          "in": "query",
+          "name": "parent_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          }
+        },
+        {
+          "in": "query",
+          "name": "approval_status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Status"
+          }
+        },
+        {
+          "in": "query",
+          "name": "mine",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "pattern": "^(stakeholder)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Scope the result to cards related to the current user. `stakeholder` keeps only cards on which the user holds at least one stakeholder role.",
+            "title": "Mine"
+          }
+        },
+        {
+          "in": "query",
+          "name": "ids",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Comma-separated UUIDs to fetch in one round trip. Used by the diagram editor's view perspectives to recolor cells.",
+            "title": "Ids"
+          }
+        },
+        {
+          "in": "query",
+          "name": "orphaned",
+          "required": false,
+          "schema": {
+            "default": false,
+            "description": "Keep only cards with no relation in either direction. Evaluated server-side because the client only ever holds the relations of the type it is currently displaying.",
+            "title": "Orphaned",
+            "type": "boolean"
+          }
+        },
+        {
+          "in": "query",
+          "name": "stale",
+          "required": false,
+          "schema": {
+            "default": false,
+            "description": "Keep only cards not updated in the last 90 days (`card_flags.STALE_AFTER_DAYS`).",
+            "title": "Stale",
+            "type": "boolean"
+          }
+        },
+        {
+          "in": "query",
+          "name": "created_via",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "pattern": "^(mcp|web|api|ext|system)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Keep only cards created through this channel: `web` (the web UI), `mcp` (an AI agent through the MCP server), `api` (a direct API call), `ext` (an extension) or `system` (a background job).",
+            "title": "Created Via"
+          }
+        },
+        {
+          "in": "query",
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "in": "query",
+          "name": "page_size",
+          "required": false,
+          "schema": {
+            "default": 10000,
+            "maximum": 10000,
+            "minimum": 1,
+            "title": "Page Size",
+            "type": "integer"
+          }
+        },
+        {
+          "in": "query",
+          "name": "sort_by",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Sort column. Defaults to `name` ascending. When omitted together with `sort_dir` and a `search` term is given, results are ordered by search relevance first (exact, then starts-with, then starts-a-word, then contains) and alphabetically within each tier.",
+            "title": "Sort By"
+          }
+        },
+        {
+          "in": "query",
+          "name": "sort_dir",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`asc` (default) or `desc`.",
+            "title": "Sort Dir"
+          }
+        }
+      ],
+      "request": {},
+      "responses": {
+        "200": {
+          "application/json": {
+            "$ref": "#/components/schemas/CardListResponse"
+          }
+        },
+        "422": {
+          "application/json": {
+            "$ref": "#/components/schemas/HTTPValidationError"
+          }
+        }
+      }
+    },
+    "GET /api/v1/cards/{card_id}": {
+      "declared_security": null,
+      "parameters": [
+        {
+          "in": "path",
+          "name": "card_id",
+          "required": true,
+          "schema": {
+            "title": "Card Id",
+            "type": "string"
+          }
+        }
+      ],
+      "request": {},
+      "responses": {
+        "200": {
+          "application/json": {
+            "$ref": "#/components/schemas/CardResponse"
+          }
+        },
+        "422": {
+          "application/json": {
+            "$ref": "#/components/schemas/HTTPValidationError"
+          }
+        }
+      }
+    },
+    "GET /api/v1/events/stream": {
+      "declared_security": null,
+      "parameters": [
+        {
+          "in": "query",
+          "name": "token",
+          "required": false,
+          "schema": {
+            "default": "",
+            "title": "Token",
+            "type": "string"
+          }
+        }
+      ],
+      "request": {},
+      "responses": {
+        "200": {
+          "application/json": {}
+        },
+        "422": {
+          "application/json": {
+            "$ref": "#/components/schemas/HTTPValidationError"
+          }
+        }
+      }
+    },
+    "GET /api/v1/metamodel/relation-types": {
+      "declared_security": null,
+      "parameters": [
+        {
+          "in": "query",
+          "name": "type_key",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Filter relations connected to this type",
+            "title": "Type Key"
+          }
+        },
+        {
+          "in": "query",
+          "name": "include_hidden",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Include Hidden",
+            "type": "boolean"
+          }
+        }
+      ],
+      "request": {},
+      "responses": {
+        "200": {
+          "application/json": {}
+        },
+        "422": {
+          "application/json": {
+            "$ref": "#/components/schemas/HTTPValidationError"
+          }
+        }
+      }
+    },
+    "GET /api/v1/metamodel/types": {
+      "declared_security": null,
+      "parameters": [
+        {
+          "in": "query",
+          "name": "include_hidden",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Include Hidden",
+            "type": "boolean"
+          }
+        }
+      ],
+      "request": {},
+      "responses": {
+        "200": {
+          "application/json": {}
+        },
+        "422": {
+          "application/json": {
+            "$ref": "#/components/schemas/HTTPValidationError"
+          }
+        }
+      }
+    },
+    "GET /api/v1/relations": {
+      "declared_security": null,
+      "parameters": [
+        {
+          "in": "query",
+          "name": "card_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Card Id"
+          }
+        },
+        {
+          "in": "query",
+          "name": "type",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        {
+          "in": "query",
+          "name": "card_type",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Card-type key. Keeps relations whose source **or** target card is of this type \u2014 what the inventory grid needs to populate the relation columns of the selected type in one round trip.",
+            "title": "Card Type"
+          }
+        },
+        {
+          "in": "query",
+          "name": "types",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Comma-separated relation-type keys. Superset of `type`, which stays for backwards compatibility.",
+            "title": "Types"
+          }
+        },
+        {
+          "in": "query",
+          "name": "card_ids",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Comma-separated card UUIDs. Keeps relations whose source **or** target is one of them. At most 500 ids per request \u2014 chunk larger sets client-side.",
+            "title": "Card Ids"
+          }
+        }
+      ],
+      "request": {},
+      "responses": {
+        "200": {
+          "application/json": {
+            "items": {
+              "$ref": "#/components/schemas/RelationResponse"
+            },
+            "title": "Response List Relations Api V1 Relations Get",
+            "type": "array"
+          }
+        },
+        "422": {
+          "application/json": {
+            "$ref": "#/components/schemas/HTTPValidationError"
+          }
+        }
+      }
+    },
+    "PATCH /api/v1/cards/{card_id}": {
+      "declared_security": null,
+      "parameters": [
+        {
+          "in": "path",
+          "name": "card_id",
+          "required": true,
+          "schema": {
+            "title": "Card Id",
+            "type": "string"
+          }
+        }
+      ],
+      "request": {
+        "application/json": {
+          "$ref": "#/components/schemas/CardUpdate"
+        }
+      },
+      "responses": {
+        "200": {
+          "application/json": {
+            "$ref": "#/components/schemas/CardResponse"
+          }
+        },
+        "422": {
+          "application/json": {
+            "$ref": "#/components/schemas/HTTPValidationError"
+          }
+        }
+      }
+    },
+    "PATCH /api/v1/relations/{rel_id}": {
+      "declared_security": null,
+      "parameters": [
+        {
+          "in": "path",
+          "name": "rel_id",
+          "required": true,
+          "schema": {
+            "title": "Rel Id",
+            "type": "string"
+          }
+        }
+      ],
+      "request": {
+        "application/json": {
+          "$ref": "#/components/schemas/RelationUpdate"
+        }
+      },
+      "responses": {
+        "200": {
+          "application/json": {
+            "$ref": "#/components/schemas/RelationResponse"
+          }
+        },
+        "422": {
+          "application/json": {
+            "$ref": "#/components/schemas/HTTPValidationError"
+          }
+        }
+      }
+    },
+    "POST /api/v1/auth/login": {
+      "declared_security": null,
+      "parameters": [],
+      "request": {
+        "application/json": {
+          "$ref": "#/components/schemas/LoginRequest"
+        }
+      },
+      "responses": {
+        "200": {
+          "application/json": {
+            "$ref": "#/components/schemas/TokenResponse"
+          }
+        },
+        "422": {
+          "application/json": {
+            "$ref": "#/components/schemas/HTTPValidationError"
+          }
+        }
+      }
+    },
+    "POST /api/v1/auth/refresh": {
+      "declared_security": null,
+      "parameters": [],
+      "request": {},
+      "responses": {
+        "200": {
+          "application/json": {
+            "$ref": "#/components/schemas/TokenResponse"
+          }
+        }
+      }
+    },
+    "POST /api/v1/cards": {
+      "declared_security": null,
+      "parameters": [],
+      "request": {
+        "application/json": {
+          "$ref": "#/components/schemas/CardCreate"
+        }
+      },
+      "responses": {
+        "201": {
+          "application/json": {
+            "$ref": "#/components/schemas/CardResponse"
+          }
+        },
+        "422": {
+          "application/json": {
+            "$ref": "#/components/schemas/HTTPValidationError"
+          }
+        }
+      }
+    },
+    "POST /api/v1/relations": {
+      "declared_security": null,
+      "parameters": [],
+      "request": {
+        "application/json": {
+          "$ref": "#/components/schemas/RelationCreate"
+        }
+      },
+      "responses": {
+        "201": {
+          "application/json": {
+            "$ref": "#/components/schemas/RelationResponse"
+          }
+        },
+        "422": {
+          "application/json": {
+            "$ref": "#/components/schemas/HTTPValidationError"
+          }
+        }
+      }
+    }
+  },
+  "path_count": 457,
+  "schemas": {
+    "CardCreate": {
+      "properties": [
+        "alias",
+        "attributes",
+        "description",
+        "external_id",
+        "lifecycle",
+        "name",
+        "parent_id",
+        "parent_label",
+        "strict_attributes",
+        "subtype",
+        "type"
+      ],
+      "required": [
+        "type",
+        "name"
+      ]
+    },
+    "CardListResponse": {
+      "properties": [
+        "items",
+        "page",
+        "page_size",
+        "total",
+        "withheld_ids"
+      ],
+      "required": [
+        "items",
+        "total",
+        "page",
+        "page_size"
+      ]
+    },
+    "CardResponse": {
+      "properties": [
+        "alias",
+        "approval_status",
+        "archived_at",
+        "attributes",
+        "created_at",
+        "created_by",
+        "created_by_name",
+        "created_via",
+        "data_quality",
+        "description",
+        "external_id",
+        "id",
+        "lifecycle",
+        "logo_updated_at",
+        "name",
+        "parent_id",
+        "parent_label",
+        "reference",
+        "stakeholders",
+        "status",
+        "subtype",
+        "tags",
+        "type",
+        "updated_at",
+        "updated_by",
+        "updated_by_name",
+        "updated_via"
+      ],
+      "required": [
+        "id",
+        "type",
+        "name",
+        "status",
+        "approval_status",
+        "data_quality"
+      ]
+    },
+    "CardUpdate": {
+      "properties": [
+        "alias",
+        "attributes",
+        "description",
+        "external_id",
+        "lifecycle",
+        "name",
+        "parent_id",
+        "parent_label",
+        "status",
+        "strict_attributes",
+        "subtype"
+      ],
+      "required": []
+    },
+    "LoginRequest": {
+      "properties": [
+        "email",
+        "password"
+      ],
+      "required": [
+        "email",
+        "password"
+      ]
+    },
+    "RelationCreate": {
+      "properties": [
+        "attributes",
+        "description",
+        "source_id",
+        "target_id",
+        "type"
+      ],
+      "required": [
+        "type",
+        "source_id",
+        "target_id"
+      ]
+    },
+    "RelationResponse": {
+      "properties": [
+        "attributes",
+        "created_at",
+        "description",
+        "id",
+        "source",
+        "source_id",
+        "target",
+        "target_id",
+        "type"
+      ],
+      "required": [
+        "id",
+        "type",
+        "source_id",
+        "target_id"
+      ]
+    },
+    "RelationUpdate": {
+      "properties": [
+        "attributes",
+        "description"
+      ],
+      "required": []
+    },
+    "TokenResponse": {
+      "properties": [
+        "access_token",
+        "token_type"
+      ],
+      "required": [
+        "access_token"
+      ]
+    }
+  },
+  "scope": "Static M0 inventory; deployment and behavioral verification required",
+  "security_schemes": {},
+  "sha256": "5947a2320ea77bc72873c60021a2b5df0b21d040e4d4cb4ae671a916475c58a2"
+}
