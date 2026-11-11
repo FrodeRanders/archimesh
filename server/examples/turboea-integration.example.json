@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "instanceId": "archimesh-development",
+  "targets": [
+    {
+      "key": "development",
+      "instanceId": "turboea-development",
+      "baseUrl": "http://localhost:8920",
+      "tokenEnvironment": "TURBO_EA_TOKEN",
+      "expectedApiVersion": "2.194.0",
+      "timeoutMillis": 10000,
+      "maxResponseBytes": 2097152,
+      "mapping": {
+        "version": "pilot-v1",
+        "cardTypes": {
+          "Application": "ApplicationComponent",
+          "BusinessProcess": "BusinessProcess",
+          "Organization": "BusinessActor",
+          "BusinessCapability": "Capability"
+        },
+        "relationTypes": {},
+        "fields": {
+          "Application": {
+            "name": { "remoteField": "name", "valueType": "STRING", "authority": "TURBO_EA_MASTER" },
+            "documentation": { "remoteField": "description", "valueType": "STRING", "authority": "LOCAL_MODEL_ONLY" }
+          },
+          "BusinessProcess": {
+            "name": { "remoteField": "name", "valueType": "STRING", "authority": "TURBO_EA_MASTER" }
+          },
+          "Organization": {
+            "name": { "remoteField": "name", "valueType": "STRING", "authority": "TURBO_EA_MASTER" }
+          },
+          "BusinessCapability": {
+            "name": { "remoteField": "name", "valueType": "STRING", "authority": "TURBO_EA_MASTER" }
+          }
+        }
+      }
+    }
+  ]
+}

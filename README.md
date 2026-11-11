@@ -8,7 +8,7 @@ Start with the overview below, then see [architecture.md](architecture.md) for c
 
 For the tested stopping point, branch state, resume commands, and known local broker limit, see the [project handoff](docs/project-status.md).
 
-The Turbo EA integration starts with an [M0 code/API investigation and regression baseline](docs/turboea/m0-analysis.md) and an [identity, authority and recovery ADR](docs/adr/0001-external-repository-integration.md). Runtime integration is planned for subsequent milestones.
+The Turbo EA integration has an [M0 code/API investigation and regression baseline](docs/turboea/m0-analysis.md), an [identity, authority and recovery ADR](docs/adr/0001-external-repository-integration.md), and a disabled-by-default [M1 server connector and metadata foundation](docs/turboea/m1-foundation.md). Import UI and synchronization are planned for subsequent milestones.
 
 ## Architecture at a glance
 

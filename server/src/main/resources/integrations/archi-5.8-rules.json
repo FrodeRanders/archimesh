@@ -1,0 +1,111 @@
+{
+  "archiVersion": "5.8.0",
+  "rules": {
+    "ApplicationComponent": {
+      "ApplicationComponent": [
+        "CompositionRelationship",
+        "FlowRelationship",
+        "AggregationRelationship",
+        "AssociationRelationship",
+        "RealizationRelationship",
+        "SpecializationRelationship",
+        "TriggeringRelationship",
+        "ServingRelationship"
+      ],
+      "BusinessActor": [
+        "FlowRelationship",
+        "AssociationRelationship",
+        "TriggeringRelationship",
+        "ServingRelationship"
+      ],
+      "BusinessProcess": [
+        "FlowRelationship",
+        "AssociationRelationship",
+        "RealizationRelationship",
+        "TriggeringRelationship",
+        "ServingRelationship"
+      ],
+      "Capability": [
+        "AssociationRelationship",
+        "RealizationRelationship"
+      ]
+    },
+    "BusinessActor": {
+      "ApplicationComponent": [
+        "FlowRelationship",
+        "AssociationRelationship",
+        "TriggeringRelationship",
+        "ServingRelationship"
+      ],
+      "BusinessActor": [
+        "CompositionRelationship",
+        "FlowRelationship",
+        "AggregationRelationship",
+        "AssociationRelationship",
+        "SpecializationRelationship",
+        "TriggeringRelationship",
+        "ServingRelationship"
+      ],
+      "BusinessProcess": [
+        "FlowRelationship",
+        "AssignmentRelationship",
+        "AssociationRelationship",
+        "TriggeringRelationship",
+        "ServingRelationship"
+      ],
+      "Capability": [
+        "AssociationRelationship",
+        "RealizationRelationship"
+      ]
+    },
+    "BusinessProcess": {
+      "ApplicationComponent": [
+        "FlowRelationship",
+        "AssociationRelationship",
+        "TriggeringRelationship",
+        "ServingRelationship"
+      ],
+      "BusinessActor": [
+        "FlowRelationship",
+        "AssociationRelationship",
+        "TriggeringRelationship",
+        "ServingRelationship"
+      ],
+      "BusinessProcess": [
+        "CompositionRelationship",
+        "FlowRelationship",
+        "AggregationRelationship",
+        "AssociationRelationship",
+        "SpecializationRelationship",
+        "TriggeringRelationship",
+        "ServingRelationship"
+      ],
+      "Capability": [
+        "AssociationRelationship",
+        "RealizationRelationship"
+      ]
+    },
+    "Capability": {
+      "ApplicationComponent": [
+        "AssociationRelationship"
+      ],
+      "BusinessActor": [
+        "AssociationRelationship"
+      ],
+      "BusinessProcess": [
+        "AssociationRelationship"
+      ],
+      "Capability": [
+        "CompositionRelationship",
+        "FlowRelationship",
+        "AggregationRelationship",
+        "AssociationRelationship",
+        "SpecializationRelationship",
+        "TriggeringRelationship",
+        "ServingRelationship"
+      ]
+    }
+  },
+  "sourceCommit": "b02aab8042665f46cd95efd22e172b2693aaf287",
+  "sourceSha256": "65ad5b5c8044fc62c61836a702d0bd2e0427a87216d7f5e397666c74508d57c5"
+}

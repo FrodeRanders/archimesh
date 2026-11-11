@@ -2,6 +2,8 @@
 
 This module implements the Archimesh server described in the repository architecture and schema documents.
 
+The optional [Turbo EA M1 foundation](../docs/turboea/m1-foundation.md) provides a server-internal read connector, versioned mapping and independent integration metadata. It is disabled by default and does not expose catalog/import/publication endpoints.
+
 ## Includes
 
 - WebSocket endpoint: `ws://localhost:8081/models/{modelId}/stream`
