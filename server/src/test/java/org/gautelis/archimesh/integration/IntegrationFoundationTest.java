@@ -17,6 +17,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class IntegrationFoundationTest {
     private final ObjectMapper json = new ObjectMapper();
 
+    @Test void mappedPropertiesCannotOverwriteEntityIdentityOrMergeMetadata() {
+        for (String key:List.of("modelId","id","archimateType","name","name_lamport","name_clientId","orset:members","archimesh.external.canonicalId"))
+            assertThrows(IllegalArgumentException.class,() -> new TurboEaMapping("v1",Map.of("Application","ApplicationComponent"),Map.of(),
+                    Map.of("Application",Map.of("property:"+key,new FieldMapping("name",ValueType.STRING,Authority.TURBO_EA_MASTER)))));
+    }
+
     @Test void missingIdentityComponentsAndKindCollisionsAreRejected() {
         assertThrows(IllegalArgumentException.class,() -> new ModelElementKey("instance"," ",EntityKind.ELEMENT,"elem:a"));
         assertThrows(IllegalArgumentException.class,() -> new ModelElementKey("instance","model",EntityKind.ELEMENT,"rel:a"));

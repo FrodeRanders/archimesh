@@ -40,6 +40,9 @@ public class ArchimeshService {
     private static final String CHECKPOINT_EXPORT_FORMAT = "archi-model-export-v2";
 
     @Inject
+    org.gautelis.archimesh.auth.AuthorizationService authorizationService;
+
+    @Inject
     ValidationService validationService;
 
     @Inject
@@ -190,11 +193,16 @@ public class ArchimeshService {
      * persists to the op-log, applies deltas to the materialized state, and broadcasts acceptance.
      */
     public synchronized void onSubmitOps(String modelId, Session session, SubmitOpsMessage submitOps) {
+        acceptSubmission(modelId,session,submitOps,message -> reply(session,modelId,message),false);
+    }
+
+    private void acceptSubmission(String modelId, Session session, SubmitOpsMessage submitOps,
+                                  java.util.function.Consumer<ServerEnvelope> response, boolean external) {
         if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         if (!ensureRegisteredModel(modelId, session, "SubmitOps")) {
             return;
         }
-        if (!ensureWritableRef(modelId, session, submitOps.actor(), "SubmitOps")) {
+        if (!external && !ensureWritableRef(modelId, session, submitOps.actor(), "SubmitOps")) {
             return;
         }
         validationService.validateSubmitOps(modelId, submitOps);
@@ -212,7 +220,7 @@ public class ArchimeshService {
         long baseRevision = submitOps.baseRevision();
         long headRevision = revisionService.headRevision(modelId);
         LOG.info("SubmitOps received: modelId={} opBatchId={} baseRevision={} opCount={} ops={}",
-                modelId, opBatchId, baseRevision, opCount, summarizeOps(preparedOps));
+                modelId, opBatchId, baseRevision, opCount, (external ? "[external import]" : summarizeOps(preparedOps)));
         recordActivity(modelId, "SubmitOpsReceived",
                 "opBatchId=" + opBatchId + " baseRevision=" + baseRevision + " opCount=" + opCount
                         + " cascadeDeleteGenerated=" + cascadeDeleteGenerated);
@@ -233,7 +241,7 @@ public class ArchimeshService {
                 styleCounters(modelId).accepted.addAndGet(styleOpCount);
                 recordStyleActivity(modelId, "AcceptedIdempotent", styleOpCount, opBatchId);
             }
-            reply(session, modelId,
+            response.accept(
                     new ServerEnvelope("OpsAccepted", new OpsAcceptedMessage(opBatchId, baseRevision, known.get())));
             return;
         }
@@ -247,7 +255,7 @@ public class ArchimeshService {
                 styleCounters(modelId).rejected.addAndGet(styleOpCount);
                 recordStyleActivity(modelId, "RejectedAhead", styleOpCount, opBatchId);
             }
-            reply(session, modelId,
+            response.accept(
                     new ServerEnvelope("Error", new ErrorMessage("REVISION_AHEAD",
                             "baseRevision " + baseRevision + " exceeds server headRevision " + headRevision + "; rejoin required", opBatchId)));
             return;
@@ -263,7 +271,7 @@ public class ArchimeshService {
                 styleCounters(modelId).rejected.addAndGet(styleOpCount);
                 recordStyleActivity(modelId, "RejectedPrecondition", styleOpCount, opBatchId);
             }
-            reply(session, modelId,
+            response.accept(
                     new ServerEnvelope("Error", new ErrorMessage("PRECONDITION_FAILED", preconditionFailure.get(), opBatchId)));
             return;
         }
@@ -281,7 +289,7 @@ public class ArchimeshService {
                     styleCounters(modelId).rejected.addAndGet(styleOpCount);
                     recordStyleActivity(modelId, "RejectedLockConflict", styleOpCount, opBatchId);
                 }
-                reply(session, modelId,
+                response.accept(
                         new ServerEnvelope("Error", new ErrorMessage("LOCK_CONFLICT", conflict.get(), opBatchId)));
                 return;
             }
@@ -332,8 +340,50 @@ public class ArchimeshService {
             return null;
         });
 
-        reply(session, modelId,
+        response.accept(
                 new ServerEnvelope("OpsAccepted", new OpsAcceptedMessage(opBatchId, baseRevision, range)));
+    }
+
+    /** Same acceptance/commit pipeline, with an explicit ref and a private typed result. No HTTP under this monitor. */
+    public synchronized SubmissionResult submitExternalImport(ExternalModelImport command) {
+        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
+        if (!HEAD_REF.equals(command.ref())) return SubmissionResult.rejected("MODEL_REFERENCE_READ_ONLY");
+        authorizationService.requireSubjectAllowed(command.subject(),
+                org.gautelis.archimesh.auth.AuthorizationAction.EXTERNAL_OBJECT_IMPORT,command.modelId(),HEAD_REF);
+        if (!isRegisteredModel(command.modelId())) return SubmissionResult.rejected("MODEL_NOT_FOUND");
+        var known = neo4jRepository.findAcceptedRange(command.modelId(),command.opBatchId());
+        if (known.isPresent()) return new SubmissionResult(true,known.get(),null);
+        JsonNode snapshot = neo4jRepository.loadSnapshot(command.modelId());
+        if (snapshot.path("headRevision").asLong(-1) != command.expectedRevision())
+            return SubmissionResult.rejected("PREVIEW_STALE");
+        JsonNode element = null;
+        for (var candidate : snapshot.path("elements"))
+            if (command.elementId().equals(candidate.path("id").asText())) element=candidate;
+        if (command.create() && element != null) return SubmissionResult.rejected("ELEMENT_ALREADY_EXISTS");
+        if (!command.create() && (element == null || !command.archimateType().equals(element.path("archimateType").asText())))
+            return SubmissionResult.rejected("ELEMENT_TYPE_CONFLICT");
+        for (var tombstone : snapshot.path("tombstones"))
+            if (command.create() && command.elementId().equals(tombstone.path("targetId").asText()))
+                return SubmissionResult.rejected("ELEMENT_DELETED");
+        long clock = snapshot.path("headRevision").asLong(0);
+        for (String collection : List.of("fieldClocks","propertyState","tombstones"))
+            for (var entry : snapshot.path(collection)) clock=Math.max(clock,entry.path("causal").path("lamport").asLong(0));
+        ArrayNode ops = ((ArrayNode)command.operations()).deepCopy();
+        for (int i=0;i<ops.size();i++) {
+            try { clock=Math.addExact(clock,1); }
+            catch (ArithmeticException overflow) { return SubmissionResult.rejected("CAUSAL_CLOCK_OVERFLOW"); }
+            ((ObjectNode)ops.get(i)).putObject("causal").put("clientId","external-import:"+command.opBatchId())
+                    .put("lamport",clock).put("opId",command.opBatchId()+":"+i);
+        }
+        var result = new java.util.concurrent.atomic.AtomicReference<SubmissionResult>();
+        acceptSubmission(command.modelId(),null,new SubmitOpsMessage(command.expectedRevision(),command.opBatchId(),
+                new Actor(command.subject().userId(),"external-import:"+command.opBatchId()),ops),message -> {
+            if (message.payload() instanceof OpsAcceptedMessage accepted)
+                result.set(new SubmissionResult(true,accepted.assignedRevisionRange(),null));
+            else if (message.payload() instanceof ErrorMessage error) result.set(SubmissionResult.rejected(error.code()));
+        },true);
+        if (result.get() == null) throw new IllegalStateException("Model submission produced no acceptance outcome");
+        return result.get();
     }
 
     public synchronized void onAcquireLock(String modelId, AcquireLockMessage message) {

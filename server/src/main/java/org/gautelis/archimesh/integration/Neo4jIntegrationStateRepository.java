@@ -48,6 +48,7 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
         params.put("archimateType", request.archimateType());
         params.put("mappingVersion", request.mappingVersion());
         params.put("batch", request.opBatchId());
+        params.put("bindingMode", request.bindingMode());
         try (var session = driver.session()) {
             return session.executeWrite(tx -> {
                 // Fence this external resource before observing its canonical assignment.
@@ -70,7 +71,7 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                         MERGE (b:IntegrationModelBinding {instanceId:$instance, sourceModelId:$sourceModel,
                             entityKind:$entityKind, canonicalId:$canonical})
                         ON CREATE SET b.entityId=$entityId, b.archimateType=$archimateType,
-                            b.mappingVersion=$mappingVersion, b.opBatchId=$batch, b.state='PREPARED',
+                            b.mappingVersion=$mappingVersion, b.opBatchId=$batch, b.state='PREPARED', b.bindingMode=$bindingMode,
                             b.acceptedRevision=0, b.system=$system, b.targetInstanceId=$target,
                             b.resourceKind=$resourceKind, b.resourceId=$resourceId
                         RETURN properties(b) AS binding
@@ -103,6 +104,25 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
 
     @Override public Optional<ReservedImport> findBinding(ModelElementKey key) {
         try (var session = driver.session()) { return session.executeRead(tx -> findBinding(tx, modelParams(key))); }
+    }
+
+    @Override public Optional<ReservedImport> findModelBinding(String instanceId, String sourceModelId, ExternalResourceKey key) {
+        required(instanceId); required(sourceModelId);
+        var params=externalParams(key); params.put("instance",instanceId); params.put("sourceModel",sourceModelId);
+        try (var session=driver.session()) {
+            return session.executeRead(tx -> {
+                var rows=tx.run("""
+                        MATCH (e:IntegrationExternalBinding {system:$system,targetInstanceId:$target,
+                            resourceKind:$resourceKind,resourceId:$resourceId})
+                        MATCH (c:IntegrationCanonicalObject {canonicalId:e.canonicalId})
+                        MATCH (b:IntegrationModelBinding {instanceId:$instance,sourceModelId:$sourceModel,canonicalId:e.canonicalId})
+                        WHERE b.entityKind=CASE WHEN $resourceKind='CARD' THEN 'ELEMENT' ELSE 'RELATIONSHIP' END
+                        RETURN properties(b) AS binding,c.kind AS kind
+                        """,params);
+                if (!rows.hasNext()) return Optional.empty();
+                var row=rows.single(); return Optional.of(readBinding(row,row.get("kind").asString()));
+            });
+        }
     }
 
     private Optional<ReservedImport> findBinding(TransactionContext tx, Map<String, Object> params) {
@@ -186,7 +206,7 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                 new ExternalResourceKey(b.get("system").asString(), b.get("targetInstanceId").asString(),
                         ResourceKind.valueOf(b.get("resourceKind").asString()), b.get("resourceId").asString()),
                 b.get("archimateType").asString(), b.get("mappingVersion").asString(), b.get("opBatchId").asString(),
-                BindingState.valueOf(b.get("state").asString()), b.get("acceptedRevision").asLong());
+                BindingState.valueOf(b.get("state").asString()), b.get("acceptedRevision").asLong(), b.get("bindingMode").asString("CREATE"));
     }
 
     private static Map<String, Object> modelParams(ModelElementKey key) {

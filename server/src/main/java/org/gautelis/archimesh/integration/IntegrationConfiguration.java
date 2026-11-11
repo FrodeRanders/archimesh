@@ -8,8 +8,25 @@ import java.util.List;
 
 /** Non-secret target definitions loaded only when explicitly enabled. */
 public record IntegrationConfiguration(int schemaVersion, String instanceId, List<Target> targets) {
+    /** Explicit approval that the listed types/fields form a shared catalog for these named users. */
+    public record CatalogAccess(boolean approved, java.util.Set<String> readers, java.util.Set<String> importers,
+                                java.util.Set<String> cardTypes, java.util.Set<String> fields) {
+        public CatalogAccess {
+            readers = readers == null ? java.util.Set.of() : java.util.Set.copyOf(readers);
+            importers = importers == null ? java.util.Set.of() : java.util.Set.copyOf(importers);
+            cardTypes = cardTypes == null ? java.util.Set.of() : java.util.Set.copyOf(cardTypes);
+            fields = fields == null ? java.util.Set.of() : java.util.Set.copyOf(fields);
+            readers.forEach(IntegrationIdentity::required); importers.forEach(IntegrationIdentity::required);
+            cardTypes.forEach(IntegrationIdentity::required); fields.forEach(IntegrationIdentity::required);
+            if (!readers.containsAll(importers)) throw new IllegalArgumentException("Importers must be catalog readers");
+            if (approved && (readers.isEmpty() || cardTypes.isEmpty() || !fields.contains("name")))
+                throw new IllegalArgumentException("Approved shared catalog requires readers, types and name visibility");
+        }
+        public static CatalogAccess denied() { return new CatalogAccess(false,null,null,null,null); }
+    }
     public record Target(String key, String instanceId, URI baseUrl, String tokenEnvironment,
-                         String expectedApiVersion, int timeoutMillis, int maxResponseBytes, TurboEaMapping mapping) {
+                         String expectedApiVersion, int timeoutMillis, int maxResponseBytes, TurboEaMapping mapping,
+                         CatalogAccess catalogAccess) {
         public Target {
             IntegrationIdentity.required(key); IntegrationIdentity.required(instanceId);
             IntegrationIdentity.required(expectedApiVersion);
@@ -19,6 +36,9 @@ public record IntegrationConfiguration(int schemaVersion, String instanceId, Lis
             if (mapping == null || timeoutMillis < 1 || timeoutMillis > 120_000
                     || maxResponseBytes < 1024 || maxResponseBytes > 16 * 1024 * 1024)
                 throw new IllegalArgumentException("Target mapping and bounded HTTP limits are required");
+            catalogAccess = catalogAccess == null ? CatalogAccess.denied() : catalogAccess;
+            if (!mapping.cardTypes().keySet().containsAll(catalogAccess.cardTypes()))
+                throw new IllegalArgumentException("Catalog types must have explicit mappings");
         }
     }
 

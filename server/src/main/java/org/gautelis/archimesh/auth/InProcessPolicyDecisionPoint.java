@@ -40,28 +40,28 @@ public class InProcessPolicyDecisionPoint implements PolicyDecisionPoint {
 
         if (accessControl != null && accessControl.configured()) {
             return switch (request.action()) {
-                case MODEL_JOIN, MODEL_SNAPSHOT_READ -> isModelReader(request, accessControl)
+                case MODEL_JOIN, MODEL_SNAPSHOT_READ, EXTERNAL_CATALOG_READ -> isModelReader(request, accessControl)
                         ? AuthorizationDecision.allow()
                         : AuthorizationDecision.deny("MODEL_ACCESS_DENIED",
                         "Subject is not allowed to read model " + request.modelId() + ".");
-                case MODEL_SUBMIT_OPS, MODEL_ACQUIRE_LOCK, MODEL_RELEASE_LOCK, MODEL_PRESENCE -> isModelWriter(request, accessControl)
+                case MODEL_SUBMIT_OPS, MODEL_ACQUIRE_LOCK, MODEL_RELEASE_LOCK, MODEL_PRESENCE, EXTERNAL_OBJECT_IMPORT -> isModelWriter(request, accessControl)
                         ? AuthorizationDecision.allow()
                         : AuthorizationDecision.deny("MODEL_ACCESS_DENIED",
                         "Subject is not allowed to modify model " + request.modelId() + ".");
-                default -> AuthorizationDecision.allow();
+                default -> AuthorizationDecision.deny("ACTION_DENIED", "Unsupported model action");
             };
         }
 
         return switch (request.action()) {
-            case MODEL_JOIN, MODEL_SNAPSHOT_READ -> hasAnyRole(request, readerRole, writerRole)
+            case MODEL_JOIN, MODEL_SNAPSHOT_READ, EXTERNAL_CATALOG_READ -> hasAnyRole(request, readerRole, writerRole)
                     ? AuthorizationDecision.allow()
                     : AuthorizationDecision.deny("MODEL_READ_ROLE_REQUIRED",
                     "Action " + request.action() + " requires role " + readerRole + " or " + writerRole + ".");
-            case MODEL_SUBMIT_OPS, MODEL_ACQUIRE_LOCK, MODEL_RELEASE_LOCK, MODEL_PRESENCE -> hasRole(request, writerRole)
+            case MODEL_SUBMIT_OPS, MODEL_ACQUIRE_LOCK, MODEL_RELEASE_LOCK, MODEL_PRESENCE, EXTERNAL_OBJECT_IMPORT -> hasRole(request, writerRole)
                     ? AuthorizationDecision.allow()
                     : AuthorizationDecision.deny("MODEL_WRITE_ROLE_REQUIRED",
                     "Action " + request.action() + " requires role " + writerRole + ".");
-            default -> AuthorizationDecision.allow();
+            default -> AuthorizationDecision.deny("ACTION_DENIED", "Unsupported model action");
         };
     }
 

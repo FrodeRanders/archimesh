@@ -45,6 +45,50 @@ class ArchimeshServiceTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void externalImportUsesPrivateAcceptanceAndFreshCausalClocks() {
+        var service=baseService();
+        service.authorizationService=new org.gautelis.archimesh.auth.AuthorizationService() {
+            @Override public void requireSubjectAllowed(org.gautelis.archimesh.auth.AuthorizationSubject subject,
+                    org.gautelis.archimesh.auth.AuthorizationAction action,String model,String ref) { }
+        };
+        var repo=(RecordingNeo4jRepository)service.neo4jRepository;
+        var snapshot=objectMapper.createObjectNode().put("headRevision",0);
+        snapshot.putArray("elements"); snapshot.putArray("fieldClocks").addObject().putObject("causal").put("lamport",9000);
+        repo.snapshotToReturn=snapshot;
+        var command=new org.gautelis.archimesh.model.ExternalModelImport("demo","HEAD",
+                new org.gautelis.archimesh.auth.AuthorizationSubject("architect",Set.of("model_writer")),"external-batch",
+                "elem:e1","BusinessActor",true,0,singleCreateElementOp());
+        var first=service.submitExternalImport(command);
+        Assertions.assertTrue(first.accepted());
+        Assertions.assertEquals(9001,repo.lastOpBatch.path("ops").get(0).path("causal").path("lamport").asLong());
+        Assertions.assertEquals(first,service.submitExternalImport(command));
+        Assertions.assertEquals(1,repo.appendCount);
+        var registry=(RecordingSessionRegistry)service.sessionRegistry;
+        Assertions.assertTrue(acceptedPayloads(registry.broadcasts).isEmpty(),"private HTTP acceptance must not be broadcast as another client's acknowledgement");
+        service.authorizationService=new org.gautelis.archimesh.auth.AuthorizationService() {
+            @Override public void requireSubjectAllowed(org.gautelis.archimesh.auth.AuthorizationSubject subject,
+                    org.gautelis.archimesh.auth.AuthorizationAction action,String model,String ref) { throw new jakarta.ws.rs.ForbiddenException(); }
+        };
+        Assertions.assertThrows(jakarta.ws.rs.ForbiddenException.class,() -> service.submitExternalImport(command));
+    }
+
+    @Test
+    void externalImportRejectsTagsAndStalePreviewBeforeMutation() {
+        var service=baseService();
+        service.authorizationService=new org.gautelis.archimesh.auth.AuthorizationService() {
+            @Override public void requireSubjectAllowed(org.gautelis.archimesh.auth.AuthorizationSubject subject,
+                    org.gautelis.archimesh.auth.AuthorizationAction action,String model,String ref) { }
+        };
+        ((RecordingNeo4jRepository)service.neo4jRepository).snapshotToReturn=objectMapper.createObjectNode().put("headRevision",4);
+        var user=new org.gautelis.archimesh.auth.AuthorizationSubject("architect",Set.of("model_writer"));
+        var tagged=new org.gautelis.archimesh.model.ExternalModelImport("demo","approved",user,"batch","elem:e1","BusinessActor",true,0,singleCreateElementOp());
+        Assertions.assertEquals("MODEL_REFERENCE_READ_ONLY",service.submitExternalImport(tagged).code());
+        var stale=new org.gautelis.archimesh.model.ExternalModelImport("demo","HEAD",user,"batch","elem:e1","BusinessActor",true,0,singleCreateElementOp());
+        Assertions.assertEquals("PREVIEW_STALE",service.submitExternalImport(stale).code());
+        Assertions.assertEquals(0,((RecordingNeo4jRepository)service.neo4jRepository).appendCount);
+    }
+
+    @Test
     void rejectionIsCorrelatedAndSentOnlyToSubmittingSession() {
         ArchimeshService service = baseService();
         var neo = (RecordingNeo4jRepository) service.neo4jRepository;

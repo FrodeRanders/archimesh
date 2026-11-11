@@ -32,12 +32,17 @@ public final class IntegrationIdentity {
 
     public record ImportReservation(ModelElementKey model, CanonicalObject canonicalCandidate,
                                     ExternalResourceKey external, String archimateType,
-                                    String mappingVersion, String opBatchId) {
+                                    String mappingVersion, String opBatchId, String bindingMode) {
+        public ImportReservation(ModelElementKey model,CanonicalObject canonicalCandidate,ExternalResourceKey external,
+                                 String archimateType,String mappingVersion,String opBatchId) {
+            this(model,canonicalCandidate,external,archimateType,mappingVersion,opBatchId,"CREATE");
+        }
         public ImportReservation {
             if (model == null || canonicalCandidate == null || external == null)
                 throw new IllegalArgumentException("Import identities are required");
             archimateType = required(archimateType); mappingVersion = required(mappingVersion);
             opBatchId = required(opBatchId);
+            if (!java.util.Set.of("CREATE","LINK").contains(bindingMode)) throw new IllegalArgumentException("Invalid import mode");
             if ((model.entityKind() == EntityKind.ELEMENT) != (external.resourceKind() == ResourceKind.CARD))
                 throw new IllegalArgumentException("Model and external resource kinds differ");
         }
@@ -45,7 +50,7 @@ public final class IntegrationIdentity {
 
     public record ReservedImport(ModelElementKey model, CanonicalObject canonical, ExternalResourceKey external,
                                  String archimateType, String mappingVersion, String opBatchId,
-                                 BindingState state, long acceptedRevision) { }
+                                 BindingState state, long acceptedRevision, String bindingMode) { }
 
     public static String required(String value) {
         if (value == null || value.isBlank() || value.length() > 512 || !value.equals(value.trim())

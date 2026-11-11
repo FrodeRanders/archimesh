@@ -10,6 +10,13 @@
       "expectedApiVersion": "2.194.0",
       "timeoutMillis": 10000,
       "maxResponseBytes": 2097152,
+      "catalogAccess": {
+        "approved": false,
+        "readers": [],
+        "importers": [],
+        "cardTypes": ["Application"],
+        "fields": ["name"]
+      },
       "mapping": {
         "version": "pilot-v1",
         "cardTypes": {

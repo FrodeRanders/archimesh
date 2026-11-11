@@ -22,6 +22,7 @@ public interface IntegrationStateRepository extends AutoCloseable {
     ReservedImport reserveImport(ImportReservation request);
     Optional<ReservedImport> findBinding(ModelElementKey key);
     Optional<CanonicalObject> findCanonical(ExternalResourceKey key);
+    Optional<ReservedImport> findModelBinding(String instanceId, String sourceModelId, ExternalResourceKey key);
     /** Requires the reserved batch's durable receipt and a matching materialized entity. */
     ReservedImport confirmImport(ModelElementKey key, String opBatchId);
     /** version=0 inserts; otherwise replaces exactly that stored version. Returns the new version. */

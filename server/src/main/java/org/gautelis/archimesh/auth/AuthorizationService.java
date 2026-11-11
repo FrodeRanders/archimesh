@@ -99,6 +99,16 @@ public class AuthorizationService {
         }
     }
 
+    /** Recheck a transport-resolved subject inside serialized internal model acceptance. */
+    public void requireSubjectAllowed(AuthorizationSubject subject, AuthorizationAction action, String modelId, String ref) {
+        if (subject == null || subject.userId() == null || subject.userId().isBlank())
+            throw new WebApplicationException("Authenticated integration user required", Response.Status.FORBIDDEN);
+        if (!enabled) return;
+        var decision = policyDecisionPoint.decide(new AuthorizationRequest(subject,action,modelId,ref,
+                lookupAccessControl(modelId),AuthorizationTransport.REST));
+        if (!decision.allowed()) throw new WebApplicationException(decision.reason(),Response.Status.FORBIDDEN);
+    }
+
     public AuthorizationSubject currentRestSubject(HttpHeaders headers, SecurityContext securityContext) {
         // The PEP always consumes the same subject shape; only the identity source varies by deployment mode.
         return switch (identityMode()) {

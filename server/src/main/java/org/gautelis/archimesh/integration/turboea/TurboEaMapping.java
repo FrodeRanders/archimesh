@@ -50,6 +50,13 @@ public record TurboEaMapping(String version, Map<String,String> cardTypes,
                         || (local.startsWith("property:") && local.length() > 9)))
                     throw new IllegalArgumentException("Unsupported local model field");
                 IntegrationIdentity.required(local);
+                if (local.startsWith("property:")) {
+                    String key=local.substring(9);
+                    if (Set.of("modelId","id","archimateType","name","documentation","updatedRevision").contains(key)
+                            || key.endsWith("_lamport") || key.endsWith("_clientId") || key.startsWith("orset:")
+                            || key.startsWith("archimesh.external."))
+                        throw new IllegalArgumentException("Mapped property collides with model identity, merge metadata or provenance");
+                }
                 if (Set.of("name","documentation").contains(local) && field.valueType() != ValueType.STRING)
                     throw new IllegalArgumentException("Semantic name/documentation mappings must be strings");
                 if (!remoteFields.add(field.remoteField())) throw new IllegalArgumentException("Ambiguous field mapping");

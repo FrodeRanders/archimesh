@@ -1,5 +1,12 @@
 # Archimesh Client Workspace
 
+For a connected writable HEAD model, **Tools → Enterprise Repository…** opens the
+[M2 approved Turbo EA catalog](../docs/turboea/m2-import.md). Search and preview an
+object, then create/reuse a semantic element or link a compatible existing one.
+The server must explicitly approve the catalog for the current principal. The
+plugin calls only ArchiMesh and receives accepted changes through normal model
+synchronization. Use the resulting model-tree element in any ArchiMate view.
+
 This directory now supports a standalone Tycho build for the Archimesh plugin.
 
 ## What this build uses
