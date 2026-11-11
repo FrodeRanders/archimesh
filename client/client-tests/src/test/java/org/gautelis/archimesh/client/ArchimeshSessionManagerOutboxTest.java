@@ -341,6 +341,41 @@ class ArchimeshSessionManagerOutboxTest {
     }
 
     @Test
+    void ownershipRejectionDropsOfflineIntentAndSurfacesConflict() throws Exception {
+        ArchimeshSessionManager manager = new ArchimeshSessionManager();
+        String modelId = "model-ownership";
+        String stale = submitOps(modelId, 1, "lock-stale");
+        String next = submitOps(modelId, 2, "lock-next");
+
+        manager.sendSubmitOps(stale);
+        manager.sendSubmitOps(next);
+
+        ControlledWebSocket ws = new ControlledWebSocket();
+        setField(manager, "webSocket", ws);
+        setField(manager, "currentModelId", modelId);
+        manager.setLastKnownRevision(200L);
+        setField(manager, "currentWsBaseUrl", "ws://fixture.invalid");
+
+        awaitTrue(() -> ws.sentTexts.size() == 1, Duration.ofSeconds(1));
+        ws.completeSend(0, null);
+        awaitTrue(() -> getField(manager, "outboxAwaitingAck") != null, Duration.ofSeconds(1));
+
+        List<String> conflicts = new ArrayList<>();
+        manager.addSubmitConflictListener((m, op, code, message) -> conflicts.add(m + "|" + op + "|" + code));
+
+        manager.onServerError("EXTERNAL_FIELD_OWNED", "Centrally owned field", "lock-stale");
+        awaitTrue(() -> ws.sentTexts.size() == 2, Duration.ofSeconds(1));
+
+        Assertions.assertTrue(ws.sentTexts.get(1).contains("\"type\":\"Join\""), "ownership rejection requests authoritative snapshot");
+        Assertions.assertFalse(ws.sentTexts.get(1).contains("lastSeenRevision"));
+        List<String> queued = queuedPayloads(manager);
+        Assertions.assertEquals(1, queued.size(), "ownership-conflicting head must be dropped from outbox");
+        Assertions.assertEquals(next, queued.get(0));
+        Assertions.assertEquals(1, conflicts.size(), "ownership conflict must be surfaced explicitly");
+        Assertions.assertEquals("model-ownership|lock-stale|EXTERNAL_FIELD_OWNED", conflicts.get(0));
+    }
+
+    @Test
     void reconnectSnapshotThenDeltaRebasesQueuedReplayToLatestRevision() throws Exception {
         ArchimeshSessionManager manager = new ArchimeshSessionManager();
         String modelId = "model-reconnect";

@@ -746,7 +746,7 @@ public class ArchimeshSessionManager {
             outboxAwaitingAckOpBatchId = null;
             outboxAwaitingAckDeadlineEpochMs = 0L;
 
-            if("PRECONDITION_FAILED".equals(code) || "LOCK_CONFLICT".equals(code)) {
+            if("PRECONDITION_FAILED".equals(code) || "LOCK_CONFLICT".equals(code) || "EXTERNAL_FIELD_OWNED".equals(code)) {
                 // Deterministic conflict handling: drop stale/conflicting intent and continue queue
                 offlineOutbox.remove(waiting);
                 persistOutboxToDisk(waiting.modelId);

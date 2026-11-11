@@ -43,6 +43,9 @@ public class ArchimeshService {
     org.gautelis.archimesh.auth.AuthorizationService authorizationService;
 
     @Inject
+    org.gautelis.archimesh.integration.ExternalFieldGuard externalFieldGuard;
+
+    @Inject
     ValidationService validationService;
 
     @Inject
@@ -219,8 +222,9 @@ public class ArchimeshService {
         String opBatchId = submitOps.opBatchId();
         long baseRevision = submitOps.baseRevision();
         long headRevision = revisionService.headRevision(modelId);
+        var ownershipFailure=!external && externalFieldGuard!=null ? externalFieldGuard.rejectLocal(modelId,preparedOps) : Optional.<String>empty();
         LOG.info("SubmitOps received: modelId={} opBatchId={} baseRevision={} opCount={} ops={}",
-                modelId, opBatchId, baseRevision, opCount, (external ? "[external import]" : summarizeOps(preparedOps)));
+                modelId, opBatchId, baseRevision, opCount, (external || ownershipFailure.isPresent() ? "[external field policy]" : summarizeOps(preparedOps)));
         recordActivity(modelId, "SubmitOpsReceived",
                 "opBatchId=" + opBatchId + " baseRevision=" + baseRevision + " opCount=" + opCount
                         + " cascadeDeleteGenerated=" + cascadeDeleteGenerated);
@@ -243,6 +247,11 @@ public class ArchimeshService {
             }
             response.accept(
                     new ServerEnvelope("OpsAccepted", new OpsAcceptedMessage(opBatchId, baseRevision, known.get())));
+            return;
+        }
+
+        if (ownershipFailure.isPresent()) {
+            response.accept(new ServerEnvelope("Error",new ErrorMessage(ownershipFailure.get(),"External field policy rejected this batch; reconcile the local projection",opBatchId)));
             return;
         }
 
@@ -383,6 +392,53 @@ public class ArchimeshService {
             else if (message.payload() instanceof ErrorMessage error) result.set(SubmissionResult.rejected(error.code()));
         },true);
         if (result.get() == null) throw new IllegalStateException("Model submission produced no acceptance outcome");
+        return result.get();
+    }
+
+    /** A recorded remote observation enters the ordinary commit path under this model monitor. No HTTP here. */
+    public synchronized SubmissionResult submitExternalChange(ExternalChangeCommand command) {
+        if (commitDeliveryService!=null) commitDeliveryService.requireWriterLease();
+        if (!isRegisteredModel(command.modelId())) return SubmissionResult.rejected("MODEL_NOT_FOUND");
+        var capability=externalFieldGuard.authorize(command);
+        var known=neo4jRepository.findAcceptedRange(command.modelId(),command.opBatchId());
+        if (known.isPresent()) return new SubmissionResult(true,known.get(),null);
+        if (capability.policy().version()!=command.policyVersion()) return SubmissionResult.rejected("EXTERNAL_CHANGE_POLICY_STALE");
+        var snapshot=neo4jRepository.loadSnapshot(command.modelId());
+        var element=org.gautelis.archimesh.integration.InboundFields.element(snapshot,command.elementId());
+        if (!command.archimateType().equals(element.path("archimateType").asText())) return SubmissionResult.rejected("ELEMENT_TYPE_CONFLICT");
+        if (!capability.binding().bindingMode().equals("PUBLISHED")) {
+            var marker=org.gautelis.archimesh.integration.InboundFields.local(new com.fasterxml.jackson.databind.ObjectMapper(),snapshot,command.elementId(),Set.of("property:"+org.gautelis.archimesh.integration.ExternalObjectCatalogService.CANONICAL_PROPERTY));
+            if (!command.canonicalId().equals(marker.path("property:"+org.gautelis.archimesh.integration.ExternalObjectCatalogService.CANONICAL_PROPERTY).asText())) return SubmissionResult.rejected("LOCAL_PROVENANCE_DRIFT");
+        }
+        var fields=new HashSet<String>(); command.remote().fieldNames().forEachRemaining(fields::add);
+        var local=org.gautelis.archimesh.integration.InboundFields.local(new com.fasterxml.jackson.databind.ObjectMapper(),snapshot,command.elementId(),fields);
+        if (snapshot.path("headRevision").asLong(-1)!=command.expectedRevision()
+                || !org.gautelis.archimesh.integration.PublicationJson.equal(local,command.expectedLocal())) return SubmissionResult.rejected("EXTERNAL_CHANGE_LOCAL_STALE");
+        var ops=JsonNodeFactory.instance.arrayNode(); var patch=JsonNodeFactory.instance.objectNode();
+        for (String field:new TreeSet<>(fields)) {
+            var value=command.remote().path(field);
+            if (org.gautelis.archimesh.integration.PublicationJson.equal(value,local.path(field))) continue;
+            if (!field.startsWith("property:")) patch.set(field,value);
+            else {
+                var op=ops.addObject().put("type",value.isNull() ? "UnsetProperty" : "SetProperty").put("targetId",command.elementId()).put("key",field.substring(9));
+                if (!value.isNull()) op.set("value",value);
+            }
+        }
+        if (!patch.isEmpty()) { var update=ops.addObject().put("type","UpdateElement").put("elementId",command.elementId()); update.set("patch",patch); }
+        if (ops.isEmpty()) return SubmissionResult.rejected("EXTERNAL_CHANGE_ALREADY_EQUAL");
+        long clock=snapshot.path("headRevision").asLong();
+        for (String collection:List.of("fieldClocks","propertyState","tombstones")) for (var row:snapshot.path(collection)) clock=Math.max(clock,row.path("causal").path("lamport").asLong());
+        for (int i=0;i<ops.size();i++) {
+            try { clock=Math.addExact(clock,1); } catch (ArithmeticException overflow) { return SubmissionResult.rejected("CAUSAL_CLOCK_OVERFLOW"); }
+            ((ObjectNode)ops.get(i)).putObject("causal").put("clientId","external-sync:"+command.opBatchId()).put("lamport",clock).put("opId",command.opBatchId()+":"+i);
+        }
+        var result=new java.util.concurrent.atomic.AtomicReference<SubmissionResult>();
+        acceptSubmission(command.modelId(),null,new SubmitOpsMessage(command.expectedRevision(),command.opBatchId(),
+                new Actor("external-sync:"+command.targetInstanceId(),command.opBatchId()),ops),message -> {
+            if (message.payload() instanceof OpsAcceptedMessage accepted) result.set(new SubmissionResult(true,accepted.assignedRevisionRange(),null));
+            else if (message.payload() instanceof ErrorMessage error) result.set(SubmissionResult.rejected(error.code()));
+        },true);
+        if (result.get()==null) throw new IllegalStateException("External change has no acceptance outcome");
         return result.get();
     }
 

@@ -10,6 +10,7 @@ Current status:
 - `Sessions` is implemented as a real route.
 - `Audit` is implemented as a real route.
 - `Publication` supports explicit HEAD/tag selection, policy approval, reconciliation status and remote baseline review. See [M3 configuration and safeguards](../docs/turboea/m3-publication.md).
+- `Inbound sync` supports scoped inbound approval/pause, per-binding diagnostics, reconciliation and reviewed acceptance of central values into HEAD. See [M4](../docs/turboea/m4-inbound.md).
 - `server-window.html` is now only a redirect to `/admin-ui/`.
 
 ## Build

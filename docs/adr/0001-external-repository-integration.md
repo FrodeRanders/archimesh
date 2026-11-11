@@ -216,3 +216,25 @@ name/`external_id` deduplication (not unique), and a second commit framework
 Progress through M1–M6 with integration disabled until each milestone's tests
 prove its boundary. Operational visibility and cross-system recovery remain
 required before enabling production writes.
+
+## M4 implementation — 2026-11-12
+
+Inbound card observations become bounded, persisted `ExternalChangeCommand`s.
+The existing serialized server acceptance method validates a capability tied to
+one active binding, current named model-admin approval and exact mapped central
+fields. It generates ordinary typed operations with clocks above persisted model
+clocks; HTTP remains outside the monitor and model transaction. Receipt-based
+recovery verifies accepted state before advancing a separate baseline.
+
+A database-only field guard rejects ordinary client writes to bound central/shared
+fields before LWW/revision assignment, independent of claimed actor or Lamport
+value. The correlated rejection triggers the existing outbox-conflict/cold-checkout
+path in the plugin. Per-model pause and worker pause preserve the guard; global
+integration disable releases the entire feature, so resumed three-way reconciliation
+must diagnose independent local drift.
+
+SSE is cookie-authenticated for the inspected local API, never query-authenticated
+by this connector. It carries invalidation IDs only. Bounded polling remains the
+repair path and does not assume durable SSE replay or full event visibility for
+a least-privileged service account. Relationship rewiring, central write-through,
+model-generation fencing and portable integration restore remain later scope.

@@ -78,3 +78,13 @@ Behavior:
 - Runs only when enabled.
 - Skips startup pull if one or more models are already open.
 - Opens an in-memory model, connects to the Archimesh server, and forces a cold snapshot bootstrap before applying any later deltas.
+
+## Inbound enterprise updates (M4)
+
+Approved central changes use ordinary accepted model operations and existing
+Kafka/WebSocket delivery. The semantic element updates under `RemoteApplyGuard`,
+including every view that references it. A correlated `EXTERNAL_FIELD_OWNED`
+rejection drops that rejected offline outbox batch, surfaces a conflict and
+requests a cold checkout; later queued batches remain retained. See the
+[M4 policy and recovery workflow](../docs/turboea/m4-inbound.md). Native central
+field editor restrictions and proposals/write-through remain M5 work.

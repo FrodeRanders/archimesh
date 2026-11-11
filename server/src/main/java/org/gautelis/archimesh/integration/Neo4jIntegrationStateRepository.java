@@ -267,6 +267,30 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
         }
     }
 
+    @Override public java.util.List<ReservedImport> bindings(String instance,String target,String model,String after,int limit) {
+        required(instance); required(target);
+        if (after==null || limit<1 || limit>100) throw new IllegalArgumentException("Invalid binding scan bounds");
+        try (var session=driver.session()) {
+            return session.executeRead(tx -> tx.run("""
+                    MATCH (b:IntegrationModelBinding {instanceId:$instance,targetInstanceId:$target,entityKind:'ELEMENT'})
+                    MATCH (c:IntegrationCanonicalObject {canonicalId:b.canonicalId})
+                    WITH b,c,toString(size(b.sourceModelId))+':'+b.sourceModelId+':'+b.entityId AS cursor
+                    WHERE ($model='' OR b.sourceModelId=$model) AND b.state<>'PREPARED' AND cursor>$after
+                    RETURN properties(b) AS binding,c.kind AS kind ORDER BY cursor LIMIT $limit
+                    """,Map.of("instance",instance,"target",target,"model",model==null ? "" : model,"after",after,"limit",limit))
+                    .list(row -> readBinding(row,row.get("kind").asString())));
+        }
+    }
+    @Override public void orphanBinding(ModelElementKey key) {
+        requireSchema();
+        try (var session=driver.session()) {
+            session.executeWrite(tx -> { tx.run("""
+                    MATCH (b:IntegrationModelBinding {instanceId:$instance,sourceModelId:$sourceModel,entityKind:$entityKind,entityId:$entityId})
+                    SET b.state='ORPHANED'
+                    """,modelParams(key)).consume(); return null; });
+        }
+    }
+
     @Override public StateDocument save(StateDocument document) {
         requireSchema();
         Map<String, Object> params = documentParams(document.instanceId(), document.kind(), document.id());

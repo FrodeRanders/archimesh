@@ -26,7 +26,7 @@ public record IntegrationConfiguration(int schemaVersion, String instanceId, Lis
     }
     public record Target(String key, String instanceId, URI baseUrl, String tokenEnvironment,
                          String expectedApiVersion, int timeoutMillis, int maxResponseBytes, TurboEaMapping mapping,
-                         CatalogAccess catalogAccess, PublicationAccess publicationAccess) {
+                         CatalogAccess catalogAccess, PublicationAccess publicationAccess, InboundAccess inboundAccess) {
         public Target {
             IntegrationIdentity.required(key); IntegrationIdentity.required(instanceId);
             IntegrationIdentity.required(expectedApiVersion);
@@ -40,10 +40,27 @@ public record IntegrationConfiguration(int schemaVersion, String instanceId, Lis
             if (!mapping.cardTypes().keySet().containsAll(catalogAccess.cardTypes()))
                 throw new IllegalArgumentException("Catalog types must have explicit mappings");
             publicationAccess=publicationAccess==null ? PublicationAccess.denied() : publicationAccess;
+            inboundAccess=inboundAccess==null ? InboundAccess.denied() : inboundAccess;
+            if (!mapping.cardTypes().keySet().containsAll(inboundAccess.cardTypes()))
+                throw new IllegalArgumentException("Inbound types require explicit mappings");
             if (!mapping.cardTypes().keySet().containsAll(publicationAccess.cardTypes())
                     || !mapping.relationTypes().keySet().containsAll(publicationAccess.relationTypes()))
                 throw new IllegalArgumentException("Publication types require explicit mappings");
         }
+    }
+    public record InboundAccess(boolean enabled,java.util.Set<String> administrators,java.util.Set<String> cardTypes,
+                                java.util.Set<String> fields,boolean sseEnabled) {
+        public InboundAccess {
+            administrators=administrators==null ? java.util.Set.of() : java.util.Set.copyOf(administrators);
+            cardTypes=cardTypes==null ? java.util.Set.of() : java.util.Set.copyOf(cardTypes);
+            fields=fields==null ? java.util.Set.of() : java.util.Set.copyOf(fields);
+            administrators.forEach(IntegrationIdentity::required); cardTypes.forEach(IntegrationIdentity::required);
+            fields.forEach(IntegrationIdentity::required);
+            if (enabled && (administrators.isEmpty() || cardTypes.isEmpty() || fields.isEmpty()))
+                throw new IllegalArgumentException("Inbound sync needs named administrators, types and fields");
+            if (sseEnabled && !enabled) throw new IllegalArgumentException("SSE requires inbound approval");
+        }
+        public static InboundAccess denied() { return new InboundAccess(false,null,null,null,false); }
     }
     public record PublicationAccess(boolean enabled,java.util.Set<String> publishers,java.util.Set<String> cardTypes,
                                     java.util.Set<String> relationTypes,java.util.Set<String> fields,

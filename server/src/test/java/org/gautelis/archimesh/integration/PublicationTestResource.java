@@ -16,7 +16,7 @@ public class PublicationTestResource implements QuarkusTestResourceLifecycleMana
     private Path config;
     private final ObjectMapper json=new ObjectMapper();
     private final ObjectNode cards=json.createObjectNode(),relations=json.createObjectNode();
-    private int writes;
+    private int writes,calls;
     private String fault="";
     @Override public Map<String,String> start() {
         try {
@@ -25,12 +25,14 @@ public class PublicationTestResource implements QuarkusTestResourceLifecycleMana
             server.createContext("/",exchange -> {
                 try {
                     String path=exchange.getRequestURI().getPath(),method=exchange.getRequestMethod();
+                    if (!path.equals("/__fixture")) calls++;
                     JsonNode body=method.equals("POST") || method.equals("PATCH") ? json.readTree(exchange.getRequestBody()) : null;
                     JsonNode response; int status=200;
                     if (path.equals("/__fixture")) {
                         if (body!=null) {
-                            if (body.path("reset").asBoolean()) { cards.removeAll(); relations.removeAll(); writes=0; fault=""; }
+                            if (body.path("reset").asBoolean()) { cards.removeAll(); relations.removeAll(); writes=0; calls=0; fault=""; }
                             if (body.has("fault")) fault=body.path("fault").asText();
+                            if (body.has("card")) cards.set(body.path("card").path("id").asText(),body.path("card").deepCopy());
                             if (body.has("relation")) relations.set(body.path("relation").path("id").asText(),body.path("relation").deepCopy());
                             if (body.has("id")) {
                                 String id=body.path("id").asText();
@@ -38,7 +40,7 @@ public class PublicationTestResource implements QuarkusTestResourceLifecycleMana
                                 else if (cards.has(id)) ((ObjectNode)cards.get(id)).setAll((ObjectNode)body.path("fields"));
                             }
                         }
-                        response=json.createObjectNode().put("writes",writes).set("cards",cards.deepCopy());
+                        response=json.createObjectNode().put("writes",writes).put("calls",calls).set("cards",cards.deepCopy());
                         ((ObjectNode)response).set("relations",relations.deepCopy());
                     } else if (fault.equals("offline")) { status=503; response=json.createObjectNode(); }
                     else if (fault.equals("rate-limit")) { status=429; response=json.createObjectNode(); exchange.getResponseHeaders().set("Retry-After","1"); }

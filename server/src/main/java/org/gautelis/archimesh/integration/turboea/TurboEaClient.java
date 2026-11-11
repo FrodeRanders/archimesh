@@ -218,7 +218,7 @@ public final class TurboEaClient implements ExternalRepositoryWriter, AutoClosea
         } catch (java.io.IOException malformed) { throw invalid(); }
     }
 
-    private static Duration retryAfter(String value) {
+    static Duration retryAfter(String value) {
         try {
             long seconds;
             try { seconds = Long.parseLong(value); }

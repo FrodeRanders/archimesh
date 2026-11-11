@@ -46,6 +46,14 @@ class EnterpriseImportProjectionTest {
         var second=(IArchimateDiagramModel)model.getFolder(FolderType.DIAGRAMS).getElements().get(1);
         assertSame(element,((IDiagramModelArchimateObject)first.getChildren().getFirst()).getArchimateElement());
         assertSame(element,((IDiagramModelArchimateObject)second.getChildren().getFirst()).getArchimateElement());
+        invokeGuarded(apply,"""
+                {"payload":{"opBatch":{"assignedRevisionRange":{"from":8,"to":8},"ops":[
+                  {"type":"UpdateElement","elementId":"elem:central","patch":{"name":"Updated central app"},"causal":{"lamport":100,"clientId":"external-sync:fixture"}}
+                ]}}}
+                """);
+        assertEquals("Updated central app",element.getName());
+        assertEquals("Updated central app",((IDiagramModelArchimateObject)first.getChildren().getFirst()).getArchimateElement().getName());
+        assertEquals("Updated central app",((IDiagramModelArchimateObject)second.getChildren().getFirst()).getArchimateElement().getName());
         assertEquals(1,folder.getElements().size()); assertFalse(unguarded.get());
     }
     private void invokeGuarded(RemoteOpApplier apply,String envelope) throws Exception {

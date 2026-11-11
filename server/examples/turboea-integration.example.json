@@ -26,6 +26,13 @@
         "acceptUnconditionalWriteRisk": false,
         "completeAttributeReadsApproved": false
       },
+      "inboundAccess": {
+        "enabled": false,
+        "administrators": [],
+        "cardTypes": ["Application"],
+        "fields": ["name"],
+        "sseEnabled": false
+      },
       "mapping": {
         "version": "pilot-v1",
         "cardTypes": {

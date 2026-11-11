@@ -180,6 +180,7 @@ public class ExternalObjectCatalogService {
     private ImportResult finishImport(String modelId,AuthorizationSubject subject,ImportRequest request,ReservedImport reservation,
                                       StateDocument plan,long expectedRevision,boolean reused,StateDocument journal) {
         var state=runtime.metadata(); String instance=runtime.settings().instanceId();
+        if (reservation.state()==BindingState.ORPHANED) throw new RequestFailure(409,"ORPHANED_BINDING_REQUIRES_REATTACHMENT");
         var target=target(modelId,"HEAD",subject,request.targetKey(),true);
         if (!reservation.external().equals(external(target,request.cardId()))
                 || !target.mapping().version().equals(reservation.mappingVersion())) throw new RequestFailure(409,"MAPPING_OR_ORIGIN_CHANGED");
