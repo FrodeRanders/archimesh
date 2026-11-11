@@ -54,7 +54,7 @@ class IntegrationMetadataIntegrationTest {
                 session.executeWrite(tx -> {
                     tx.run("""
                             MATCH (n) WHERE (n:IntegrationCanonicalObject OR n:IntegrationExternalBinding
-                                OR n:IntegrationModelBinding OR n:IntegrationStateDocument)
+                                OR n:IntegrationModelBinding OR n:IntegrationPublicationIdentity OR n:IntegrationIdentityClaim OR n:IntegrationStateDocument)
                               AND (n.instanceId=$scope OR n.targetInstanceId=$scope OR n.canonicalId STARTS WITH $prefix)
                             DETACH DELETE n
                             """,Map.of("scope",scope,"prefix","urn:"+scope+":" )).consume();

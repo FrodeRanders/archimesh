@@ -26,7 +26,7 @@ public record IntegrationConfiguration(int schemaVersion, String instanceId, Lis
     }
     public record Target(String key, String instanceId, URI baseUrl, String tokenEnvironment,
                          String expectedApiVersion, int timeoutMillis, int maxResponseBytes, TurboEaMapping mapping,
-                         CatalogAccess catalogAccess) {
+                         CatalogAccess catalogAccess, PublicationAccess publicationAccess) {
         public Target {
             IntegrationIdentity.required(key); IntegrationIdentity.required(instanceId);
             IntegrationIdentity.required(expectedApiVersion);
@@ -39,7 +39,27 @@ public record IntegrationConfiguration(int schemaVersion, String instanceId, Lis
             catalogAccess = catalogAccess == null ? CatalogAccess.denied() : catalogAccess;
             if (!mapping.cardTypes().keySet().containsAll(catalogAccess.cardTypes()))
                 throw new IllegalArgumentException("Catalog types must have explicit mappings");
+            publicationAccess=publicationAccess==null ? PublicationAccess.denied() : publicationAccess;
+            if (!mapping.cardTypes().keySet().containsAll(publicationAccess.cardTypes())
+                    || !mapping.relationTypes().keySet().containsAll(publicationAccess.relationTypes()))
+                throw new IllegalArgumentException("Publication types require explicit mappings");
         }
+    }
+    public record PublicationAccess(boolean enabled,java.util.Set<String> publishers,java.util.Set<String> cardTypes,
+                                    java.util.Set<String> relationTypes,java.util.Set<String> fields,
+                                    boolean acceptUnconditionalWriteRisk,boolean completeAttributeReadsApproved) {
+        public PublicationAccess {
+            publishers=publishers==null ? java.util.Set.of() : java.util.Set.copyOf(publishers);
+            cardTypes=cardTypes==null ? java.util.Set.of() : java.util.Set.copyOf(cardTypes);
+            relationTypes=relationTypes==null ? java.util.Set.of() : java.util.Set.copyOf(relationTypes);
+            fields=fields==null ? java.util.Set.of() : java.util.Set.copyOf(fields);
+            publishers.forEach(IntegrationIdentity::required); cardTypes.forEach(IntegrationIdentity::required);
+            relationTypes.forEach(IntegrationIdentity::required); fields.forEach(IntegrationIdentity::required);
+            if (enabled && (publishers.isEmpty() || cardTypes.isEmpty())) throw new IllegalArgumentException("Publication needs named publishers and approved card types");
+            for (String field:fields) if (!(java.util.Set.of("name","description","lifecycle").contains(field) || field.startsWith("attributes.")))
+                throw new IllegalArgumentException("Unsupported publication field; status/identity changes are not allowed");
+        }
+        public static PublicationAccess denied() { return new PublicationAccess(false,null,null,null,null,false,false); }
     }
 
     public IntegrationConfiguration {

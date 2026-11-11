@@ -8,7 +8,7 @@ Start with the overview below, then see [architecture.md](architecture.md) for c
 
 For the tested stopping point, branch state, resume commands, and known local broker limit, see the [project handoff](docs/project-status.md).
 
-The Turbo EA integration has an [M0 code/API investigation and regression baseline](docs/turboea/m0-analysis.md), an [identity, authority and recovery ADR](docs/adr/0001-external-repository-integration.md), a disabled-by-default [M1 server connector and metadata foundation](docs/turboea/m1-foundation.md), and an [M2 approved catalog and Archi import workflow](docs/turboea/m2-import.md). Publication and continuous synchronization remain subsequent milestones.
+The Turbo EA integration has an [M0 code/API investigation and regression baseline](docs/turboea/m0-analysis.md), an [identity, authority and recovery ADR](docs/adr/0001-external-repository-integration.md), a disabled-by-default [M1 server connector and metadata foundation](docs/turboea/m1-foundation.md), and an [M2 approved catalog and Archi import workflow](docs/turboea/m2-import.md). [M3 controlled outbound publication](docs/turboea/m3-publication.md) adds approved HEAD/tag selection, durable reconciliation and an admin workflow. Inbound synchronization and central edit proposals remain subsequent milestones.
 
 ## Architecture at a glance
 

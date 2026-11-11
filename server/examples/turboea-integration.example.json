@@ -17,6 +17,15 @@
         "cardTypes": ["Application"],
         "fields": ["name"]
       },
+      "publicationAccess": {
+        "enabled": false,
+        "publishers": [],
+        "cardTypes": ["Application"],
+        "relationTypes": [],
+        "fields": ["name"],
+        "acceptUnconditionalWriteRisk": false,
+        "completeAttributeReadsApproved": false
+      },
       "mapping": {
         "version": "pilot-v1",
         "cardTypes": {

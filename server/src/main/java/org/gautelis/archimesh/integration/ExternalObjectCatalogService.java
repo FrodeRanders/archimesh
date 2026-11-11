@@ -315,7 +315,7 @@ public class ExternalObjectCatalogService {
         JsonNode element=null;
         for (var row:snapshot.path("elements")) if (binding.model().entityId().equals(row.path("id").asText())) element=row;
         if (element == null || !binding.archimateType().equals(element.path("archimateType").asText())
-                || !binding.canonical().canonicalId().equals(property(snapshot,binding.model().entityId(),CANONICAL_PROPERTY)))
+                || !binding.bindingMode().equals("PUBLISHED") && !binding.canonical().canonicalId().equals(property(snapshot,binding.model().entityId(),CANONICAL_PROPERTY)))
             throw new RequestFailure(409,"BINDING_DRIFT_OR_DELETED");
         if (operations != null) for (var op:operations) {
             if (op.path("type").asText().equals("CreateElement")) for (String field:List.of("name","documentation")) {

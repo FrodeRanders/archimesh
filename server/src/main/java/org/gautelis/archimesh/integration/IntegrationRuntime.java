@@ -64,6 +64,12 @@ public class IntegrationRuntime {
         if (client == null) throw new IllegalArgumentException("Unknown integration target");
         return client;
     }
+    public ExternalRepositoryWriter writer(String targetKey) {
+        requireEnabled();
+        var target=settings.targets().stream().filter(t -> t.key().equals(targetKey)).findFirst().orElseThrow();
+        if (!target.publicationAccess().enabled()) throw new IllegalStateException("Publication is disabled for this target");
+        return clients.get(targetKey);
+    }
     /** Explicit inspection; callers must run this before using a target's configured mapping. */
     public ExternalRepositoryConnector.Metamodel validateTarget(String targetKey) {
         var connector = connector(targetKey);

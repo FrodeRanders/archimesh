@@ -2,7 +2,7 @@
 
 This module implements the Archimesh server described in the repository architecture and schema documents.
 
-The optional [Turbo EA M1 foundation](../docs/turboea/m1-foundation.md) provides a server-only read connector, versioned mapping and independent integration metadata. [M2](../docs/turboea/m2-import.md) adds scoped catalog/preview/import/link/status endpoints under `/models/{modelId}/external-objects`. Both integration enablement and explicit shared-catalog approval are required; no publication worker is enabled.
+The optional [Turbo EA M1 foundation](../docs/turboea/m1-foundation.md) provides a server-only read connector, versioned mapping and independent integration metadata. [M2](../docs/turboea/m2-import.md) adds scoped catalog/preview/import/link/status endpoints under `/models/{modelId}/external-objects`. Both integration enablement and explicit shared-catalog approval are required for M2. [M3](../docs/turboea/m3-publication.md) adds separately approved outbound publication under `/admin/models/{modelId}/publication`, with a disabled-by-default target policy, snapshot projection, durable jobs and drift/ambiguity review.
 
 ## Includes
 

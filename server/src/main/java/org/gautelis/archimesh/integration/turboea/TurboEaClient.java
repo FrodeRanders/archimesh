@@ -3,7 +3,7 @@ package org.gautelis.archimesh.integration.turboea;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.gautelis.archimesh.integration.ConnectorException;
-import org.gautelis.archimesh.integration.ExternalRepositoryConnector;
+import org.gautelis.archimesh.integration.ExternalRepositoryWriter;
 import org.gautelis.archimesh.integration.IntegrationIdentity;
 
 import java.io.ByteArrayOutputStream;
@@ -29,8 +29,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import static org.gautelis.archimesh.integration.ConnectorException.Kind.*;
 
-/** Bounded reads of the verified v1 surface. No implicit retries, redirects, SSE or writes. */
-public final class TurboEaClient implements ExternalRepositoryConnector, AutoCloseable {
+/** Bounded v1 reads and restricted publication writes. No implicit retries, redirects or SSE. */
+public final class TurboEaClient implements ExternalRepositoryWriter, AutoCloseable {
     private final URI base;
     private final String expectedVersion;
     private final Supplier<String> token;
@@ -49,7 +49,8 @@ public final class TurboEaClient implements ExternalRepositoryConnector, AutoClo
                 || maxBytes < 1024 || maxBytes > 16 * 1024 * 1024)
             throw new IllegalArgumentException("Invalid external HTTP limits");
         this.timeout = timeout; this.maxBytes = maxBytes; this.json = json;
-        http = HttpClient.newBuilder().connectTimeout(timeout).followRedirects(HttpClient.Redirect.NEVER).build();
+        // Uvicorn exposes HTTP/1.1; avoid h2c upgrade negotiation on JSON writes to loopback deployments.
+        http = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).connectTimeout(timeout).followRedirects(HttpClient.Redirect.NEVER).build();
     }
 
     public static void validateBaseUrl(URI uri) {
@@ -139,7 +140,38 @@ public final class TurboEaClient implements ExternalRepositoryConnector, AutoClo
                 optionalText(row,"external_id"),text(row,"status"),objectOrNull(row,"attributes"),objectOrNull(row,"lifecycle"));
     }
 
+    @Override public ExternalObject createObject(com.fasterxml.jackson.databind.node.ObjectNode payload) {
+        validatePayload(payload,java.util.Set.of("type","name","description","external_id","attributes","lifecycle","strict_attributes"));
+        text(payload,"type"); text(payload,"name"); text(payload,"external_id");
+        if (!payload.path("strict_attributes").asBoolean()) throw new IllegalArgumentException("Strict attributes are required for publication");
+        return object(exchange("POST","/api/v1/cards",true,payload,201));
+    }
+    @Override public ExternalObject patchObject(String resourceId,com.fasterxml.jackson.databind.node.ObjectNode payload) {
+        validatePayload(payload,java.util.Set.of("name","description","attributes","lifecycle"));
+        if (payload.isEmpty()) throw new IllegalArgumentException("Empty publication patch");
+        var result=object(exchange("PATCH","/api/v1/cards/"+resourceSegment(resourceId),true,payload,200));
+        if (!resourceId.equals(result.id())) throw invalid();
+        return result;
+    }
+    @Override public ExternalRelation createRelation(String type,String sourceId,String targetId) {
+        var payload=json.createObjectNode().put("type",IntegrationIdentity.required(type))
+                .put("source_id",IntegrationIdentity.required(sourceId)).put("target_id",IntegrationIdentity.required(targetId));
+        // Deliberately omit attributes/description: Turbo EA POST can reuse and merge a manual relation.
+        var row=exchange("POST","/api/v1/relations",true,payload,201);
+        var result=new ExternalRelation(text(row,"id"),text(row,"type"),text(row,"source_id"),text(row,"target_id"),
+                optionalText(row,"description"),objectOrNull(row,"attributes"));
+        if (!type.equals(result.type()) || !sourceId.equals(result.sourceId()) || !targetId.equals(result.targetId())) throw invalid();
+        return result;
+    }
+    private static void validatePayload(com.fasterxml.jackson.databind.node.ObjectNode payload,java.util.Set<String> allowed) {
+        if (payload==null || payload.toString().length()>131072) throw new IllegalArgumentException("Invalid publication payload size");
+        payload.fieldNames().forEachRemaining(key -> { if (!allowed.contains(key)) throw new IllegalArgumentException("Unsupported publication field"); });
+    }
+
     private JsonNode get(String path, boolean authenticated) {
+        return exchange("GET",path,authenticated,null,200);
+    }
+    private JsonNode exchange(String method,String path,boolean authenticated,JsonNode payload,int expectedStatus) {
         var request = HttpRequest.newBuilder(URI.create(base + path)).timeout(timeout).header("Accept","application/json");
         if (authenticated) {
             String secret;
@@ -149,7 +181,9 @@ public final class TurboEaClient implements ExternalRepositoryConnector, AutoClo
                 throw new ConnectorException(CONFIGURATION,0,Duration.ZERO);
             request.header("Authorization","Bearer " + secret);
         }
-        var future = http.sendAsync(request.GET().build(), info -> new LimitedBody(maxBytes));
+        if (payload==null) request.GET();
+        else request.header("Content-Type","application/json").method(method,HttpRequest.BodyPublishers.ofString(payload.toString()));
+        var future = http.sendAsync(request.build(), info -> new LimitedBody(maxBytes));
         HttpResponse<byte[]> response;
         try { response = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS); }
         catch (InterruptedException interrupted) {
@@ -161,7 +195,7 @@ public final class TurboEaClient implements ExternalRepositoryConnector, AutoClo
             throw new ConnectorException(oversized ? INVALID_RESPONSE : TRANSIENT,0,Duration.ZERO);
         }
         int status = response.statusCode();
-        if (status != 200) {
+        if (status != expectedStatus) {
             var kind = switch (status) {
                 case 401 -> AUTHENTICATION;
                 case 403 -> AUTHORIZATION;
@@ -176,7 +210,8 @@ public final class TurboEaClient implements ExternalRepositoryConnector, AutoClo
         String media = response.headers().firstValue("Content-Type").orElse("").split(";",2)[0].trim();
         if (!"application/json".equalsIgnoreCase(media)) throw invalid();
         try {
-            var value = json.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            var value = json.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                    .with(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
                     .with(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION).readTree(response.body());
             if (value == null) throw invalid();
             return value;

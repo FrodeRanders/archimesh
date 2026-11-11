@@ -55,7 +55,7 @@ class ExternalObjectCatalogIT {
                 AuthTokens.basic(System.getenv().getOrDefault("NEO4J_USER","neo4j"),System.getenv().getOrDefault("NEO4J_PASSWORD","devpassword")));
              var session=driver.session()) {
             session.executeWrite(tx -> {
-                tx.run("MATCH (n) WHERE (n:IntegrationModelBinding OR n:IntegrationStateDocument) AND n.instanceId=$scope DETACH DELETE n",Map.of("scope",runtime.settings().instanceId())).consume();
+                tx.run("MATCH (n) WHERE (n:IntegrationModelBinding OR n:IntegrationPublicationIdentity OR n:IntegrationIdentityClaim OR n:IntegrationStateDocument) AND n.instanceId=$scope DETACH DELETE n",Map.of("scope",runtime.settings().instanceId())).consume();
                 var ids=tx.run("MATCH (e:IntegrationExternalBinding {targetInstanceId:$scope}) RETURN e.canonicalId AS id",Map.of("scope",runtime.settings().instanceId())).list(r -> r.get("id").asString());
                 tx.run("MATCH (e:IntegrationExternalBinding {targetInstanceId:$scope}) DETACH DELETE e",Map.of("scope",runtime.settings().instanceId())).consume();
                 tx.run("MATCH (c:IntegrationCanonicalObject) WHERE c.canonicalId IN $ids AND NOT EXISTS { MATCH (e:IntegrationExternalBinding {canonicalId:c.canonicalId}) } DETACH DELETE c",Map.of("ids",ids)).consume();

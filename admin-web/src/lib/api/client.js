@@ -10,6 +10,7 @@ const currentHeaders = (extra = {}) => {
   const roles = get(authRoles).trim();
   const headers = { ...extra };
   if (!config.authorizationEnabled) {
+    if (config.identityMode === 'bootstrap' && user) headers['X-Archimesh-User'] = user;
     return headers;
   }
   if (config.identityMode === 'oidc' && token) {

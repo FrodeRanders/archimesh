@@ -26,17 +26,16 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
     }
 
     public void installSchema() {
-        try (var input = getClass().getResourceAsStream("/integrations/schema-v1.cypher")) {
-            if (input == null) throw new IllegalStateException("Missing integration schema");
-            String schema = new String(input.readAllBytes(), StandardCharsets.UTF_8)
-                    .replaceAll("(?m)^\\s*//.*$", "");
-            try (var session = driver.session()) {
-                for (String statement : schema.split(";")) {
-                    if (!statement.isBlank()) session.run(statement).consume();
+        for (String resource : java.util.List.of("schema-v1.cypher","schema-v2.cypher")) {
+            try (var input=getClass().getResourceAsStream("/integrations/"+resource)) {
+                if (input==null) throw new IllegalStateException("Missing integration schema");
+                String schema=new String(input.readAllBytes(),StandardCharsets.UTF_8).replaceAll("(?m)^\\s*//.*$", "");
+                try (var session=driver.session()) {
+                    for (String statement:schema.split(";")) if (!statement.isBlank()) session.run(statement).consume();
                 }
-                schemaInstalled=true;
-            }
-        } catch (IOException error) { throw new IllegalStateException("Cannot read integration schema", error); }
+            } catch (IOException error) { throw new IllegalStateException("Cannot read integration schema",error); }
+        }
+        schemaInstalled=true;
     }
 
     @Override public ReservedImport reserveImport(ImportReservation request) {
@@ -60,6 +59,12 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                         RETURN e.canonicalId AS canonical
                         """, params).single().get("canonical").asString();
                 params.put("canonical", canonical);
+                var claim=tx.run("""
+                        MERGE (c:IntegrationIdentityClaim {instanceId:$instance,sourceModelId:$sourceModel,entityKind:$entityKind,entityId:$entityId})
+                        ON CREATE SET c.canonicalId=$canonical
+                        SET c.fence=coalesce(c.fence,0)+1 RETURN c.canonicalId AS canonical
+                        """,params).single();
+                if (!canonical.equals(claim.get("canonical").asString())) throw new IllegalStateException("Model identity is already claimed by another canonical object");
                 var object = tx.run("""
                         MERGE (c:IntegrationCanonicalObject {canonicalId:$canonical})
                         ON CREATE SET c.kind=$kind
@@ -104,6 +109,106 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
 
     @Override public Optional<ReservedImport> findBinding(ModelElementKey key) {
         try (var session = driver.session()) { return session.executeRead(tx -> findBinding(tx, modelParams(key))); }
+    }
+
+    @Override public Optional<PublicationIdentity> findPublicationIdentity(ModelElementKey key) {
+        try (var session=driver.session()) {
+            return session.executeRead(tx -> {
+                var rows=tx.run("""
+                        OPTIONAL MATCH (b:IntegrationModelBinding {instanceId:$instance,sourceModelId:$sourceModel,entityKind:$entityKind,entityId:$entityId})
+                        OPTIONAL MATCH (p:IntegrationPublicationIdentity {instanceId:$instance,sourceModelId:$sourceModel,entityKind:$entityKind,entityId:$entityId})
+                        RETURN properties(b) AS binding,properties(p) AS publication
+                        """,modelParams(key)).single();
+                var b=rows.get("binding"); var p=rows.get("publication");
+                if (b.isNull() && p.isNull()) return Optional.empty();
+                if (!b.isNull() && !"ACTIVE".equals(b.get("state").asString())) throw new IllegalStateException("Import binding is not accepted");
+                if (!b.isNull() && !p.isNull() && !b.get("canonicalId").equals(p.get("canonicalId"))) throw new IllegalStateException("Conflicting publication identity");
+                var chosen=b.isNull() ? p : b;
+                String canonical=chosen.get("canonicalId").asString();
+                var kind=tx.run("MATCH (c:IntegrationCanonicalObject {canonicalId:$id}) RETURN c.kind AS kind",Map.of("id",canonical)).single().get("kind").asString();
+                return Optional.of(new PublicationIdentity(key,new CanonicalObject(canonical,kind),chosen.get("archimateType").asString(),chosen.get("mappingVersion").asString()));
+            });
+        }
+    }
+    @Override public PublicationIdentity reservePublicationIdentity(PublicationIdentity identity) {
+        requireSchema(); var params=modelParams(identity.model());
+        params.put("candidate",identity.canonical().canonicalId()); params.put("kind",identity.canonical().kind());
+        params.put("type",required(identity.archimateType())); params.put("mapping",required(identity.mappingVersion()));
+        try (var session=driver.session()) {
+            return session.executeWrite(tx -> {
+                var row=tx.run("""
+                        OPTIONAL MATCH (b:IntegrationModelBinding {instanceId:$instance,sourceModelId:$sourceModel,entityKind:$entityKind,entityId:$entityId})
+                        WITH b WHERE b IS NULL OR b.state='ACTIVE'
+                        MERGE (claim:IntegrationIdentityClaim {instanceId:$instance,sourceModelId:$sourceModel,entityKind:$entityKind,entityId:$entityId})
+                        ON CREATE SET claim.canonicalId=coalesce(b.canonicalId,$candidate)
+                        SET claim.fence=coalesce(claim.fence,0)+1
+                        RETURN claim.canonicalId AS canonical,b.canonicalId AS existing
+                        """,params);
+                if (!row.hasNext()) throw new IllegalStateException("Unaccepted import binding");
+                var claim=row.single(); String canonical=claim.get("canonical").asString();
+                if (!identity.canonical().canonicalId().equals(canonical)) throw new IllegalStateException("Publication identity changed; preview again");
+                params.put("canonical",canonical);
+                String kind=tx.run("MERGE (c:IntegrationCanonicalObject {canonicalId:$canonical}) ON CREATE SET c.kind=$kind RETURN c.kind AS kind",params).single().get("kind").asString();
+                if (!identity.canonical().kind().equals(kind)) throw new IllegalStateException("Canonical type conflict");
+                var publication=tx.run("""
+                        MERGE (p:IntegrationPublicationIdentity {instanceId:$instance,sourceModelId:$sourceModel,entityKind:$entityKind,entityId:$entityId})
+                        ON CREATE SET p.canonicalId=$canonical,p.archimateType=$type,p.mappingVersion=$mapping
+                        RETURN p.canonicalId AS canonical,p.archimateType AS type,p.mappingVersion AS mapping
+                        """,params).single();
+                if (!canonical.equals(publication.get("canonical").asString()) || !identity.archimateType().equals(publication.get("type").asString())
+                        || !identity.mappingVersion().equals(publication.get("mapping").asString())) throw new IllegalStateException("Publication mapping migration required");
+                return identity;
+            });
+        }
+    }
+    @Override public Optional<ExternalResourceKey> findExternal(String canonicalId,String system,String target,ResourceKind kind) {
+        required(canonicalId); required(system); required(target); java.util.Objects.requireNonNull(kind);
+        try (var session=driver.session()) {
+            return session.executeRead(tx -> {
+                var rows=tx.run("MATCH (e:IntegrationExternalBinding {canonicalId:$canonical,system:$system,targetInstanceId:$target,resourceKind:$kind}) RETURN e.resourceId AS id",
+                        Map.of("canonical",canonicalId,"system",system,"target",target,"kind",kind.name()));
+                return rows.hasNext() ? Optional.of(new ExternalResourceKey(system,target,kind,rows.single().get("id").asString())) : Optional.empty();
+            });
+        }
+    }
+    @Override public void recordPublishedIdentity(PublicationIdentity identity,ExternalResourceKey external,long revision,String jobId) {
+        requireSchema(); if (revision<1) throw new IllegalArgumentException("Publication requires accepted state");
+        var params=modelParams(identity.model()); params.putAll(externalParams(external));
+        params.put("canonical",identity.canonical().canonicalId()); params.put("type",identity.archimateType());
+        params.put("mapping",identity.mappingVersion()); params.put("revision",revision); params.put("batch",required(jobId));
+        try (var session=driver.session()) {
+            session.executeWrite(tx -> {
+                String canonical=tx.run("""
+                        MERGE (e:IntegrationExternalBinding {system:$system,targetInstanceId:$target,resourceKind:$resourceKind,resourceId:$resourceId})
+                        ON CREATE SET e.canonicalId=$canonical
+                        SET e.fence=coalesce(e.fence,0)+1 RETURN e.canonicalId AS canonical
+                        """,params).single().get("canonical").asString();
+                if (!canonical.equals(identity.canonical().canonicalId())) throw new IllegalStateException("External identity conflict");
+                var binding=tx.run("""
+                        MERGE (b:IntegrationModelBinding {instanceId:$instance,sourceModelId:$sourceModel,entityKind:$entityKind,entityId:$entityId})
+                        ON CREATE SET b.canonicalId=$canonical,b.archimateType=$type,b.mappingVersion=$mapping,
+                            b.system=$system,b.targetInstanceId=$target,b.resourceKind=$resourceKind,b.resourceId=$resourceId,
+                            b.state='ACTIVE',b.bindingMode='PUBLISHED',b.acceptedRevision=$revision,b.opBatchId=$batch
+                        RETURN b.canonicalId AS canonical
+                        """,params).single();
+                if (!canonical.equals(binding.get("canonical").asString())) throw new IllegalStateException("Model identity conflict");
+                return null;
+            });
+        }
+    }
+    @Override public java.util.List<StateDocument> list(String instanceId,DocumentKind kind,String prefix,String after,int limit) {
+        required(instanceId); java.util.Objects.requireNonNull(kind);
+        if (prefix==null || after==null || limit<1 || limit>100) throw new IllegalArgumentException("Invalid metadata scan bounds");
+        try (var session=driver.session()) {
+            return session.executeRead(tx -> tx.run("""
+                    MATCH (d:IntegrationStateDocument {instanceId:$instance,kind:$kind})
+                    WHERE d.id STARTS WITH $prefix AND d.id>$after
+                    RETURN d.id AS id,d.version AS version,d.dataJson AS data ORDER BY d.id LIMIT $limit
+                    """,Map.of("instance",instanceId,"kind",kind.name(),"prefix",prefix,"after",after,"limit",limit)).list(row -> {
+                        try { return new StateDocument(instanceId,kind,row.get("id").asString(),row.get("version").asLong(),json.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree(row.get("data").asString())); }
+                        catch (IOException corrupt) { throw new IllegalStateException("Corrupt integration state document"); }
+                    }));
+        }
     }
 
     @Override public Optional<ReservedImport> findModelBinding(String instanceId, String sourceModelId, ExternalResourceKey key) {
@@ -192,7 +297,7 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                 if (!rows.hasNext()) return Optional.empty();
                 var row = rows.single();
                 try { return Optional.of(new StateDocument(instanceId, kind, id,
-                        row.get("version").asLong(), json.readTree(row.get("data").asString()))); }
+                        row.get("version").asLong(), json.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree(row.get("data").asString()))); }
                 catch (IOException error) { throw new IllegalStateException("Corrupt integration state document"); }
             });
         }

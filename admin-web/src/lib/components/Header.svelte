@@ -6,6 +6,7 @@
     { label: 'Models', href: '/admin-ui/models' },
     { label: 'Versions', href: '/admin-ui/versions' },
     { label: 'Operations', href: '/admin-ui/operations' },
+    { label: 'Publication', href: '/admin-ui/publication' },
     { label: 'Access', href: '/admin-ui/access' },
     { label: 'Sessions', href: '/admin-ui/sessions' },
     { label: 'Audit', href: '/admin-ui/audit' }
@@ -16,6 +17,7 @@
     '/admin-ui/models': 'Model lifecycle and maintenance',
     '/admin-ui/versions': 'Tags, export, and import',
     '/admin-ui/operations': 'Recent model activity and op batches',
+    '/admin-ui/publication': 'Approved architecture publication to Turbo EA',
     '/admin-ui/access': 'Identity, ACLs, and diagnostics',
     '/admin-ui/sessions': 'Live Archimesh sessions',
     '/admin-ui/audit': 'Admin and websocket audit trails'

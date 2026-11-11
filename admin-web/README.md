@@ -9,6 +9,7 @@ Current status:
 - `Models` is implemented as a real route.
 - `Sessions` is implemented as a real route.
 - `Audit` is implemented as a real route.
+- `Publication` supports explicit HEAD/tag selection, policy approval, reconciliation status and remote baseline review. See [M3 configuration and safeguards](../docs/turboea/m3-publication.md).
 - `server-window.html` is now only a redirect to `/admin-ui/`.
 
 ## Build

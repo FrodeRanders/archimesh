@@ -29,6 +29,7 @@ class TurboEaClientTest {
     private volatile String media = "application/json";
     private volatile String retryAfter = "";
     private volatile long bodyDelay;
+    private volatile String method,payload;
     private volatile java.util.Map<String,String> routes = java.util.Map.of();
     private TurboEaClient client;
 
@@ -44,6 +45,7 @@ class TurboEaClientTest {
     }
     private void respond(HttpExchange exchange) throws java.io.IOException {
         calls.incrementAndGet(); query=exchange.getRequestURI().getRawQuery();
+        method=exchange.getRequestMethod(); payload=new String(exchange.getRequestBody().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
         String header = exchange.getRequestHeaders().getFirst("Authorization");
         authorization.add(header == null ? "" : header);
         exchange.getResponseHeaders().set("Content-Type",media);
@@ -97,6 +99,11 @@ class TurboEaClientTest {
         assertEquals("b",client.relations("a").getFirst().targetId());
         failure(() -> client.relations("unrelated"),INVALID_RESPONSE);
         body.set("{\"items\":[]}"); failure(() -> client.relations("a"),INVALID_RESPONSE);
+    }
+
+    @Test void preservesUnownedDecimalValuesForReplacementAttributeMaps() {
+        body.set(card("a").replace("\"owner\":\"team\"", "\"cost\":1.12345678901234567890123456789"));
+        assertEquals(new java.math.BigDecimal("1.12345678901234567890123456789"),client.getObject("a").attributes().path("cost").decimalValue());
     }
 
     @Test void metamodelRequiresWireTypesAndUniqueKeys() {
@@ -175,5 +182,24 @@ class TurboEaClientTest {
             assertThrows(IllegalArgumentException.class,() -> TurboEaClient.validateBaseUrl(URI.create(invalid)));
         TurboEaClient.validateBaseUrl(URI.create("https://example.com"));
         TurboEaClient.validateBaseUrl(URI.create("http://[::1]:8920"));
+    }
+
+    @Test void publicationWritesUseExactMethodsAndNeverAllowIdentityOrLifecycleDeletionPatches() throws Exception {
+        var json=new ObjectMapper(); status=201; body.set(card("created"));
+        var create=json.createObjectNode().put("type","Application").put("name","App").put("external_id","urn:uuid:canonical").put("strict_attributes",true);
+        client.createObject(create); assertEquals("POST",method); assertTrue(json.readTree(payload).path("strict_attributes").asBoolean());
+        status=200; body.set(card("created"));
+        client.patchObject("created",json.createObjectNode().put("description","Owned description")); assertEquals("PATCH",method);
+        for (String forbidden:List.of("external_id","type","status","parent_id"))
+            assertThrows(IllegalArgumentException.class,() -> client.patchObject("created",json.createObjectNode().put(forbidden,"bad")));
+        int before=calls.get(); status=503;
+        failure(() -> client.createObject(create),TRANSIENT); assertEquals(before+1,calls.get(),"POST is not retried after an uncertain response");
+    }
+
+    @Test void relationPostOmitsFieldsThatWouldMergeIntoAnExistingManualRelation() throws Exception {
+        status=201; body.set("{\"id\":\"r\",\"type\":\"Serves\",\"source_id\":\"a\",\"target_id\":\"b\",\"attributes\":{\"manual\":\"keep\"}}");
+        var result=client.createRelation("Serves","a","b");
+        var posted=new ObjectMapper().readTree(payload);
+        assertEquals("r",result.id()); assertEquals("POST",method); assertFalse(posted.has("attributes")); assertFalse(posted.has("description"));
     }
 }
