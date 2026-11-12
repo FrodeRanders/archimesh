@@ -34,12 +34,14 @@ public final class EnterpriseRepositoryClient implements AutoCloseable {
     private final String path;
     private final String token;
     private final String user;
-    public EnterpriseRepositoryClient(String wsBaseUrl,String modelId,String token,String user) throws IOException {
+    public EnterpriseRepositoryClient(String wsBaseUrl,String modelId,String token,String user) throws IOException { this(wsBaseUrl,modelId,token,user,"external-objects"); }
+    EnterpriseRepositoryClient(String wsBaseUrl,String modelId,String token,String user,String scope) throws IOException {
+        if (!Set.of("external-objects","central-edits").contains(scope)) throw new IOException("Unsupported ArchiMesh API scope");
         URI ws=ModelCatalogClient.normalizeUri(wsBaseUrl);
         if (ws.getUserInfo()!=null || ws.getRawQuery()!=null || ws.getRawFragment()!=null) throw new IOException("Use an ArchiMesh server origin without credentials or query parameters");
         try { origin=new URI("wss".equalsIgnoreCase(ws.getScheme()) ? "https" : "http",null,ws.getHost(),ws.getPort(),null,null,null); }
         catch (java.net.URISyntaxException invalid) { throw new IOException("Invalid ArchiMesh origin"); }
-        path="/models/"+encode(modelId)+"/external-objects";
+        path="/models/"+encode(modelId)+"/"+scope;
         if (token!=null && (token.length()>16384 || token.trim().chars().anyMatch(c -> c<=32 || c>=127)))
             throw new IOException("Invalid ArchiMesh authentication token");
         if (user!=null && (user.length()>512 || user.chars().anyMatch(Character::isISOControl)))
@@ -91,7 +93,7 @@ public final class EnterpriseRepositoryClient implements AutoCloseable {
         if (revision == null || revision<1) throw new IOException("Invalid ArchiMesh acceptance response; retry the same import");
         return new Result(required(response,"elementId"),required(response,"canonicalId"),revision);
     }
-    private String send(String method,String suffix,String body) throws IOException,InterruptedException {
+    String send(String method,String suffix,String body) throws IOException,InterruptedException {
         var request=HttpRequest.newBuilder(URI.create(origin+path+suffix)).timeout(Duration.ofSeconds(20)).header("Accept","application/json");
         if (token!=null && !token.isBlank()) request.header("Authorization","Bearer "+token.trim());
         if (user!=null && !user.isBlank()) request.header("X-Archimesh-User",user);
@@ -101,7 +103,7 @@ public final class EnterpriseRepositoryClient implements AutoCloseable {
         HttpResponse<byte[]> response;
         try { response=pending.get(20,TimeUnit.SECONDS); }
         catch (InterruptedException interrupted) { pending.cancel(true); throw interrupted; }
-        catch (ExecutionException | TimeoutException failed) { pending.cancel(true); throw new IOException("ArchiMesh request did not complete. Retry to check the same import."); }
+        catch (ExecutionException | TimeoutException failed) { pending.cancel(true); throw new IOException("ArchiMesh request did not complete. Retry to check the same request."); }
         String text=new String(response.body(),StandardCharsets.UTF_8);
         if (response.statusCode()!=200) {
             String code=SimpleJson.readStringField(text,"code");
@@ -111,13 +113,13 @@ public final class EnterpriseRepositoryClient implements AutoCloseable {
         if (!response.headers().firstValue("Content-Type").orElse("").startsWith("application/json")) throw new IOException("Invalid ArchiMesh response type");
         return text;
     }
-    private static String required(String json,String field) throws IOException {
+    static String required(String json,String field) throws IOException {
         String value=SimpleJson.readStringField(json,field);
         if (value == null) throw new IOException("Invalid ArchiMesh response");
         return value;
     }
-    private static String encode(String text) { return URLEncoder.encode(text == null ? "" : text,StandardCharsets.UTF_8).replace("+","%20"); }
-    private static String quote(String value) {
+    static String encode(String text) { return URLEncoder.encode(text == null ? "" : text,StandardCharsets.UTF_8).replace("+","%20"); }
+    static String quote(String value) {
         if (value == null) return "null";
         StringBuilder result=new StringBuilder("\"");
         for (char c:value.toCharArray()) {

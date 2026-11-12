@@ -10,17 +10,25 @@ import static org.gautelis.archimesh.integration.PublicationModel.Failure;
 public final class InboundFields {
     private InboundFields() { }
     public static Map<String,TurboEaMapping.FieldMapping> mappings(IntegrationConfiguration.Target target,String type) {
+        var result=normalMappings(target,type);
+        if (result.isEmpty()) throw new Failure(409,"INBOUND_FIELDS_NOT_APPROVED");
+        return result;
+    }
+    public static Map<String,TurboEaMapping.FieldMapping> normalMappings(IntegrationConfiguration.Target target,String type) {
         if (!target.inboundAccess().cardTypes().contains(type)) throw new Failure(409,"INBOUND_TYPE_NOT_APPROVED");
         var result=new TreeMap<String,TurboEaMapping.FieldMapping>();
         target.mapping().fields().getOrDefault(type,Map.of()).forEach((local,field) -> {
             if (field.authority()==InformationAuthorityPolicy.Authority.TURBO_EA_MASTER && target.inboundAccess().fields().contains(field.remoteField())) result.put(local,field);
         });
-        if (result.isEmpty() || result.size()>32) throw new Failure(409,"INBOUND_FIELDS_NOT_APPROVED");
+        if (result.size()>32) throw new Failure(409,"INBOUND_FIELDS_NOT_APPROVED");
         return Collections.unmodifiableMap(result);
     }
     public static ObjectNode remote(ObjectMapper json,IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card) {
+        return remote(json,card,mappings(target,card.type()));
+    }
+    public static ObjectNode remote(ObjectMapper json,ExternalRepositoryConnector.ExternalObject card,Map<String,TurboEaMapping.FieldMapping> mappings) {
         var result=json.createObjectNode();
-        mappings(target,card.type()).forEach((local,field) -> {
+        mappings.forEach((local,field) -> {
             JsonNode value=switch(field.remoteField()) {
                 case "name" -> json.valueToTree(card.name()); case "description" -> json.valueToTree(card.description());
                 case "status" -> json.valueToTree(card.status()); case "lifecycle" -> card.lifecycle();

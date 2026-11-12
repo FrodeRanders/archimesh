@@ -22,7 +22,7 @@ public class ArchitecturePublicationService {
     @Inject AuthorizationService authorization;
     @Inject CommitDeliveryService delivery;
     @Inject ObjectMapper json;
-    private final ReentrantLock execution=new ReentrantLock();
+    @Inject RemoteMutationCoordinator execution=new RemoteMutationCoordinator();
     LongSupplier now=System::currentTimeMillis;
     @org.eclipse.microprofile.config.inject.ConfigProperty(name="app.integrations.publication.interval-seconds",defaultValue="300") long reconciliationInterval=300;
 
@@ -145,6 +145,7 @@ public class ArchitecturePublicationService {
     }
 
     private String publishCard(StateDocument job,Plan plan,Resource resource,IntegrationConfiguration.Target target,ExternalRepositoryWriter writer) {
+        execution.requirePublicationAllowed(runtime,target.instanceId(),resource.identity().canonical().canonicalId());
         var state=resourceState(plan,resource); var data=(ObjectNode)state.data();
         ensureNoUnknownMutation(data);
         var binding=metadata().findExternal(resource.identity().canonical().canonicalId(),"turboea",target.instanceId(),ResourceKind.CARD);

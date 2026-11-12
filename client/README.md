@@ -86,5 +86,14 @@ Kafka/WebSocket delivery. The semantic element updates under `RemoteApplyGuard`,
 including every view that references it. A correlated `EXTERNAL_FIELD_OWNED`
 rejection drops that rejected offline outbox batch, surfaces a conflict and
 requests a cold checkout; later queued batches remain retained. See the
-[M4 policy and recovery workflow](../docs/turboea/m4-inbound.md). Native central
-field editor restrictions and proposals/write-through remain M5 work.
+[M4 policy and recovery workflow](../docs/turboea/m4-inbound.md). The [M5 explicit central-change command](../docs/turboea/m5-central-edits.md)
+adds **Enterprise Repository: Propose/change central data...** for linked elements.
+It shows authority, baseline, local and central values before confirmation. Requests
+use the current ArchiMesh session and require separately enabled requester scopes;
+Turbo EA credentials stay on the server. Proposal approval and incoming conflict
+resolution are available in the admin UI.
+
+Native Archi property editors remain optimistic. The authoritative server guard
+rejects ordinary edits to central/shared fields, including offline batches, and
+uses the conflict/cold-checkout path above. The command does not patch EMF directly;
+verified changes return through ordinary accepted operations.

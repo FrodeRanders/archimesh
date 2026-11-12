@@ -8,6 +8,7 @@
     { label: 'Operations', href: '/admin-ui/operations' },
     { label: 'Publication', href: '/admin-ui/publication' },
     { label: 'Inbound sync', href: '/admin-ui/inbound' },
+    { label: 'Central changes', href: '/admin-ui/central-edits' },
     { label: 'Access', href: '/admin-ui/access' },
     { label: 'Sessions', href: '/admin-ui/sessions' },
     { label: 'Audit', href: '/admin-ui/audit' }
@@ -20,6 +21,7 @@
     '/admin-ui/operations': 'Recent model activity and op batches',
     '/admin-ui/publication': 'Approved architecture publication to Turbo EA',
     '/admin-ui/inbound': 'Central changes into linked model HEADs',
+    '/admin-ui/central-edits': 'Explicit central edits and proposal approval',
     '/admin-ui/access': 'Identity, ACLs, and diagnostics',
     '/admin-ui/sessions': 'Live Archimesh sessions',
     '/admin-ui/audit': 'Admin and websocket audit trails'

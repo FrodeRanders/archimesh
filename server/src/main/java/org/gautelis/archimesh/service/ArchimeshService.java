@@ -402,6 +402,7 @@ public class ArchimeshService {
         var capability=externalFieldGuard.authorize(command);
         var known=neo4jRepository.findAcceptedRange(command.modelId(),command.opBatchId());
         if (known.isPresent()) return new SubmissionResult(true,known.get(),null);
+        if (command.proposalId()!=null && !externalFieldGuard.currentProposal(command.proposalId())) return SubmissionResult.rejected("EXTERNAL_CHANGE_PROPOSAL_STALE");
         if (capability.policy().version()!=command.policyVersion()) return SubmissionResult.rejected("EXTERNAL_CHANGE_POLICY_STALE");
         var snapshot=neo4jRepository.loadSnapshot(command.modelId());
         var element=org.gautelis.archimesh.integration.InboundFields.element(snapshot,command.elementId());

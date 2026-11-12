@@ -6,7 +6,7 @@ import static org.gautelis.archimesh.integration.IntegrationIdentity.*;
 
 /** Independent metadata storage. No method writes model entities or revisions. */
 public interface IntegrationStateRepository extends AutoCloseable {
-    enum DocumentKind { FIELD_AUTHORITY, CHECKPOINT, CONFLICT, CONTRIBUTION, JOB, PUBLICATION_POLICY, PUBLICATION_JOB, PUBLICATION_RESOURCE, INBOUND_POLICY, INBOUND_STATE }
+    enum DocumentKind { FIELD_AUTHORITY, CHECKPOINT, CONFLICT, CONTRIBUTION, JOB, PUBLICATION_POLICY, PUBLICATION_JOB, PUBLICATION_RESOURCE, INBOUND_POLICY, INBOUND_STATE, CENTRAL_EDIT, CENTRAL_LANE, CENTRAL_DELIVERY }
     record PublicationIdentity(ModelElementKey model,CanonicalObject canonical,String archimateType,String mappingVersion) { }
 
     /** Opaque JSON state is typed by kind, versioned with CAS and scoped to an integration instance. */
@@ -35,6 +35,7 @@ public interface IntegrationStateRepository extends AutoCloseable {
     ReservedImport confirmImport(ModelElementKey key, String opBatchId);
     /** version=0 inserts; otherwise replaces exactly that stored version. Returns the new version. */
     StateDocument save(StateDocument document);
+    default java.util.List<StateDocument> saveAtomically(java.util.List<StateDocument> documents) { throw new UnsupportedOperationException(); }
     Optional<StateDocument> load(String instanceId, DocumentKind kind, String id);
     @Override void close();
 }

@@ -33,6 +33,15 @@
         "fields": ["name"],
         "sseEnabled": false
       },
+      "centralEditAccess": {
+        "enabled": false,
+        "requesters": [],
+        "approvers": [],
+        "cardTypes": ["Application"],
+        "fields": { "name": "PROPOSAL" },
+        "acceptUnconditionalWriteRisk": false,
+        "completeAttributeReadsApproved": false
+      },
       "mapping": {
         "version": "pilot-v1",
         "cardTypes": {

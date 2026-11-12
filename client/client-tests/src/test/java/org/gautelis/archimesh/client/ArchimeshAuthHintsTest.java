@@ -7,6 +7,11 @@ import org.junit.jupiter.api.Test;
 class ArchimeshAuthHintsTest {
 
     @Test
+    void ownedFieldRejectionPointsToExplicitCentralCommand() {
+        Assertions.assertTrue(ArchimeshAuthHints.describeServerError("EXTERNAL_FIELD_OWNED", "rejected", false, false).contains("Propose/change central data"));
+    }
+
+    @Test
     void tokenExpiryRecognizesExpiredJwt() {
         String token = "eyJhbGciOiJub25lIn0.eyJleHAiOjF9.";
         String message = ArchimeshAuthHints.describeTokenExpiry(token);

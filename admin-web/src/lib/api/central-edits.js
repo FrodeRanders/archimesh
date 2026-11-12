@@ -1,0 +1,15 @@
+import { fetchJson, postJson } from '$lib/api/client.js';
+const root = (model, target = '') => `/models/${encodeURIComponent(model)}/central-edits${target ? `/${encodeURIComponent(target)}` : ''}`;
+export const centralTargets = model => fetchJson(`${root(model)}/targets`, { action: 'Central edit targets' });
+export const centralCapabilities = (model, target) => fetchJson(`${root(model, target)}/capabilities`, { action: 'Central edit permissions' });
+export const centralBindings = (model, target, after = '') => fetchJson(`${root(model, target)}/bindings?after=${encodeURIComponent(after)}`, { action: 'Linked elements' });
+export const centralContext = (model, target, element) => fetchJson(`${root(model, target)}/context/${encodeURIComponent(element)}`, { action: 'Central field context' });
+export const centralPreview = (model, target, body) => postJson(`${root(model, target)}/preview`, body, 'Preview central change');
+export const centralSubmit = (model, target, body) => postJson(`${root(model, target)}/requests`, body, 'Submit central request');
+export const centralJobs = (model, target, after = '') => fetchJson(`${root(model, target)}/requests?after=${encodeURIComponent(after)}`, { action: 'Central requests' });
+export const centralReview = (model, target, id) => fetchJson(`${root(model, target)}/requests/${encodeURIComponent(id)}/review`, { action: 'Review central proposal' });
+export const centralDecide = (model, target, id, body) => postJson(`${root(model, target)}/requests/${encodeURIComponent(id)}/decision`, body, 'Decide central proposal');
+export const centralOutcome = (model, target, id, action, version) => postJson(`${root(model, target)}/requests/${encodeURIComponent(id)}/${action}`, { expectedVersion: version }, 'Central request action');
+export const centralDeliveries = (model, target, after = '') => fetchJson(`${root(model, target)}/deliveries?after=${encodeURIComponent(after)}`, { action: 'Incoming approved changes' });
+export const centralInspectDelivery = (model, target, id, element) => fetchJson(`${root(model, target)}/incoming/${encodeURIComponent(id)}/${encodeURIComponent(element)}`, { action: 'Review model delivery' });
+export const centralResolveDelivery = (model, target, id, element, digest) => postJson(`${root(model, target)}/incoming/${encodeURIComponent(id)}/${encodeURIComponent(element)}`, { elementId: element, inspectionDigest: digest }, 'Accept approved values into this model');

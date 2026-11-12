@@ -291,23 +291,31 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
         }
     }
 
-    @Override public StateDocument save(StateDocument document) {
+    @Override public StateDocument save(StateDocument document) { return saveAtomically(java.util.List.of(document)).getFirst(); }
+
+    @Override public java.util.List<StateDocument> saveAtomically(java.util.List<StateDocument> documents) {
         requireSchema();
-        Map<String, Object> params = documentParams(document.instanceId(), document.kind(), document.id());
-        params.put("expected", document.version()); params.put("data", document.data().toString());
-        try (var session = driver.session()) {
+        if (documents==null || documents.isEmpty() || documents.size()>10) throw new IllegalArgumentException("Invalid metadata transaction size");
+        var keys=new java.util.HashSet<java.util.List<Object>>();
+        for (var document:documents) if (!keys.add(java.util.List.of(document.instanceId(),document.kind(),document.id()))) throw new IllegalArgumentException("Duplicate metadata transaction key");
+        try (var session=driver.session()) {
             return session.executeWrite(tx -> {
-                var rows = tx.run("""
-                        MERGE (d:IntegrationStateDocument {instanceId:$instance,kind:$kind,id:$id})
-                        ON CREATE SET d.version=0
-                        SET d.fence=coalesce(d.fence,0)+1
-                        WITH d WHERE d.version=$expected
-                        SET d.version=d.version+1,d.dataJson=$data
-                        RETURN d.version AS version
-                        """, params);
-                if (!rows.hasNext()) throw new IllegalStateException("Integration state version conflict");
-                return new StateDocument(document.instanceId(), document.kind(), document.id(),
-                        rows.single().get("version").asLong(), document.data());
+                var saved=new java.util.ArrayList<StateDocument>();
+                for (var document:documents) {
+                    var params=documentParams(document.instanceId(),document.kind(),document.id());
+                    params.put("expected",document.version()); params.put("data",document.data().toString());
+                    var rows=tx.run("""
+                            MERGE (d:IntegrationStateDocument {instanceId:$instance,kind:$kind,id:$id})
+                            ON CREATE SET d.version=0
+                            SET d.fence=coalesce(d.fence,0)+1
+                            WITH d WHERE d.version=$expected
+                            SET d.version=d.version+1,d.dataJson=$data
+                            RETURN d.version AS version
+                            """,params);
+                    if (!rows.hasNext()) throw new IllegalStateException("Integration state version conflict");
+                    saved.add(new StateDocument(document.instanceId(),document.kind(),document.id(),rows.single().get("version").asLong(),document.data()));
+                }
+                return java.util.List.copyOf(saved);
             });
         }
     }

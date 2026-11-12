@@ -13,6 +13,7 @@ import static org.gautelis.archimesh.integration.PublicationModel.Failure;
 public class ExternalFieldGuard {
     @Inject IntegrationRuntime runtime;
     @Inject InboundAuthorization access;
+    @Inject CentralProposalGrant grants;
 
     public Optional<String> rejectLocal(String model,JsonNode ops) {
         if (!runtime.enabled() || runtime.settings().targets().stream().noneMatch(t -> t.inboundAccess().enabled())) return Optional.empty();
@@ -45,6 +46,8 @@ public class ExternalFieldGuard {
         } catch (RuntimeException unavailable) { return Optional.of("EXTERNAL_POLICY_UNAVAILABLE"); }
     }
 
+    public boolean currentProposal(String id) { return grants.current(id); }
+
     /** Validate the exact model/entity/field capability; no generic system-admin credential is created. */
     public record Capability(IntegrationStateRepository.StateDocument policy,ReservedImport binding) { }
     public Capability authorize(ExternalChangeCommand command) {
@@ -55,7 +58,7 @@ public class ExternalFieldGuard {
         if (binding.state()!=BindingState.ACTIVE || !binding.canonical().canonicalId().equals(command.canonicalId()) || !binding.external().resourceId().equals(command.resourceId())
                 || !binding.external().targetInstanceId().equals(command.targetInstanceId()) || !binding.archimateType().equals(command.archimateType())
                 || !binding.mappingVersion().equals(command.mappingVersion())) throw new Failure(409,"EXTERNAL_CHANGE_BINDING_DRIFT");
-        var fields=InboundFields.mappings(target,binding.canonical().kind()).keySet();
+        var fields=command.proposalId()==null ? InboundFields.mappings(target,binding.canonical().kind()).keySet() : grants.commandFields(command,target,binding.canonical().kind());
         var expected=new HashSet<String>(); command.expectedLocal().fieldNames().forEachRemaining(expected::add);
         var remote=new HashSet<String>(); command.remote().fieldNames().forEachRemaining(remote::add);
         if (!fields.equals(expected) || !fields.equals(remote)) throw new Failure(403,"EXTERNAL_CHANGE_FIELDS_DENIED");

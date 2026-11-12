@@ -238,3 +238,41 @@ by this connector. It carries invalidation IDs only. Bounded polling remains the
 repair path and does not assume durable SSE replay or full event visibility for
 a least-privileged service account. Relationship rewiring, central write-through,
 model-generation fencing and portable integration restore remain later scope.
+
+
+## M5 implementation — 2026-11-12
+
+Explicit central requests use immutable, digest-bound intent with a stable request
+UUID. Target requester scopes plus actual model writer/admin ACLs authorize request
+creation. Target approver scopes plus actual model admin ACLs authorize proposal
+approval; a global admin role does not bypass either scope. The worker rechecks
+current access, target/mapping configuration and source inbound approval before
+remote dispatch. Shared fields require a proposal; ordinary field ownership guards
+remain authoritative for all clients.
+
+A shared remote-mutation lock coordinates M3 publication and M5 card edits. Atomic
+Neo4j compare-and-set writes couple each dispatch intent to a durable canonical
+resource fence. An uncertain PATCH is never automatically replayed; a separate,
+explicit read-only verification can clear the fence only when the remote content
+matches the approved intent. Publication and central edits honor each other's
+uncertainty markers after restart. This does not create conditional-write support
+in Turbo EA: unconditional race risk and full attributes visibility require
+explicit configuration acknowledgments.
+
+After verification, paged fan-out reuses M4 external-change acceptance. The private
+command optionally names a durable verified proposal, granting only the selected
+shared fields and approved values on the same canonical/card binding. A latest-job
+check precedes new model acceptance; existing receipts recover committed batches.
+No new generic event or commit framework is introduced. Baselines preserve shared
+field decisions across ordinary central polling. Per-model inbound administrators
+resolve their own conflicts without gaining access to source-model requests.
+
+Remote success and per-model delivery are distinct durable states. A job with
+paused/conflicting occurrences is PARTIAL. Native Archi property editors remain
+optimistic and receive server rejections; the explicit command stages central
+intent without mutating EMF. Lossless JSON text and display strings preserve typed
+numeric/object values through JavaScript and the Archi plugin.
+
+The new CENTRAL_EDIT, CENTRAL_LANE and CENTRAL_DELIVERY document kinds remain
+outside model snapshots/history/exports. Integration backup/restore and model
+identity generation fencing remain M6 work; see the M5 operations note.

@@ -141,6 +141,7 @@ public final class ArchimeshAuthHints {
                     ? "Authorization denied. The bearer token is valid but does not grant the required roles or model access."
                     : (message == null || message.isBlank() ? "Authorization denied by the server." : message);
         }
+        if ("EXTERNAL_FIELD_OWNED".equals(code)) return "This field is centrally managed. Use Enterprise Repository: Propose/change central data. The rejected batch is reconciled from the server.";
         if("MODEL_REFERENCE_READ_ONLY".equals(code) || readOnlyRef) {
             return "This model reference is read-only. Switch back to HEAD to submit changes.";
         }

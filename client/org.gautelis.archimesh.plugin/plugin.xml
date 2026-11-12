@@ -10,6 +10,7 @@
 
    <extension
          point="org.eclipse.ui.commands">
+      <command categoryId="com.archimatetool.editor.category" id="org.gautelis.archimesh.plugin.command.centralEdit" name="%command.centralEdit.name" description="%command.centralEdit.description" />
       <command categoryId="com.archimatetool.editor.category"
             id="org.gautelis.archimesh.plugin.command.enterpriseRepository"
             name="%command.enterpriseRepository.name" description="%command.enterpriseRepository.description" />
@@ -53,6 +54,7 @@
 
    <extension
          point="org.eclipse.ui.handlers">
+      <handler commandId="org.gautelis.archimesh.plugin.command.centralEdit" class="org.gautelis.archimesh.plugin.handlers.CentralEditHandler" />
       <handler commandId="org.gautelis.archimesh.plugin.command.enterpriseRepository"
             class="org.gautelis.archimesh.plugin.handlers.EnterpriseRepositoryHandler" />
       <handler
@@ -86,6 +88,7 @@
          <menuContribution
             allPopups="false"
             locationURI="menu:tools?after=com.archimatetool.action.generateView">
+         <command commandId="org.gautelis.archimesh.plugin.command.centralEdit" label="%command.centralEdit.name" style="push" />
          <command commandId="org.gautelis.archimesh.plugin.command.enterpriseRepository"
                label="%command.enterpriseRepository.name" style="push" />
          <command

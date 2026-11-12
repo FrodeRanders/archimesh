@@ -14,7 +14,7 @@ public class PublicationTestResource implements QuarkusTestResourceLifecycleMana
     private HttpServer server;
     private java.util.concurrent.ExecutorService workers;
     private Path config;
-    private final ObjectMapper json=new ObjectMapper();
+    private final ObjectMapper json=new ObjectMapper().enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
     private final ObjectNode cards=json.createObjectNode(),relations=json.createObjectNode();
     private int writes,calls;
     private String fault="";
@@ -44,8 +44,9 @@ public class PublicationTestResource implements QuarkusTestResourceLifecycleMana
                         ((ObjectNode)response).set("relations",relations.deepCopy());
                     } else if (fault.equals("offline")) { status=503; response=json.createObjectNode(); }
                     else if (fault.equals("rate-limit")) { status=429; response=json.createObjectNode(); exchange.getResponseHeaders().set("Retry-After","1"); }
+                    else if (fault.equals("forbid-patch") && method.equals("PATCH")) { status=403; response=json.createObjectNode(); }
                     else if (path.equals("/api/health")) response=json.readTree("{\"status\":\"ok\",\"version\":\"2.194.0\"}");
-                    else if (path.equals("/api/v1/metamodel/types")) response=json.readTree("[{\"key\":\"Application\",\"fields_schema\":[{\"fields\":[{\"key\":\"owner\",\"type\":\"text\"},{\"key\":\"central\",\"type\":\"text\"}]}],\"is_hidden\":false}]");
+                    else if (path.equals("/api/v1/metamodel/types")) response=json.readTree("[{\"key\":\"Application\",\"fields_schema\":[{\"fields\":[{\"key\":\"owner\",\"type\":\"text\"},{\"key\":\"central\",\"type\":\"text\"},{\"key\":\"shared\",\"type\":\"text\"},{\"key\":\"budget\",\"type\":\"number\"}]}],\"is_hidden\":false}]");
                     else if (path.equals("/api/v1/metamodel/relation-types")) response=json.readTree("[{\"key\":\"Serves\",\"source_type_key\":\"Application\",\"target_type_key\":\"Application\",\"cardinality\":\"n:m\",\"attributes_schema\":[],\"is_hidden\":false}]");
                     else if (path.equals("/api/v1/cards") && method.equals("POST")) {
                         String id="card-"+UUID.randomUUID(); var card=((ObjectNode)body).deepCopy(); card.remove("strict_attributes"); card.put("id",id).put("status","ACTIVE");
@@ -62,7 +63,11 @@ public class PublicationTestResource implements QuarkusTestResourceLifecycleMana
                             for (var r:relations) if (r.path("source_id").asText().equals(id) || r.path("target_id").asText().equals(id)) list.add(r);
                             response=list;
                         } else if (!cards.has(id)) { status=404; response=json.createObjectNode(); }
-                        else { if (method.equals("PATCH")) { ((ObjectNode)cards.get(id)).setAll((ObjectNode)body); writes++; } response=cards.get(id); }
+                        else { if (method.equals("PATCH")) {
+                            ((ObjectNode)cards.get(id)).setAll((ObjectNode)body); writes++;
+                            if (fault.equals("patch-commit-503")) { fault=""; status=503; }
+                            else if (fault.equals("after-patch-rate-limit")) fault="rate-limit";
+                        } response=cards.get(id); }
                     } else if (path.equals("/api/v1/relations") && method.equals("POST")) {
                         var relation=((ObjectNode)body).deepCopy().put("id","relation-"+UUID.randomUUID()); relations.set(relation.path("id").asText(),relation); writes++; response=relation; status=201;
                     } else { status=404; response=json.createObjectNode(); }

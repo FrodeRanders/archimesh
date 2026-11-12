@@ -26,7 +26,7 @@ public record IntegrationConfiguration(int schemaVersion, String instanceId, Lis
     }
     public record Target(String key, String instanceId, URI baseUrl, String tokenEnvironment,
                          String expectedApiVersion, int timeoutMillis, int maxResponseBytes, TurboEaMapping mapping,
-                         CatalogAccess catalogAccess, PublicationAccess publicationAccess, InboundAccess inboundAccess) {
+                         CatalogAccess catalogAccess, PublicationAccess publicationAccess, InboundAccess inboundAccess, CentralEditAccess centralEditAccess) {
         public Target {
             IntegrationIdentity.required(key); IntegrationIdentity.required(instanceId);
             IntegrationIdentity.required(expectedApiVersion);
@@ -41,12 +41,44 @@ public record IntegrationConfiguration(int schemaVersion, String instanceId, Lis
                 throw new IllegalArgumentException("Catalog types must have explicit mappings");
             publicationAccess=publicationAccess==null ? PublicationAccess.denied() : publicationAccess;
             inboundAccess=inboundAccess==null ? InboundAccess.denied() : inboundAccess;
+            centralEditAccess=centralEditAccess==null ? CentralEditAccess.denied() : centralEditAccess;
+            if (centralEditAccess.enabled() && (!inboundAccess.enabled() || !inboundAccess.cardTypes().containsAll(centralEditAccess.cardTypes()) || !inboundAccess.fields().containsAll(centralEditAccess.fields().keySet())))
+                throw new IllegalArgumentException("Central edits require an approved inbound type/field scope");
+            for (String type:centralEditAccess.cardTypes()) {
+                if (!mapping.cardTypes().containsKey(type)) throw new IllegalArgumentException("Central edit type requires explicit mapping");
+                for (var field:mapping.fields().getOrDefault(type,java.util.Map.of()).values()) {
+                    var mode=centralEditAccess.fields().get(field.remoteField());
+                    if (mode!=null && (field.authority()!=InformationAuthorityPolicy.Authority.TURBO_EA_MASTER && field.authority()!=InformationAuthorityPolicy.Authority.SHARED_PROPOSAL
+                            || field.authority()==InformationAuthorityPolicy.Authority.SHARED_PROPOSAL && mode!=CentralEditMode.PROPOSAL))
+                        throw new IllegalArgumentException("Central edit fields require central authority; shared fields require proposals");
+                }
+            }
             if (!mapping.cardTypes().keySet().containsAll(inboundAccess.cardTypes()))
                 throw new IllegalArgumentException("Inbound types require explicit mappings");
             if (!mapping.cardTypes().keySet().containsAll(publicationAccess.cardTypes())
                     || !mapping.relationTypes().keySet().containsAll(publicationAccess.relationTypes()))
                 throw new IllegalArgumentException("Publication types require explicit mappings");
         }
+    }
+    public enum CentralEditMode { PROPOSAL, WRITE_THROUGH }
+    public record CentralEditAccess(boolean enabled,java.util.Set<String> requesters,java.util.Set<String> approvers,
+                                    java.util.Set<String> cardTypes,java.util.Map<String,CentralEditMode> fields,
+                                    boolean acceptUnconditionalWriteRisk,boolean completeAttributeReadsApproved) {
+        public CentralEditAccess {
+            requesters=requesters==null ? java.util.Set.of() : java.util.Set.copyOf(requesters);
+            approvers=approvers==null ? java.util.Set.of() : java.util.Set.copyOf(approvers);
+            cardTypes=cardTypes==null ? java.util.Set.of() : java.util.Set.copyOf(cardTypes);
+            fields=fields==null ? java.util.Map.of() : java.util.Map.copyOf(fields);
+            requesters.forEach(IntegrationIdentity::required); approvers.forEach(IntegrationIdentity::required);
+            cardTypes.forEach(IntegrationIdentity::required);
+            fields.forEach((field,mode) -> {
+                if (!(java.util.Set.of("name","description","lifecycle").contains(field) || field.startsWith("attributes.") && field.length()>11) || mode==null)
+                    throw new IllegalArgumentException("Unsupported central edit field");
+            });
+            if (enabled && (requesters.isEmpty() || cardTypes.isEmpty() || fields.isEmpty()
+                    || fields.containsValue(CentralEditMode.PROPOSAL) && approvers.isEmpty())) throw new IllegalArgumentException("Central edits need explicit requesters, types, fields and proposal approvers");
+        }
+        public static CentralEditAccess denied() { return new CentralEditAccess(false,null,null,null,null,false,false); }
     }
     public record InboundAccess(boolean enabled,java.util.Set<String> administrators,java.util.Set<String> cardTypes,
                                 java.util.Set<String> fields,boolean sseEnabled) {

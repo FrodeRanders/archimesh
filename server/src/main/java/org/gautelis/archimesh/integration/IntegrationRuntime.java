@@ -70,6 +70,12 @@ public class IntegrationRuntime {
         if (!target.publicationAccess().enabled()) throw new IllegalStateException("Publication is disabled for this target");
         return clients.get(targetKey);
     }
+    public ExternalRepositoryWriter centralWriter(String targetKey) {
+        requireEnabled();
+        var target=settings.targets().stream().filter(t -> t.key().equals(targetKey)).findFirst().orElseThrow();
+        if (!target.centralEditAccess().enabled()) throw new IllegalStateException("Central edits are disabled");
+        return clients.get(targetKey);
+    }
     /** Explicit inspection; callers must run this before using a target's configured mapping. */
     public ExternalRepositoryConnector.Metamodel validateTarget(String targetKey) {
         var connector = connector(targetKey);
