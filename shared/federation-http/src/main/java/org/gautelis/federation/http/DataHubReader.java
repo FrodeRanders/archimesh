@@ -25,6 +25,7 @@ public final class DataHubReader implements SourceReader,AutoCloseable {
         if (!repository.system().equals("datahub") || base.getHost()==null || base.getRawUserInfo()!=null || base.getRawQuery()!=null
                 || base.getRawFragment()!=null || !("https".equals(base.getScheme()) || "http".equals(base.getScheme()) &&
                 (approvedPlainHttp || Set.of("localhost","127.0.0.1","[::1]","::1").contains(base.getHost())))
+                || base.getPort()!=-1 && (base.getPort()<1 || base.getPort()>65535)
                 || timeout.toMillis()<1 || timeout.toMillis()>120000 || maxBytes<1024 || maxBytes>16_777_216)
             throw new RepositoryFailure(CONFIGURATION);
         this.http=HttpClient.newBuilder().connectTimeout(timeout).followRedirects(HttpClient.Redirect.NEVER).version(HttpClient.Version.HTTP_1_1).build();
@@ -54,8 +55,9 @@ public final class DataHubReader implements SourceReader,AutoCloseable {
     private JsonNode aspect(String urn,String aspect) {
         String encoded=URLEncoder.encode(urn,StandardCharsets.UTF_8).replace("+","%20");
         String path=base.toString().replaceFirst("/$","")+"/aspects/"+encoded+"?aspect="+aspect+"&version=0";
-        String credential=token.get();
-        if (credential==null || credential.isBlank() || credential.chars().anyMatch(Character::isISOControl)) throw new RepositoryFailure(CONFIGURATION);
+        String credential;
+        try { credential=token.get(); } catch (RuntimeException unavailable) { throw new RepositoryFailure(CONFIGURATION); }
+        if (credential==null || credential.isBlank() || credential.chars().anyMatch(c -> c<=32 || c>=127)) throw new RepositoryFailure(CONFIGURATION);
         try {
             var request=HttpRequest.newBuilder(URI.create(path)).timeout(timeout).header("Accept","application/json")
                     .header("X-RestLi-Protocol-Version","2.0.0").header("Authorization","Bearer "+credential).GET().build();
@@ -82,6 +84,7 @@ public final class DataHubReader implements SourceReader,AutoCloseable {
             return value;
         } catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new RepositoryFailure(TRANSIENT); }
         catch (IOException unavailable) { throw new RepositoryFailure(TRANSIENT); }
+        catch (IllegalArgumentException invalid) { throw new RepositoryFailure(CONFIGURATION); }
     }
     @Override public void close() { http.close(); }
 }

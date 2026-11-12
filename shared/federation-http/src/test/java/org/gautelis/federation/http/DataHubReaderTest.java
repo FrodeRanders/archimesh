@@ -68,4 +68,14 @@ class DataHubReaderTest {
         assertEquals(RepositoryFailure.Kind.INVALID_RESPONSE,assertThrows(RepositoryFailure.class,() -> reader(65536).read(dataset,Set.of(name))).kind());
         assertEquals(1,requests.size());
     }
+    @Test void malformedCredentialAndProviderFailuresCannotLeakAuthenticationData() {
+        URI base=URI.create("http://127.0.0.1:"+server.getAddress().getPort());
+        for (var token:List.<java.util.function.Supplier<String>>of(() -> "private\u2603credential",() -> { throw new IllegalStateException("private provider detail"); })) {
+            try (var reader=new DataHubReader(repository,base,token,Duration.ofSeconds(1),1024,false)) {
+                var failure=assertThrows(RepositoryFailure.class,() -> reader.read(dataset,Set.of(name)));
+                assertEquals(RepositoryFailure.Kind.CONFIGURATION,failure.kind()); assertFalse(failure.toString().contains("private")); assertNull(failure.getCause());
+            }
+        }
+        assertTrue(requests.isEmpty());
+    }
 }

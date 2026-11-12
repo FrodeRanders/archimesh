@@ -5,6 +5,12 @@ v2 archive increment are implemented. D1 remains in progress: connector dispatch
 source-aware runtime policy, bridge permissions/jobs and target-create uncertainty
 handling are still required before enabling either bridge direction.
 
+Update: the [source/owner boundary](d1-owner-boundary.md) and
+[target-intent ledger](d1-target-intents.md) now supply authenticated read dispatch,
+registration, configured local field protection and shared uncertainty handling.
+The remaining-work list below describes this earlier registry increment; governed
+approval/jobs, inbound baselines and alias/replacement lifecycle remain outstanding.
+
 ## One registry owner
 
 `IdentityRegistry` is a shared, dependency-free persistence port. Its Neo4j adapter

@@ -9,6 +9,10 @@ import static org.gautelis.archimesh.integration.IntegrationArchive.*;
 class IntegrationArchiveTest {
     final ObjectMapper json=new ObjectMapper();
     Node canonical() { return new Node("IntegrationCanonicalObject",Map.of("canonicalId","urn:test:a","kind","Application")); }
+    @Test void legacyNativeTypeNamesDoNotBecomeFederationDocumentKinds() {
+        for (String kind:List.of("FEDERATION_APP","IDENTITY_PROOF"))
+            validate(LEGACY_FORMAT,"instance",List.of(new Node("IntegrationCanonicalObject",Map.of("canonicalId","urn:test:a","kind",kind))),json);
+    }
     @Test void acceptsOnlyIndependentWhitelistedLabelsAndProperties() {
         validate("instance",List.of(canonical()),json);
         assertThrows(PublicationModel.Failure.class,() -> validate("instance",List.of(new Node("Model",Map.of("modelId","secret"))),json));

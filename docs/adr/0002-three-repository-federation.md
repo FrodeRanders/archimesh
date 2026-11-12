@@ -4,11 +4,14 @@ Date: 2026-11-12. Status: accepted implementation direction following the decisi
 to take responsibility for DataHub–Turbo EA integration as well. The shared core
 and canonical authority enforcement are implemented in the
 [first D1 increment](../../integrations/datahub-turboea/docs/d1-contracts.md).
-Other runtime/state boundaries below remain planned; no DataHub connector is enabled.
+Other runtime/state boundaries below remain planned; execution is disabled by default.
 
 The [second D1 increment](../../integrations/datahub-turboea/docs/d1-registry-migration.md)
 adds durable neutral bindings and reviewed legacy classification with v2 archives
-and v1 recovery. Connector dispatch and governed bridge execution remain pending.
+and v1 recovery. The [source/owner API](../../integrations/datahub-turboea/docs/d1-owner-boundary.md)
+and [target-intent ledger](../../integrations/datahub-turboea/docs/d1-target-intents.md)
+now add authenticated read dispatch, source registration and shared uncertainty
+fences. Governed bridge execution and direct DataHub model use remain pending.
 
 Extends [ADR 0001](0001-external-repository-integration.md). Delivery and acceptance
 are specified in the [federation assignment](../../integrations/datahub-turboea/docs/implementation.md).

@@ -191,7 +191,7 @@ def main():
         try:
             if args.action in ("up","test"):
                 build(state)
-                local.up(state,skip_build=True)
+                local.up(state,skip_build=True,retain=args.action!="test")
                 inventory(state)
             elif args.action == "start":
                 local.compose(state,"up","-d","neo4j","kafka","turbo-db","turbo","turbo-ui")
@@ -215,9 +215,10 @@ def main():
                 local.verify(state,"after-restart")
             if args.action not in ("down","status"):
                 verify_pages(state)
-                access(state)
+                if args.action!="test": access(state)
         finally:
             if args.action == "test": local.down(state,volumes=True)
+        if args.action=="test": print("Demo test passed; its containers and volumes were removed",flush=True)
 
 
 if __name__ == "__main__":

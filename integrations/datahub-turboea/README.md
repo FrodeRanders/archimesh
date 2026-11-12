@@ -7,6 +7,8 @@ live here. ArchiMesh's ordinary builds and release gates do not build or run it.
 Current implementation: D0 DataHub OSS development environment and contract probes.
 The [optional source/owner API](docs/d1-owner-boundary.md) now adds a reusable
 DataHub reader, authenticated registration and a standalone Python consumer.
+The [target-intent ledger](docs/d1-target-intents.md) adds durable shared write
+fences, atomic verified binding and quarantined archive recovery.
 Governed target writes and the continuous bridge remain later stages; D0 tooling
 does not enable synchronization or change ArchiMesh models.
 The [first D1 increment](docs/d1-contracts.md) adds an independently reusable

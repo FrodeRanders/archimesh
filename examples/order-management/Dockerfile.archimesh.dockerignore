@@ -15,3 +15,7 @@ server/src/main/resources/META-INF/resources/admin-ui/
 !shared/federation-http/
 !shared/federation-http/src/
 !shared/federation-http/src/**
+**/.env
+**/.env.*
+**/*.pem
+**/*.key

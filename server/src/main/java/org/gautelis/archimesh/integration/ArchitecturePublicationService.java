@@ -208,6 +208,7 @@ public class ArchitecturePublicationService {
 
     private String publishRelation(StateDocument job,Plan plan,Resource resource,IntegrationConfiguration.Target target,
                                    ExternalRepositoryWriter writer,Map<String,String> endpoints) {
+        execution.requirePublicationAllowed(runtime,target.instanceId(),resource.identity().canonical().canonicalId(),org.gautelis.federation.Identity.ResourceKind.RELATIONSHIP);
         String source=endpoints.get(resource.sourceEntityId()),destination=endpoints.get(resource.targetEntityId());
         if (source==null || destination==null) throw new Failure(409,"PUBLISH_ENDPOINTS_FIRST");
         var state=resourceState(plan,resource); var data=(ObjectNode)state.data(); ensureNoUnknownMutation(data);

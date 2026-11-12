@@ -71,6 +71,9 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
     @Override public org.gautelis.federation.IdentityRegistry identities(String instance) {
         requireSchema(); return new Neo4jFederationRegistry(driver,json,instance);
     }
+    @Override public org.gautelis.federation.TargetMutationLedger targetMutations(String instance) {
+        requireSchema(); return new Neo4jTargetMutationLedger(driver,json,instance);
+    }
     @Override public com.fasterxml.jackson.databind.JsonNode previewIdentityMigration(String instance,String canonical,String semantic) {
         requireSchema(); return new IdentityMigration(driver,json).preview(instance,canonical,semantic);
     }

@@ -9,6 +9,10 @@ implements durable neutral bindings, reviewed legacy classification and v2 archi
 with v1 recovery. The validation and remaining-work list below describe the first
 increment; consult that update for current delivery boundaries.
 
+Later increments add the [authenticated source/owner boundary](d1-owner-boundary.md)
+and [durable target intents/shared fences](d1-target-intents.md). Governed bridge
+execution and direct DataHub model use remain separate completion gates.
+
 ## Delivered
 
 The [shared contract library](../../../shared/federation-core/README.md) is outside

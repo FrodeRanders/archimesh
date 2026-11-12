@@ -52,6 +52,13 @@ class BootstrapTest(unittest.TestCase):
                 self.assertTrue(all(p.startswith("127.0.0.1:") for p in service.get("ports",[])))
             self.assertEqual(0o600,path.stat().st_mode & 0o777)
 
+    def test_application_build_context_excludes_local_credentials(self):
+        ignored=(bootstrap.HERE / "Dockerfile.archimesh.dockerignore").read_text().splitlines()
+        self.assertEqual("**",ignored[0])
+        for pattern in ("**/.env","**/.env.*","**/*.pem","**/*.key"):
+            self.assertIn(pattern,ignored)
+            self.assertGreater(ignored.index(pattern),ignored.index("!admin-web/**"))
+
     def test_clean_test_build_failure_cleans_only_its_recorded_run(self):
         state = {"run":"0123456789ab","mode":"compose"}
         with tempfile.TemporaryDirectory() as temp:

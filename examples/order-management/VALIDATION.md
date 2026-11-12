@@ -14,6 +14,13 @@ Seven example/bootstrap tests passed, including archive link/traversal rejection
 loopback/private-service configuration and scoped cleanup after a failed build.
 The earlier host-JVM run below was stopped with its volumes retained.
 
+The current-source Docker `scripts/demo.sh test` also passed in run `b7238f5a1e23`:
+fresh image builds, initial API/UI checks, restart without reseeding and scoped
+cleanup completed successfully. This build includes the optional source/owner
+and target-intent code, with federation execution still disabled. Eight example/
+bootstrap tests passed, including exclusion of local environment/key files from
+the application build context. The earlier host-JVM evidence follows.
+
 ## Earlier host-JVM validation
 
 Final retained run: `5e0da21951d5`, using two uniquely scoped local Compose projects:

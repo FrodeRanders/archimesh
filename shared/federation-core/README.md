@@ -1,4 +1,4 @@
-# Federation core — contract library 0.2.0
+# Federation core — contract library 0.3.0
 
 Dependency-free Java 21 value contracts and pure decisions shared by ArchiMesh and
 the independent DataHub–Turbo EA bridge. This directory contains no connector,
@@ -24,6 +24,7 @@ or depend on the bridge subproject. A separately packaged consumer can use the J
 | `Identity.SourceField` | Exact authoritative resource, aspect and field path, independently of transport |
 | `IdentityResolver.Registry` | Read-only trusted lookup port; unknown, forged and conflicting origin claims fail closed |
 | `IdentityRegistry` | Trusted-host persistence port for model-independent source reservation, explicit representation binding and immutable evidence/correlation |
+| `TargetMutationLedger` | Trusted-owner create/update/adoption intents, pre-dispatch fencing and exact verified completion; no HTTP or authorization |
 | `FieldRules<T>` | Canonical override before type default; duplicate rules rejected; missing rule remains absent/unmapped |
 | `SourceAuthority` | Source/instance/aspect/path ownership, version and mode; repository/shared modes require an owner |
 | `ObservationPolicy` | Direct/mirrored observation admission with exact identity, source, proof and baseline checks |
@@ -67,11 +68,16 @@ The library grants no automatic shared-proposal write permission.
 ArchiMesh uses `FieldRules` for policy precedence, and canonical authority overrides
 now affect import, local field protection, inbound projection, publication and
 central-edit helpers. Source-aware identity/observation contracts are tested here,
-with a durable neutral registry adapter. DataHub runtime observation dispatch is
-not yet wired; source/aspect/field authority still needs that integration boundary.
+with a durable neutral registry adapter. The optional source/owner API supplies
+read dispatch and source registration. Inbound baseline CAS and governed target
+execution still require their application boundaries.
 
 See the [D1 implementation status](../../integrations/datahub-turboea/docs/d1-contracts.md)
 and [shared ADR](../../docs/adr/0002-three-repository-federation.md). The
 [reviewed registry/schema/archive transition](../../integrations/datahub-turboea/docs/d1-registry-migration.md)
-preserves IDs and v1 readability while exporting v2. Connector dispatch and governed
-bridge execution are the next boundaries. The contract library itself performs no I/O.
+preserves IDs and v1 readability while exporting v2. Governed bridge execution
+remains a later boundary. The contract library itself performs no I/O.
+
+The [target-intent increment](../../integrations/datahub-turboea/docs/d1-target-intents.md)
+adds the owner persistence port and shared uncertainty fencing. Approval/HTTP/job
+execution remain host/application responsibilities; the port is not a write grant.

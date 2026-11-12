@@ -51,7 +51,7 @@ public final class IntegrationArchive {
         if (!supported(format)) throw new Failure(400,"ARCHIVE_FORMAT_INVALID");
         if (LEGACY_FORMAT.equals(format) && nodes!=null && nodes.stream().anyMatch(n -> n!=null &&
                 (n.properties().keySet().stream().anyMatch(EXTENSIONS::contains) || n.label().equals("IntegrationCanonicalObject") && n.properties().containsKey("fence")
-                || "IDENTITY_PROOF".equals(n.properties().get("kind")) || "ENTITY".equals(n.properties().get("resourceKind")))))
+                || n.label().equals("IntegrationStateDocument") && ("IDENTITY_PROOF".equals(n.properties().get("kind")) || n.properties().getOrDefault("kind","").toString().startsWith("FEDERATION_")) || "ENTITY".equals(n.properties().get("resourceKind")))))
             throw new Failure(400,"ARCHIVE_LEGACY_EXTENSION_INVALID");
         validate(instance,nodes,json);
     }
@@ -117,6 +117,7 @@ public final class IntegrationArchive {
             }
         }
         for (var node:nodes) if (!node.label().equals("IntegrationCanonicalObject") && node.properties().containsKey("canonicalId") && !canonical.contains(node.properties().get("canonicalId"))) throw new Failure(400,"ARCHIVE_CANONICAL_REFERENCE_MISSING");
+        FederationMutationArchive.validate(instance,nodes,json);
         var neutral=new HashSet<String>();
         for (var node:nodes) if (node.label().equals("IntegrationCanonicalObject") && node.properties().containsKey("semanticKind")) neutral.add((String)node.properties().get("canonicalId"));
         for (var node:nodes) if (node.label().equals("IntegrationExternalBinding") && neutral.contains(node.properties().get("canonicalId"))
@@ -158,6 +159,10 @@ public final class IntegrationArchive {
                             if (kind.equals("INBOUND_POLICY")) data.put("enabled",false);
                             if (kind.equals("PUBLICATION_POLICY") && data.path("policy").isObject()) { data.set("archivedPolicy",data.path("policy").deepCopy()); ((ObjectNode)data.path("policy")).put("mode","DISABLED"); }
                             if (kind.equals("RECONCILIATION")) data.put("state","PAUSED").put("code","RESTORED_SCAN_REQUIRES_NEW_REQUEST");
+                            if (kind.equals("FEDERATION_INTENT")) {
+                                if (data.path("state").asText().equals("PREPARED")) data.put("state","QUARANTINED").put("code","RESTORED_INTENT_REQUIRES_NEW_APPROVAL");
+                                else if (data.path("state").asText().equals("IN_FLIGHT")) data.put("state","UNCERTAIN").put("code","RESTORED_INTENT_OUTCOME_UNKNOWN");
+                            }
                             p.put("dataJson",data.toString()); p.put("operationState",data.path("state").asText("UNRECORDED"));
                         } catch (java.io.IOException corrupt) { throw new Failure(400,"ARCHIVE_DOCUMENT_INVALID"); }
                     }

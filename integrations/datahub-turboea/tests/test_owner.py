@@ -36,6 +36,9 @@ class OwnerTest(unittest.TestCase):
         with self.assertRaises(ValueError): OwnerClient("https://example.org",lambda:{},bootstrap=True)
         for native in (" padded ","urn:with\ncontrol","x"*8193):
             with self.assertRaises(ValueError): SourceRef("catalog",native,"dataset")
+        malformed=OwnerClient("http://127.0.0.1",lambda:{"Authorization":"Bearer private\u2603credential"})
+        with self.assertRaisesRegex(ValueError,"Invalid owner authentication"):
+            malformed.observe(SourceRef("catalog","urn:li:dataset:demo","dataset"))
 
 
 if __name__ == "__main__": unittest.main()

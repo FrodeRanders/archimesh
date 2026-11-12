@@ -54,7 +54,7 @@ class OwnerClient:
     def _request(self,path,payload):
         supplied = self.headers()
         allowed = {"X-Archimesh-User","X-Archimesh-Roles"} if self.bootstrap else {"Authorization"}
-        if set(supplied) != allowed or any(not isinstance(v,str) or not v or any(ord(c)<32 or ord(c)==127 for c in v) for v in supplied.values()):
+        if set(supplied) != allowed or any(not isinstance(v,str) or not v or any(ord(c)<32 or ord(c)>126 for c in v) for v in supplied.values()):
             raise ValueError("Invalid owner authentication headers")
         if not self.bootstrap and not supplied["Authorization"].startswith("Bearer "): raise ValueError("Owner bearer authentication required")
         connection_type = http.client.HTTPSConnection if self.base.scheme == "https" else http.client.HTTPConnection

@@ -31,6 +31,8 @@ D0 tooling remains independent. The [durable registry and reviewed semantic
 classification](../integrations/datahub-turboea/docs/d1-registry-migration.md) are
 also implemented, preserving existing IDs and v1 recovery. Source-read dispatch,
 authenticated registration and configured local field protection are now available.
-Target intents/shared mutation lanes, inbound baseline policy and bridge execution capabilities remain required before
+The [target-intent ledger](../integrations/datahub-turboea/docs/d1-target-intents.md)
+now supplies durable shared mutation lanes and verified completion. Inbound
+baseline policy and governed bridge execution capabilities remain required before
 enabling DataHub flows. Application references in DataHub will use Turbo EA as
 their source; datasets/products represented in Turbo EA retain DataHub authority.

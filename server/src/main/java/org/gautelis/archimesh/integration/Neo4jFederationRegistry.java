@@ -55,13 +55,15 @@ final class Neo4jFederationRegistry implements IdentityRegistry {
         return write(representation,canonical,evidence,true);
     }
     private Binding write(Representation representation,Canonical requested,Evidence evidence,boolean adopt) {
+        try (var session=driver.session()) { return session.executeWrite(tx -> writeInTransaction(tx,representation,requested,evidence,adopt)); }
+    }
+    Binding writeInTransaction(TransactionContext tx,Representation representation,Canonical requested,Evidence evidence,boolean adopt) {
         Objects.requireNonNull(representation); Objects.requireNonNull(requested); Objects.requireNonNull(evidence);
         var key=key(representation.resource()); var p=parameters(key);
         p.put("candidate",required(requested.id())); p.put("semantic",required(requested.semanticKind()));
         p.put("externalType",required(representation.externalType())); p.put("owner",instance);
         String proof="identity-proof:"+IntegrationIdentity.sha256(evidence.correlation()); p.put("proof",proof);
         String fingerprint=PublicationJson.digest(json.valueToTree(List.of(adopt ? "BIND" : "RESERVE",representation,requested,evidence)));
-        try (var session=driver.session()) { return session.executeWrite(tx -> {
             if (adopt) {
                 var c=tx.run("MATCH (c:IntegrationCanonicalObject {canonicalId:$candidate}) SET c.fence=coalesce(c.fence,0)+1 RETURN properties(c) AS c",p);
                 if (!c.hasNext()) throw new Failure(409,"CANONICAL_IDENTITY_REQUIRED");
@@ -97,7 +99,6 @@ final class Neo4jFederationRegistry implements IdentityRegistry {
                 tx.run("CREATE (d:IntegrationStateDocument {instanceId:$owner,kind:'IDENTITY_PROOF',id:$proof,version:1,dataJson:$data})",p).consume();
             }
             return new Binding(canonicalValue,representation,external.get("identityProofId").asString("legacy-migration"));
-        }); }
     }
     private void checkOwner(Value canonical) {
         if (!instance.equals(canonical.get("registryInstanceId").asString(null))) throw new Failure(409,"IDENTITY_OWNER_OR_MIGRATION_REQUIRED");

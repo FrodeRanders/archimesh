@@ -229,7 +229,7 @@ def verify(state, label="verification"):
     print(json.dumps(report,indent=2),flush=True)
 
 
-def up(state, skip_build):
+def up(state, skip_build, retain=True):
     if not skip_build and state.get("mode") != "compose":
         print("Building the current ArchiMesh server",flush=True)
         with (directory(state) / "build.log").open("w") as log:
@@ -246,9 +246,10 @@ def up(state, skip_build):
     dh.up(datahub(state))
     seed(state)
     verify(state)
-    print("Retained demo. Credentials and artifacts: " + str(directory(state)),flush=True)
-    print("ArchiMesh: http://127.0.0.1:" + state["env"]["DEMO_ARCHIMESH_PORT"] + "/admin-ui/",flush=True)
-    print("Turbo EA API: http://127.0.0.1:" + state["env"]["DEMO_TURBO_PORT"],flush=True)
+    if retain:
+        print("Retained demo. Credentials and artifacts: " + str(directory(state)),flush=True)
+        print("ArchiMesh: http://127.0.0.1:" + state["env"]["DEMO_ARCHIMESH_PORT"] + "/admin-ui/",flush=True)
+        print("Turbo EA API: http://127.0.0.1:" + state["env"]["DEMO_TURBO_PORT"],flush=True)
 
 
 def down(state, volumes=False):
@@ -271,7 +272,7 @@ def main():
     with (directory(state) / "lock").open("w") as lock:
         fcntl.flock(lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
         try:
-            if args.action in ("up","test"): up(state,args.skip_build)
+            if args.action in ("up","test"): up(state,args.skip_build,retain=args.action!="test")
             elif args.action == "start":
                 compose(state,"up","-d")
                 dh.up(datahub(state))
