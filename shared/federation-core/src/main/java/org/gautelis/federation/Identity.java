@@ -9,14 +9,14 @@ public final class Identity {
     public enum ResourceKind { OBJECT, RELATIONSHIP }
 
     public record Repository(String system, String instance) {
-        public Repository { text(system, 512); text(instance, 512); }
+        public Repository { text(system, 2048); text(instance, 2048); }
     }
     public record Resource(Repository repository, ResourceKind kind, String nativeId) {
         public Resource { Objects.requireNonNull(repository); Objects.requireNonNull(kind); text(nativeId, 8192); }
     }
     /** Semantic kind is independent of native entity type and ArchiMate type. */
     public record Canonical(String id, String semanticKind) {
-        public Canonical { text(id, 512); text(semanticKind, 512); }
+        public Canonical { text(id, 2048); text(semanticKind, 2048); }
     }
     public record Representation(Resource resource, String externalType) {
         public Representation { Objects.requireNonNull(resource); text(externalType, 512); }

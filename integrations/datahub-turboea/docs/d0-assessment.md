@@ -79,8 +79,10 @@ replace existing Turbo EA canonical IDs to introduce a third repository.
 Read a selected DataHub entity into a correctly typed ArchiMate concept through
 normal accepted model operations. A Turbo EA card can represent the same canonical
 object, but neither that card nor an Archi model becomes the authority for
-DataHub-owned fields. Start with a read-only DataHub connection, and add central
-writes only as separately approved scope.
+DataHub-owned fields. Use a read-only DataHub catalog principal. The required
+Turbo EA → DataHub application-reference lane uses a separate, narrowly approved
+writer; it does not gain write authority over dataset/product metadata. See the
+[two-direction authority decision](authority-directions.md).
 
 DataHub entity/aspect/relationship semantics need explicit adapters. Its technical
 lineage is not automatically an ArchiMate relationship, and enterprise
@@ -150,7 +152,7 @@ to DataHub's internal mutation topic.
 | D0 | Isolated pinned OSS Compose stack, synthetic fixture, API/auth/aspect evidence and ADR |
 | D1 | Connector-neutral runtime/configuration/authority and compatible metadata migration, with Turbo EA regression coverage |
 | D2 | Read-only DataHub catalog, preview, import/link and inbound refresh through normal model acceptance |
-| D3 | Shared canonical identity and governed DataHub-to-Turbo EA representations, with explicit semantic relation mapping |
+| D3 | Shared identity, governed DataHub-to-Turbo EA asset representations and Turbo EA-to-DataHub application references, with explicit semantic mappings |
 | D4 | Optional approved DataHub writes, aspect-safe reconciliation, event acceleration, audit and recovery drills |
 
 The first acceptance scenario should use one synthetic data asset/product referenced

@@ -77,5 +77,20 @@ public final class ContractChecks {
         check(evaluate(canonical,owner,new Observation(wrongAspect,dataset,"rev",digest,null),3,baseline,registry,(c,o) -> true) == Decision.WRONG_SOURCE);
         check(evaluate(productCanonical,owner,direct,3,baseline,registry,(c,o) -> true) == Decision.UNVERIFIED_IDENTITY);
         rejects(() -> new Observation(source,card,"rev","bad digest",null));
+        // The reverse projection uses the same protocol, with Turbo EA as the field owner.
+        var application=new Canonical("urn:agency:application:1","enterprise.application");
+        var appCard=new Resource(turbo,ResourceKind.OBJECT,"application-17");
+        var appReference=new Resource(datahub,ResourceKind.OBJECT,"urn:li:application:explicitly-reviewed-reference");
+        var appRegistry=new IdentityResolver(resource -> resource.equals(appCard) || resource.equals(appReference) ? Optional.of(application) : Optional.empty());
+        var appName=new SourceField(appCard,"card","name");
+        var appAuthority=new SourceAuthority(SourceAuthority.Mode.REPOSITORY_MASTER,appName,"app-policy-v1");
+        var appRead=new Observation(appName,appCard,"source-app-rev",digest,null);
+        check(evaluate(application,appAuthority,appRead,0,null,appRegistry,(c,o) -> false)==Decision.ACCEPT_DIRECT);
+        var appBaseline=new Baseline(1,appName,"source-app-rev",digest);
+        var appMirror=new Observation(appName,appReference,"source-app-rev",digest,"app-receipt");
+        check(evaluate(application,appAuthority,appMirror,1,appBaseline,appRegistry,(c,o) -> true)==Decision.UNCHANGED);
+        check(evaluate(application,appAuthority,appMirror,1,appBaseline,appRegistry,(c,o) -> false)==Decision.UNVERIFIED_MIRROR);
+        var forgedOwner=new Observation(new SourceField(appReference,"applicationProperties","name"),appReference,"datahub-edit",newer,null);
+        check(evaluate(application,appAuthority,forgedOwner,1,appBaseline,appRegistry,(c,o) -> true)==Decision.WRONG_SOURCE);
     }
 }

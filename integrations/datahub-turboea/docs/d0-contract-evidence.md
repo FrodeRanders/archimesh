@@ -144,3 +144,30 @@ are not selected or live-validated here. Verify/approve them in the target metam
 before enabling bridge publication; do not cast every dataset/product into that
 type or invent an implicit fallback. Agency-version compatibility, field/relationship
 semantics and downstream disclosure policy remain explicit deployment gates.
+
+## Extension: Turbo EA application-reference direction
+
+The required source direction was clarified: enterprise applications referenced
+in DataHub are sourced from Turbo EA. The isolated run
+`datahub-turboea-it-0118d1f4c39b` passed the full original checks plus the new
+application/reference checks, then passed restart without reseeding and removed
+its own Docker resources. Evidence is in this subproject's ignored
+`.run/datahub/it-0118d1f4c39b/`:
+
+- `report.json`, passed; SHA-256 `028172144c45e059675407d95c5962ada89e9047f55cd3fa7e84c9ee379940b3`.
+- `restart-report.json`, passed; SHA-256 `681881dff5a5ca35e817428200812b92e7fc90e29fee5601eaeb20fa0c8f9861`.
+
+OSS GMS accepted `applicationProperties` for native application URN
+`urn:li:application:bridge-d0-customer-app` and a dataset `applications` aspect
+containing that exact reference. A separately scoped application writer updated
+name/description and `bridge.source.*` reference properties while preserving
+`local.note`. Its dataset mutation returned `403`; the dataset writer's application
+mutation also returned `403`. Readback retained the separate synthetic Turbo EA
+native card ID and source canonical ID, including after restart.
+
+The source application snapshot is explicitly **simulated**. No live Turbo EA →
+DataHub connector, native application UI feature or agency semantic mapping was
+verified. The probe does not bind the DataHub grouping or its dataset to the source
+application's canonical identity. See the [authority and representation decision](authority-directions.md).
+The pinned source defines the [`applications` reference aspect](https://raw.githubusercontent.com/datahub-project/datahub/v1.8.0/metadata-models/src/main/pegasus/com/linkedin/application/Applications.pdl)
+and [`applicationProperties`](https://raw.githubusercontent.com/datahub-project/datahub/v1.8.0/metadata-models/src/main/pegasus/com/linkedin/application/ApplicationProperties.pdl).

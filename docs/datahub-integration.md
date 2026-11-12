@@ -25,5 +25,9 @@ authority decision. The bridge subproject owns its
 There is currently no DataHub connector wired into the ArchiMesh runtime. The
 [shared core](../shared/federation-core/README.md) and canonical authority enforcement
 are implemented as the [first D1 increment](../integrations/datahub-turboea/docs/d1-contracts.md).
-D0 tooling remains independent. Durable registry/schema/archive migration and
-connector dispatch are still required before enabling the DataHub runtime.
+D0 tooling remains independent. The [durable registry and reviewed semantic
+classification](../integrations/datahub-turboea/docs/d1-registry-migration.md) are
+also implemented, preserving existing IDs and v1 recovery. Connector dispatch,
+source-aware policy and bridge execution capabilities remain required before
+enabling DataHub flows. Application references in DataHub will use Turbo EA as
+their source; datasets/products represented in Turbo EA retain DataHub authority.

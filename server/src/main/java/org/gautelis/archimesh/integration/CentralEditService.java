@@ -49,7 +49,7 @@ public class CentralEditService {
         var page=metadata().bindings(instance(),target.instanceId(),model,after==null ? "" : after,100);
         var names=new HashMap<String,String>(); models.getSnapshot(model,"HEAD").path("elements").forEach(e -> names.put(e.path("id").asText(),e.path("name").asText()));
         for (var b:page)
-            if (b.state()==BindingState.ACTIVE && names.containsKey(b.model().entityId()) && target.centralEditAccess().cardTypes().contains(b.canonical().kind()))
+            if (b.state()==BindingState.ACTIVE && names.containsKey(b.model().entityId()) && target.centralEditAccess().cardTypes().contains(b.remoteType()))
                 result.add(Map.of("elementId",b.model().entityId(),"name",names.get(b.model().entityId()),"canonicalId",b.canonical().canonicalId(),"resourceId",b.external().resourceId(),"cursor",ExternalChangeIngestService.cursor(b)));
         return new BindingPage(List.copyOf(result),page.size()==100 ? ExternalChangeIngestService.cursor(page.getLast()) : null);
     }
@@ -58,7 +58,7 @@ public class CentralEditService {
         if (request==null) throw new Failure(400,"CENTRAL_PREVIEW_REQUIRED");
         authorization.require(model,key,subject,false);
         var frame=frame(model,key,request.elementId(),subject,false);
-        return preview(frame,CentralFields.proposed(json,frame.target(),frame.binding().canonical().kind(),request.proposed(),frame.binding().canonical().canonicalId()));
+        return preview(frame,CentralFields.proposed(json,frame.target(),frame.binding().remoteType(),request.proposed(),frame.binding().canonical().canonicalId()));
     }
     public Job submit(String model,String key,AuthorizationSubject subject,Request request) {
         var target=authorization.require(model,key,subject,false); delivery.requireWriterLease();
@@ -68,12 +68,12 @@ public class CentralEditService {
         String fingerprint=PublicationJson.digest(json.valueToTree(List.of(subject.userId(),request)));
         var previous=load(DocumentKind.CENTRAL_EDIT,id);
         if (previous.isPresent()) { if (!previous.get().data().path("fingerprint").asText().equals(fingerprint)) throw new Failure(409,"CENTRAL_REQUEST_ID_REUSED"); checkScope(previous.get(),target); return view(previous.get()); }
-        var frame=frame(model,key,input.elementId(),subject,false); var proposed=CentralFields.proposed(json,target,frame.binding().canonical().kind(),input.proposed(),frame.binding().canonical().canonicalId()); var reviewed=preview(frame,proposed);
+        var frame=frame(model,key,input.elementId(),subject,false); var proposed=CentralFields.proposed(json,target,frame.binding().remoteType(),input.proposed(),frame.binding().canonical().canonicalId()); var reviewed=preview(frame,proposed);
         if (!reviewed.digest().equals(request.previewDigest())) throw new Failure(409,"CENTRAL_PREVIEW_STALE");
         if (reviewed.mode().equals("WRITE_THROUGH") && !reviewed.driftFields().isEmpty()) throw new Failure(409,"CENTRAL_BASELINE_REVIEW_REQUIRED");
         var data=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",key).put("targetInstanceId",target.instanceId())
                 .put("canonicalId",frame.binding().canonical().canonicalId()).put("resourceId",frame.binding().external().resourceId()).put("elementId",input.elementId())
-                .put("type",frame.binding().canonical().kind()).put("mappingVersion",target.mapping().version()).put("scopeDigest",CentralEditAuthorization.digest(target))
+                .put("type",frame.binding().remoteType()).put("mappingVersion",target.mapping().version()).put("scopeDigest",CentralEditAuthorization.digest(target))
                 .put("modelGeneration",runtime.requireModelActive(model)).put("requestedBy",subject.userId()).put("requestId",request.requestId()).put("fingerprint",fingerprint).put("policyVersion",frame.policy().version())
                 .put("mode",reviewed.mode()).put("createdAt",now.getAsLong()).put("attempts",0).put("nextAttemptAt",0)
                 .put("state",reviewed.mode().equals("PROPOSAL") ? "WAITING_APPROVAL" : "PENDING");
@@ -83,7 +83,7 @@ public class CentralEditService {
         if (!execution.tryLock()) throw new Failure(409,"CENTRAL_EDIT_BUSY");
         try {
             runtime.requireRunning();
-            if (reviewed.mode().equals("WRITE_THROUGH")) { requireWrites(target,frame.binding().canonical().kind(),proposed,frame.binding().canonical().canonicalId()); document=enqueue(document,target); }
+            if (reviewed.mode().equals("WRITE_THROUGH")) { requireWrites(target,frame.binding().remoteType(),proposed,frame.binding().canonical().canonicalId()); document=enqueue(document,target); }
             else document=metadata().save(document);
             audit("CentralRequested",document,subject.userId()); return view(document);
         } finally { execution.unlock(); }
@@ -185,14 +185,14 @@ public class CentralEditService {
             var local=InboundFields.local(json,snapshot,binding.model().entityId(),CentralFields.keys(data.path("proposed")));
             if (!PublicationJson.equal(local,data.path("baseLocal"))) throw new Failure(409,"CENTRAL_LOCAL_CHANGED");
             execution.requireCentralAllowed(runtime,target.instanceId(),binding.canonical().canonicalId()); requireWrites(target,data.path("type").asText(),data.path("proposed"),data.path("canonicalId").asText()); runtime.validateTarget(target.key());
-            var card=read(target,binding.external().resourceId(),binding.canonical().kind());
+            var card=read(target,binding.external().resourceId(),binding.remoteType());
             var actual=CentralFields.remote(json,target,card,CentralFields.keys(data.path("proposed")),data.path("canonicalId").asText());
             if (PublicationJson.equal(actual,data.path("proposed"))) { verified(job,lane); return; }
             if (!PublicationJson.equal(actual,data.path("baseRemote"))) throw new Failure(409,"CENTRAL_REMOTE_DRIFT");
             // Reread immediately before building an attributes replacement map; preserve every unowned member.
-            card=read(target,binding.external().resourceId(),binding.canonical().kind()); actual=CentralFields.remote(json,target,card,CentralFields.keys(data.path("proposed")),data.path("canonicalId").asText());
+            card=read(target,binding.external().resourceId(),binding.remoteType()); actual=CentralFields.remote(json,target,card,CentralFields.keys(data.path("proposed")),data.path("canonicalId").asText());
             if (!PublicationJson.equal(actual,data.path("baseRemote"))) throw new Failure(409,"CENTRAL_REMOTE_DRIFT");
-            var patch=CentralFields.payload(json,target,binding.canonical().kind(),data.path("proposed"),card,data.path("canonicalId").asText());
+            var patch=CentralFields.payload(json,target,binding.remoteType(),data.path("proposed"),card,data.path("canonicalId").asText());
             var intent=(ObjectNode)data; intent.put("state","IN_FLIGHT").put("operationId",UUID.randomUUID().toString()).put("dispatchedAt",now.getAsLong());
             var laneData=(ObjectNode)lane.data(); laneData.putObject("inFlight").put("jobId",id).put("operationId",intent.path("operationId").asText());
             var dispatch=metadata().saveAtomically(List.of(new StateDocument(instance(),job.kind(),id,job.version(),intent),new StateDocument(instance(),lane.kind(),lane.id(),lane.version(),laneData)));
@@ -205,7 +205,7 @@ public class CentralEditService {
             } catch (RuntimeException uncertain) { save(job,"AMBIGUOUS","CENTRAL_PATCH_OUTCOME_UNCERTAIN"); return; }
             try {
             runtime.requireRunning();
-                var after=read(target,binding.external().resourceId(),binding.canonical().kind());
+                var after=read(target,binding.external().resourceId(),binding.remoteType());
                 if (!PublicationJson.equal(CentralFields.remote(json,target,after,CentralFields.keys(data.path("proposed")),data.path("canonicalId").asText()),data.path("proposed"))) { save(job,"AMBIGUOUS","CENTRAL_PATCH_VERIFICATION_DIVERGED"); return; }
                 verified(job,lane);
             } catch (ConnectorException | Failure uncertain) { save(job,"AMBIGUOUS","CENTRAL_PATCH_VERIFICATION_UNAVAILABLE"); }
@@ -269,11 +269,11 @@ public class CentralEditService {
     private record Frame(IntegrationConfiguration.Target target,ReservedImport binding,StateDocument policy,ExternalRepositoryConnector.ExternalObject card,JsonNode snapshot,JsonNode baseline,Context context) { }
     private Frame frame(String model,String key,String element,AuthorizationSubject subject,boolean approving) {
         var target=approving ? authorization.require(model,key,subject,true) : authorization.read(model,key,subject);
-        var policy=incoming.capability(model,key); var binding=binding(model,element,target); runtime.validateTarget(key); var card=read(target,binding.external().resourceId(),binding.canonical().kind());
-        var snapshot=models.getSnapshot(model,"HEAD"); validateLocal(binding,snapshot); var mappings=CentralFields.mappings(target,binding.canonical().kind(),binding.canonical().canonicalId());
+        var policy=incoming.capability(model,key); var binding=binding(model,element,target); runtime.validateTarget(key); var card=read(target,binding.external().resourceId(),binding.remoteType());
+        var snapshot=models.getSnapshot(model,"HEAD"); validateLocal(binding,snapshot); var mappings=CentralFields.mappings(target,binding.remoteType(),binding.canonical().canonicalId());
         var remote=CentralFields.remote(json,target,card,mappings.keySet(),binding.canonical().canonicalId()); var local=InboundFields.local(json,snapshot,element,mappings.keySet()); var base=inbound.baseline(binding,target,mappings.keySet()); var fields=new ArrayList<Field>();
         for (String field:new TreeSet<>(mappings.keySet())) { var mapping=mappings.get(field); fields.add(new Field(field,mapping.remoteField(),mapping.valueType().name(),mapping.authority().name(),target.centralEditAccess().fields().get(mapping.remoteField()).name(),remote.path(field),local.path(field),base.get(field),CentralFields.display(remote.path(field)))); }
-        return new Frame(target,binding,policy,card,snapshot,base,new Context(key,element,binding.canonical().canonicalId(),binding.external().resourceId(),binding.canonical().kind(),target.mapping().version(),List.copyOf(fields)));
+        return new Frame(target,binding,policy,card,snapshot,base,new Context(key,element,binding.canonical().canonicalId(),binding.external().resourceId(),binding.remoteType(),target.mapping().version(),List.copyOf(fields)));
     }
     private Preview preview(Frame frame,JsonNode proposed) {
         var selected=CentralFields.keys(proposed); var fields=frame.context().fields().stream().filter(f -> selected.contains(f.field())).toList();
@@ -317,7 +317,7 @@ public class CentralEditService {
     private StateDocument job(String model,String key,String id,IntegrationConfiguration.Target target) { var job=load(DocumentKind.CENTRAL_EDIT,IntegrationIdentity.required(id)).orElseThrow(() -> new Failure(404,"CENTRAL_REQUEST_NOT_FOUND")); if (!job.data().path("sourceModelId").asText().equals(model) || !job.data().path("targetKey").asText().equals(key)) throw new Failure(404,"CENTRAL_REQUEST_NOT_FOUND"); checkScope(job,target); return job; }
     private void checkScope(StateDocument job,IntegrationConfiguration.Target target) { if (!job.data().path("scopeDigest").asText().equals(CentralEditAuthorization.digest(target))) throw new Failure(409,"CENTRAL_CONFIGURATION_CHANGED"); }
     private IntegrationConfiguration.Target target(String key) { return runtime.settings().targets().stream().filter(t -> t.key().equals(key)).findFirst().orElseThrow(() -> new Failure(404,"TARGET_NOT_FOUND")); }
-    private ReservedImport binding(String model,String element,IntegrationConfiguration.Target target) { var b=metadata().findBinding(new ModelElementKey(instance(),model,EntityKind.ELEMENT,element)).orElseThrow(() -> new Failure(404,"BINDING_NOT_FOUND")); if (b.state()!=BindingState.ACTIVE || !b.external().targetInstanceId().equals(target.instanceId()) || !b.mappingVersion().equals(target.mapping().version()) || !b.archimateType().equals(target.mapping().archimateType(b.canonical().kind()))) throw new Failure(409,"CENTRAL_BINDING_DRIFT"); return b; }
+    private ReservedImport binding(String model,String element,IntegrationConfiguration.Target target) { var b=metadata().findBinding(new ModelElementKey(instance(),model,EntityKind.ELEMENT,element)).orElseThrow(() -> new Failure(404,"BINDING_NOT_FOUND")); if (b.state()!=BindingState.ACTIVE || !b.external().targetInstanceId().equals(target.instanceId()) || !b.mappingVersion().equals(target.mapping().version()) || !b.archimateType().equals(target.mapping().archimateType(b.remoteType()))) throw new Failure(409,"CENTRAL_BINDING_DRIFT"); return b; }
     private void validateJobBinding(StateDocument job,ReservedImport binding) { if (!job.data().path("canonicalId").asText().equals(binding.canonical().canonicalId()) || !job.data().path("resourceId").asText().equals(binding.external().resourceId())) throw new Failure(409,"CENTRAL_BINDING_CHANGED"); }
     private void validateLocal(ReservedImport binding,JsonNode snapshot) { if (!InboundFields.element(snapshot,binding.model().entityId()).path("archimateType").asText().equals(binding.archimateType())) throw new Failure(409,"LOCAL_TYPE_CONFLICT"); if (!binding.bindingMode().equals("PUBLISHED")) { var marker=InboundFields.local(json,snapshot,binding.model().entityId(),Set.of("property:"+ExternalObjectCatalogService.CANONICAL_PROPERTY)); if (!marker.path("property:"+ExternalObjectCatalogService.CANONICAL_PROPERTY).asText().equals(binding.canonical().canonicalId())) throw new Failure(409,"LOCAL_PROVENANCE_DRIFT"); } }
     private ExternalRepositoryConnector.ExternalObject read(IntegrationConfiguration.Target target,String resource,String type) { var card=runtime.connector(target.key()).getObject(resource); if (!card.type().equals(type) || !"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_TYPE_OR_LIFECYCLE_CONFLICT"); return card; }

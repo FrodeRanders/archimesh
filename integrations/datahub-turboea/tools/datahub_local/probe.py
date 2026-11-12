@@ -11,6 +11,7 @@ from .harness import VERSION, compose, redact, session_token
 DATASET = "urn:li:dataset:(urn:li:dataPlatform:postgres,bridge_d0.customer,DEV)"
 HIDDEN = "urn:li:dataset:(urn:li:dataPlatform:postgres,bridge_d0.restricted,DEV)"
 PRODUCT = "urn:li:dataProduct:bridge-d0-customer"
+APPLICATION = "urn:li:application:bridge-d0-customer-app"
 
 
 class Api:
@@ -144,6 +145,56 @@ def seed(admin):
     require(admin.upsert(PRODUCT, "status", {"removed": False})[0] < 300, "seed product lifecycle")
 
 
+def application_checks(state, after_restart):
+    """OSS storage feasibility using a simulated Turbo EA snapshot, not a running bridge."""
+    admin, reader, dataset_writer = Api(state, "datahub"), Api(state, "bridge-d0-reader"), Api(state, "bridge-d0-writer")
+    writer = Api(state, "bridge-d0-app-writer")
+    if not after_restart:
+        require(admin.upsert("urn:li:corpuser:bridge-d0-app-writer", "corpUserInfo", {
+            "active": True, "displayName": "Synthetic application projection writer"})[0] < 300, "create application writer")
+        policy = {"displayName": "Synthetic application writer", "description": "Disposable scoped application projection",
+                  "type": "METADATA", "state": "ACTIVE", "actors": {"users": ["urn:li:corpuser:bridge-d0-app-writer"]},
+                  "resources": {"filter": {"criteria": [{"field": "URN", "condition": "EQUALS", "values": [APPLICATION]}]}},
+                  "privileges": ["VIEW_ENTITY_PAGE", "GET_ENTITY_PRIVILEGE", "EDIT_ENTITY"]}
+        require(admin.upsert("urn:li:dataHubPolicy:bridge-d0-app-writer", "dataHubPolicyInfo", policy)[0] < 300, "grant application-only write scope")
+        _, raw = admin.aspect("urn:li:dataHubPolicy:bridge-d0-reader", "dataHubPolicyInfo")
+        policy = unwrap(raw); policy["resources"]["filter"]["criteria"][0]["values"].append(APPLICATION)
+        require(admin.upsert("urn:li:dataHubPolicy:bridge-d0-reader", "dataHubPolicyInfo", policy)[0] < 300, "grant application read scope")
+        require(admin.upsert(APPLICATION, "applicationProperties", {"name": "Synthetic enterprise application",
+                    "description": "Seeded reference", "customProperties": {"local.note": "preserve"}})[0] < 300,
+                "seed OSS application properties")
+        require(admin.upsert(APPLICATION, "status", {"removed": False})[0] < 300, "seed application lifecycle")
+        require(admin.upsert(DATASET, "applications", {"applications": [APPLICATION]})[0] < 300,
+                "seed explicit dataset-to-application association")
+    _, current = wait_for(lambda: writer.aspect(APPLICATION, "applicationProperties"),
+                          lambda r: r[0] == 200, "application writer policy propagation")
+    if not after_restart:
+        properties = unwrap(current)
+        # Synthetic source evidence: the production bridge must fetch/verify Turbo EA and persist registry proof.
+        properties.update(name="Updated synthetic enterprise application", description="Simulated Turbo EA authoritative description")
+        properties.setdefault("customProperties", {}).update({"bridge.source.system": "turboea",
+            "bridge.source.instance": "synthetic-turboea", "bridge.source.nativeId": "synthetic-card-application",
+            "bridge.source.canonicalId": "urn:agency:application:synthetic"})
+        wait_for(lambda: writer.upsert(APPLICATION, "applicationProperties", properties),
+                 lambda r: r[0] < 300, "application mutation policy propagation")
+    _, app = wait_for(lambda: reader.aspect(APPLICATION, "applicationProperties"),
+                      lambda r: r[0] == 200 and unwrap(r[1]).get("name") == "Updated synthetic enterprise application",
+                      "application projection readback")
+    properties = unwrap(app)
+    require(properties.get("customProperties", {}).get("local.note") == "preserve", "application update preserves unowned custom property")
+    require(properties["customProperties"].get("bridge.source.nativeId") == "synthetic-card-application", "source native ID retained separately")
+    require(properties["customProperties"].get("bridge.source.canonicalId") == "urn:agency:application:synthetic", "application source reference retained exactly")
+    status, _ = writer.upsert(DATASET, "datasetProperties", {"description": "FORBIDDEN APPLICATION WRITER"})
+    require(status == 403, "application writer cannot edit a dataset")
+    dataset_write_status, _ = dataset_writer.upsert(APPLICATION, "applicationProperties", {"name": "FORBIDDEN DATASET WRITER"})
+    require(dataset_write_status == 403, "dataset writer cannot edit an application")
+    _, association = reader.aspect(DATASET, "applications")
+    require(unwrap(association).get("applications") == [APPLICATION], "exact dataset application association retained")
+    return {"applicationUrn": APPLICATION, "simulatedTurboEaSource": True, "properties": properties,
+            "datasetAssociation": unwrap(association), "applicationWriterDatasetMutationStatus": status,
+            "datasetWriterApplicationMutationStatus": dataset_write_status}
+
+
 def run(state, after_restart=False):
     directory = Path(state["directory"])
     report_path = directory / ("restart-report.json" if after_restart else "report.json")
@@ -201,6 +252,7 @@ def run(state, after_restart=False):
         require(status == 200 and unwrap(ownership).get("owners", [{}])[0].get("owner") ==
                 "urn:li:corpuser:bridge-d0-writer", "ownership aspect unaffected by property upsert")
         report["checks"]["ownership"] = unwrap(ownership)
+        report["checks"]["applicationProjection"] = application_checks(state, after_restart)
         gql = "query($urn: String!) { dataset(urn: $urn) { urn name properties { description } editableProperties { description } } }"
         status, value = reader.graphql(gql, {"urn": DATASET})
         require(status == 200 and not value.get("errors") and value.get("data", {}).get("dataset", {}).get("urn") == DATASET,

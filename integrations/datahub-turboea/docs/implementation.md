@@ -1,8 +1,9 @@
 # DataHub OSS ↔ Turbo EA ↔ ArchiMesh implementation assignment
 
 Date: 2026-11-12. Status: D0 Compose/API harness and the
-[first D1 contract/authority increment](d1-contracts.md) are implemented. D1 state
-migration/dispatch, DataHub runtime connectors and bridge execution remain pending.
+[D1 contract/authority increment](d1-contracts.md) and [durable identity/classification
+increment](d1-registry-migration.md) are implemented. Connector dispatch,
+source-aware runtime enforcement and governed bridge execution remain pending.
 
 This project takes responsibility for the DataHub–Turbo EA integration as well
 as integration of both repositories with Archi/ArchiMesh. It extends the
@@ -23,7 +24,10 @@ must be reusable through a versioned boundary. The bridge must not require an
 Archi model to publish an approved DataHub asset into Turbo EA.
 
 The first working slice is read-only toward DataHub and explicitly approved toward
-Turbo EA. It covers selected datasets and governed data products when verified in
+Turbo EA for the dataset/product lane. The required reverse lane reads enterprise
+applications from Turbo EA and writes approved application references/representations
+in DataHub, using separate permissions. See [source directions and semantics](authority-directions.md).
+The dataset/product lane covers selected datasets and governed data products when verified in
 the target OSS version. It must support importing an asset directly from DataHub
 and through its Turbo EA representation without duplicating its canonical identity
 or an occurrence already imported into the same model.
@@ -123,13 +127,20 @@ Exit: pagination/visibility tested; concurrent imports reserve one occurrence pe
 model; source-owned local edits and offline replay are rejected through existing
 client recovery; source outages do not block normal model commits.
 
-### D3 — DataHub → Turbo EA bridge and round trip
+### D3 — governed projections in both directions and round trip
 
 First run the bridge without any model or Archi client. Preview selected source
 entities, type/field projection and downstream audience; approve immutable intent;
 create or explicitly adopt the compatible Turbo EA representation. Persist binding
 and source provenance after readback. Then exercise both import paths in either
 order, reusing existing canonical and occurrence identities.
+
+Also implement the required Turbo EA → DataHub application-reference lane. Selected
+application identity/name/description/lifecycle retain Turbo EA authority. Verify
+the OSS target representation and semantic profile, preserve foreign aspect members
+and keep the application writer separate from dataset/product writers. Reference
+associations do not merge application and dataset identities. Both source directions
+must reconcile without reflecting mirrored edits back as authoritative updates.
 
 Use explicit relation mappings and contribution ownership. Dataset membership,
 technical lineage and architectural PRODUCES/CONSUMES have separate meanings;
@@ -145,8 +156,9 @@ Complete bridge diagnostics, source/target reconciliation, audit, paused backup 
 restore, alias/adoption administration and cross-system recovery drills. Notifications
 may accelerate polling after their contract is verified.
 
-Reverse DataHub writes are a separately enabled extension: approved owned aspects
-or fields only, preserve other references, test authorization and readback, and
+Edits back to DataHub-owned dataset/product metadata are a separately enabled
+extension; the required application-reference lane is already D3 scope. Source
+edits use approved owned aspects or fields only, preserve other references, test authorization and readback, and
 distinguish technical MCP submission from human approval. The documented
 [DataHub API acknowledgement behavior](https://docs.datahub.com/docs/api/datahub-apis)
 requires verifying durable state rather than treating async acceptance as success.
@@ -166,7 +178,10 @@ and tested, or as unimplemented; they are not implied by the word integration.
 | Concurrent bridge/direct imports | Atomic source/target reservations; no duplicate canonical or active target |
 | Repeat scan or duplicate event | No new resource or model revision for unchanged verified content |
 | Change DataHub-owned description | Approved Turbo EA field and model HEADs updated; ownership and tags preserved |
-| Edit a Turbo EA-owned field | Preserve it across DataHub refresh; do not send it to DataHub |
+| Edit a Turbo EA-owned architecture field | Preserve it across DataHub dataset refresh; export only through an explicitly approved application/reference mapping |
+| Update a Turbo EA-owned application name | Approved DataHub application reference follows it; datasets/products keep their own IDs and metadata |
+| Edit an application mirror label in DataHub | Diagnose drift; do not make it authoritative over the Turbo EA source |
+| Application writer attempts dataset edits | Denied; separate source/target and association scopes are required |
 | Drift on a DataHub-owned mirror field | Report/block pending approved reconciliation; never make Turbo EA authoritative |
 | Deliver stale mirrored observation after newer direct read | No source-baseline advancement or stale overwrite |
 | Forged/copy-pasted source identity in another card | No automatic adoption, canonical merge or source authority grant |
@@ -186,6 +201,7 @@ Existing M0–M6 supplies Turbo EA integration, durable metadata and recovery bu
 blocks. It does not yet supply the neutral contracts, DataHub adapter or independent
 bridge above. D0 tooling and its [contract evidence](d0-contract-evidence.md) are in
 this subproject. D1 has started with the [shared contracts and effective canonical
-authority](d1-contracts.md); durable state/migration and dispatch remain. Existing native two-workbench
+authority](d1-contracts.md) and [durable state/classification](d1-registry-migration.md);
+dispatch and bridge job capabilities remain. Existing native two-workbench
 and live deployment recovery acceptance gaps
 remain as recorded for Turbo EA; the expanded scope does not close them.

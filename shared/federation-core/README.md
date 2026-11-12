@@ -1,4 +1,4 @@
-# Federation core — contract library 0.1.0
+# Federation core — contract library 0.2.0
 
 Dependency-free Java 21 value contracts and pure decisions shared by ArchiMesh and
 the independent DataHub–Turbo EA bridge. This directory contains no connector,
@@ -6,7 +6,7 @@ credentials, HTTP client, scheduler, database driver, Quarkus, EMF or model engi
 
 ```bash
 python3 test.py       # executable scenarios; no Maven or running repositories
-python3 build.py      # target/federation-core-0.1.0.jar
+python3 build.py      # target/federation-core-0.2.0.jar
 ```
 
 Both commands work from this directory after extraction from the parent project.
@@ -23,6 +23,7 @@ or depend on the bridge subproject. A separately packaged consumer can use the J
 | `Identity.Representation` | Native resource and repository entity type, such as DataHub `dataset` versus Turbo EA `DataObject` |
 | `Identity.SourceField` | Exact authoritative resource, aspect and field path, independently of transport |
 | `IdentityResolver.Registry` | Read-only trusted lookup port; unknown, forged and conflicting origin claims fail closed |
+| `IdentityRegistry` | Trusted-host persistence port for model-independent source reservation, explicit representation binding and immutable evidence/correlation |
 | `FieldRules<T>` | Canonical override before type default; duplicate rules rejected; missing rule remains absent/unmapped |
 | `SourceAuthority` | Source/instance/aspect/path ownership, version and mode; repository/shared modes require an owner |
 | `ObservationPolicy` | Direct/mirrored observation admission with exact identity, source, proof and baseline checks |
@@ -30,14 +31,16 @@ or depend on the bridge subproject. A separately packaged consumer can use the J
 The resource ID limit is 8192 UTF-8 bytes. Identifiers retain exact case and spelling;
 they are never truncated, normalized, reconstructed or matched by name. Malformed
 Unicode, controls and leading/trailing whitespace are rejected. This bound does
-**not** change ArchiMesh's legacy 512-character persisted-ID contract. Storage and
-archive migration must be reviewed before longer references can enter that runtime.
+not change legacy card/relation IDs. The Neo4j adapter preserves full generic native
+IDs in `nativeId`, using a bounded internal index key with exact-native comparison.
+Other persisted identity components retain their legacy 512-character bounds.
 
-The registry port cannot create, merge, alias or reassign identities. Its production
-implementation must read the one authoritative registry, including instance and
-resource-kind uniqueness. The scenario registry is an immutable test fixture, not
-a new production or in-memory identity store. Dataset/product/member relationships
-never establish equivalence by themselves.
+The resolver port is read-only. The durable registry port can reserve/bind identities
+through a trusted host, preserving instance/kind uniqueness; it cannot merge, alias
+or reassign existing identities. The Neo4j implementation uses the existing owner
+store; the scenario resolver is only an immutable fixture. Dataset/product/member
+relationships never establish equivalence by themselves. Authorization and verified
+source/equivalence evidence remain host responsibilities.
 
 ## Observations and trust
 
@@ -64,9 +67,11 @@ The library grants no automatic shared-proposal write permission.
 ArchiMesh uses `FieldRules` for policy precedence, and canonical authority overrides
 now affect import, local field protection, inbound projection, publication and
 central-edit helpers. Source-aware identity/observation contracts are tested here,
-but are not yet wired to a DataHub runtime or persisted neutral registry.
+with a durable neutral registry adapter. DataHub runtime observation dispatch is
+not yet wired; source/aspect/field authority still needs that integration boundary.
 
 See the [D1 implementation status](../../integrations/datahub-turboea/docs/d1-contracts.md)
-and [shared ADR](../../docs/adr/0002-three-repository-federation.md). The next step is
-the reviewed durable registry/schema/archive transition, followed by connector
-dispatch. No existing IDs or archive format are rewritten by this library.
+and [shared ADR](../../docs/adr/0002-three-repository-federation.md). The
+[reviewed registry/schema/archive transition](../../integrations/datahub-turboea/docs/d1-registry-migration.md)
+preserves IDs and v1 readability while exporting v2. Connector dispatch and governed
+bridge execution are the next boundaries. The contract library itself performs no I/O.

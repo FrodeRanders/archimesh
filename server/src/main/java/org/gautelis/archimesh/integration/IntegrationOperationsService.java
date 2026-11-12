@@ -27,6 +27,7 @@ public class IntegrationOperationsService {
     public record Review(JsonNode details,String digest) { }
     public record ScanRequest(String requestId,String targetKey) { }
     public record RestoreRequest(IntegrationArchive.Package archive,String digest) { }
+    public record IdentityClassification(String canonicalId,String semanticKind,String digest) { }
     public record DocumentPage(List<JsonNode> items,String nextCursor) { }
 
     public void requireOperator(AuthorizationSubject subject) {
@@ -81,16 +82,43 @@ public class IntegrationOperationsService {
         requireOperator(subject); delivery.requireWriterLease(); lock();
         try {
             requirePaused(); var nodes=runtime.metadata().archive(instance()); var targets=manifest(); String exportedAt=Instant.now().toString();
-            String digest=archiveDigest(instance(),targets,nodes); audit("Exported",subject.userId(),null);
+            String digest=archiveDigest(IntegrationArchive.FORMAT,instance(),targets,nodes); audit("Exported",subject.userId(),null);
             return new IntegrationArchive.Package(IntegrationArchive.FORMAT,instance(),exportedAt,targets,nodes,digest);
         } finally { execution.unlock(); }
     }
-    private String archiveDigest(String instance,JsonNode targets,List<IntegrationArchive.Node> nodes) { return PublicationJson.digest(json.valueToTree(List.of(IntegrationArchive.FORMAT,instance,targets,nodes))); }
+    private String archiveDigest(String format,String instance,JsonNode targets,List<IntegrationArchive.Node> nodes) { return PublicationJson.digest(json.valueToTree(List.of(format,instance,targets,nodes))); }
     private void validateArchive(IntegrationArchive.Package archive) {
-        if (archive==null || !IntegrationArchive.FORMAT.equals(archive.format())) throw new Failure(400,"ARCHIVE_FORMAT_INVALID");
+        if (archive==null || !IntegrationArchive.supported(archive.format())) throw new Failure(400,"ARCHIVE_FORMAT_INVALID");
         if (!instance().equals(archive.instanceId()) || !PublicationJson.equal(manifest(),archive.targets())) throw new Failure(409,"ARCHIVE_CONFIGURATION_MISMATCH");
-        IntegrationArchive.validate(instance(),archive.nodes(),json);
-        if (!archiveDigest(archive.instanceId(),archive.targets(),archive.nodes()).equals(archive.digest())) throw new Failure(400,"ARCHIVE_DIGEST_MISMATCH");
+        IntegrationArchive.validate(archive.format(),instance(),archive.nodes(),json);
+        if (!archiveDigest(archive.format(),archive.instanceId(),archive.targets(),archive.nodes()).equals(archive.digest())) throw new Failure(400,"ARCHIVE_DIGEST_MISMATCH");
+    }
+    public Review previewIdentity(AuthorizationSubject subject,IdentityClassification request) {
+        requireOperator(subject); if (request==null) throw new Failure(400,"IDENTITY_CLASSIFICATION_REQUIRED"); lock();
+        try {
+            requirePaused();
+            var details=(ObjectNode)runtime.metadata().previewIdentityMigration(instance(),request.canonicalId(),request.semanticKind());
+            var verified=details.putArray("verifiedTargets");
+            for (var resource:details.path("external")) {
+                if (!"CARD".equals(resource.path("resourceKind").asText())) throw new Failure(409,"IDENTITY_CLASSIFICATION_OBJECTS_ONLY");
+                var target=runtime.settings().targets().stream().filter(t -> t.instanceId().equals(resource.path("targetInstanceId").asText())).findFirst()
+                        .orElseThrow(() -> new Failure(409,"IDENTITY_TARGET_NOT_CONFIGURED"));
+                runtime.validateTarget(target.key()); var remote=runtime.connector(target.key()).getObject(resource.path("resourceId").asText());
+                if (!remote.type().equals(details.path("legacyType").asText()) || !"ACTIVE".equals(remote.status())) throw new Failure(409,"EXTERNAL_TYPE_OR_LIFECYCLE_CONFLICT");
+                verified.addObject().put("targetKey",target.key()).put("resourceId",remote.id()).put("type",remote.type())
+                        .put("configurationDigest",IntegrationConfigurationDigest.target(target)).put("contentDigest",PublicationJson.digest(json.valueToTree(remote)));
+            }
+            return review(details);
+        } finally { execution.unlock(); }
+    }
+    public JsonNode classifyIdentity(AuthorizationSubject subject,IdentityClassification request) {
+        requireOperator(subject); delivery.requireWriterLease(); lock();
+        try {
+            var reviewed=previewIdentity(subject,request);
+            if (!reviewed.digest().equals(request.digest())) throw new Failure(409,"IDENTITY_CLASSIFICATION_REVIEW_STALE");
+            runtime.metadata().migrateIdentity(instance(),request.canonicalId(),request.semanticKind(),reviewed.details().path("metadataDigest").asText(),subject.userId());
+            audit("IdentityClassified",subject.userId(),null); return overview(subject);
+        } finally { execution.unlock(); }
     }
     public Review previewRestore(AuthorizationSubject subject,IntegrationArchive.Package archive) {
         requireOperator(subject); requirePaused(); validateArchive(archive);
@@ -136,6 +164,12 @@ public class IntegrationOperationsService {
                 var external=runtime.metadata().findExternal(canonical,"turboea",target.instanceId(),element.startsWith("elem:") ? ResourceKind.CARD : ResourceKind.RELATION);
                 if (external.isEmpty()) { if (target.instanceId().equals(p.get("targetInstanceId"))) code="EXTERNAL_BINDING_MISSING"; continue; }
                 var remoteRow=row.putObject(target.key()).put("resourceId",external.get().resourceId());
+                String externalType=archive.stream().filter(n -> n.label().equals("IntegrationExternalBinding")
+                        && canonical.equals(n.properties().get("canonicalId")) && "turboea".equals(n.properties().get("system"))
+                        && target.instanceId().equals(n.properties().get("targetInstanceId"))
+                        && external.get().resourceId().equals(n.properties().get("resourceId")))
+                        .map(n -> (String)n.properties().getOrDefault("externalType",canonicalKinds.get(canonical))).findFirst()
+                        .orElseThrow(() -> new Failure(409,"EXTERNAL_BINDING_MISSING"));
                 try {
                     if (!target.mapping().version().equals(p.get("mappingVersion"))) {
                         if (!control().map(d -> d.data().path("paused").asBoolean()).orElse(false)) throw new Failure(409,"MIGRATION_REQUIRES_PAUSE");
@@ -145,10 +179,10 @@ public class IntegrationOperationsService {
                     if (validated.add(target.key())) runtime.validateTarget(target.key());
                     if (element.startsWith("elem:")) {
                         var card=runtime.connector(target.key()).getObject(external.get().resourceId());
-                        if (!card.type().equals(canonicalKinds.get(canonical)) || !target.mapping().archimateType(card.type()).equals(type) || !"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_TYPE_OR_LIFECYCLE_CONFLICT");
+                        if (!card.type().equals(externalType) || !target.mapping().archimateType(card.type()).equals(type) || !"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_TYPE_OR_LIFECYCLE_CONFLICT");
                         var fields=target.mapping().fields().getOrDefault(card.type(),Map.of()); remoteRow.put("type",card.type());
                         remoteRow.set("local",InboundFields.local(json,snapshot,element,fields.keySet())); remoteRow.set("remote",InboundFields.remote(json,card,fields));
-                    } else verifyRelation(model,target,local,external.get(),type,canonicalKinds.get(canonical),remoteRow);
+                    } else verifyRelation(model,target,local,external.get(),type,externalType,remoteRow);
                 } catch (ConnectorException failure) { code="EXTERNAL_"+failure.kind(); }
                 catch (Failure failure) { code=failure.getMessage(); }
                 catch (IllegalArgumentException invalid) { code="MAPPING_MIGRATION_REQUIRED"; }

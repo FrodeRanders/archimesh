@@ -226,7 +226,11 @@ audit, but their execution generation is replaced with a quarantine token. New
 requests/approvals are required; restoring metadata never revives delegated write
 authority. Restored scan jobs remain paused and require a new scan request.
 
-The archive is `archimesh-integration-v1`, limited to 20,000 nodes and 8 MiB of UTF-8
+Exports now use `archimesh-integration-v2`, retaining read support for original v1
+packages and their format-specific digests. V2 adds native entity IDs, semantic/native
+type separation, owner scope and association-proof closure, including identities
+with no model occurrences. See the [D1 registry/classification workflow](../../integrations/datahub-turboea/docs/d1-registry-migration.md).
+The archive remains limited to 20,000 nodes and 8 MiB of UTF-8
 metadata. Restore preserves unknown outcome markers, jobs, receipt correlations and
 identity reservations. The digest detects accidental modification, not malicious
 operator rewriting; endpoint authorization is the trust boundary. A mismatch of

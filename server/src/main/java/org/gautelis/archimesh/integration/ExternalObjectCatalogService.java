@@ -155,8 +155,8 @@ public class ExternalObjectCatalogService {
                 throw new RequestFailure(409,"LINK_TYPE_OR_IDENTITY_CONFLICT");
             String candidateBatch=UUID.randomUUID().toString();
             var reservation=state.reserveImport(new ImportReservation(new ModelElementKey(instance,modelId,EntityKind.ELEMENT,entityId),
-                    new CanonicalObject("urn:uuid:"+UUID.randomUUID(),preview.externalType()),external(target,request.cardId()),
-                    preview.archimateType(),preview.mappingVersion(),candidateBatch,request.mode().name()));
+                    state.findCanonical(external(target,request.cardId())).orElseGet(() -> new CanonicalObject("urn:uuid:"+UUID.randomUUID(),preview.externalType())),external(target,request.cardId()),
+                    preview.archimateType(),preview.mappingVersion(),candidateBatch,request.mode().name(),preview.externalType()));
             if (request.mode() == ImportMode.LINK && !reservation.model().entityId().equals(request.elementId()))
                 throw new RequestFailure(409,"ALREADY_LINKED_TO_ANOTHER_ELEMENT");
             var operations=operations(reservation,ImportMode.valueOf(reservation.bindingMode()),preview.fields());
@@ -176,11 +176,11 @@ public class ExternalObjectCatalogService {
         var state=runtime.metadata(); String instance=runtime.settings().instanceId();
         var existing=state.findModelBinding(instance,modelId,external(target,request.cardId()));
         if (existing.isEmpty()) return Optional.empty();
-        var binding=existing.get(); requireType(target,binding.canonical().kind());
+        var binding=existing.get(); requireType(target,binding.remoteType());
         var plan=state.load(instance,DocumentKind.JOB,"import-plan:"+binding.opBatchId());
         if (binding.state()!=BindingState.ACTIVE && (plan.isEmpty()
                 || !request.previewDigest().equals(plan.get().data().path("previewDigest").asText()))) return Optional.empty();
-        var journal=ensureDocument(jobId,requestData(modelId,subject,request,fingerprint,binding.canonical().kind()),"fingerprint");
+        var journal=ensureDocument(jobId,requestData(modelId,subject,request,fingerprint,binding.remoteType()),"fingerprint");
         return Optional.of(finishImport(modelId,subject,request,binding,plan.orElse(new StateDocument(instance,DocumentKind.JOB,"unused",0,json.createObjectNode())),
                 plan.map(p -> p.data().path("headRevision").asLong(-1)).orElse(-1L),true,journal));
     }
@@ -228,7 +228,7 @@ public class ExternalObjectCatalogService {
         var target=runtime.settings().targets().stream().filter(t -> t.instanceId().equals(binding.external().targetInstanceId()))
                 .findFirst().orElseThrow(() -> new RequestFailure(404,"TARGET_NOT_FOUND"));
         target(modelId,"HEAD",subject,target.key(),false);
-        requireType(target,binding.canonical().kind());
+        requireType(target,binding.remoteType());
         String state=binding.state().name();
         if (binding.state() == BindingState.ACTIVE) {
             try { verify(binding,models.getSnapshot(modelId,"HEAD"),null); }

@@ -27,7 +27,7 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
     }
 
     public void installSchema() {
-        for (String resource : java.util.List.of("schema-v1.cypher","schema-v2.cypher","schema-v3.cypher")) {
+        for (String resource : java.util.List.of("schema-v1.cypher","schema-v2.cypher","schema-v3.cypher","schema-v4.cypher")) {
             try (var input=getClass().getResourceAsStream("/integrations/"+resource)) {
                 if (input==null) throw new IllegalStateException("Missing integration schema");
                 String schema=new String(input.readAllBytes(),StandardCharsets.UTF_8).replaceAll("(?m)^\\s*//.*$", "");
@@ -68,6 +68,16 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
         }); }
     }
 
+    @Override public org.gautelis.federation.IdentityRegistry identities(String instance) {
+        requireSchema(); return new Neo4jFederationRegistry(driver,json,instance);
+    }
+    @Override public com.fasterxml.jackson.databind.JsonNode previewIdentityMigration(String instance,String canonical,String semantic) {
+        requireSchema(); return new IdentityMigration(driver,json).preview(instance,canonical,semantic);
+    }
+    @Override public void migrateIdentity(String instance,String canonical,String semantic,String digest,String actor) {
+        requireSchema(); new IdentityMigration(driver,json).apply(instance,canonical,semantic,digest,actor);
+    }
+
     @Override public com.fasterxml.jackson.databind.JsonNode statistics(String instance) {
         try (var session=driver.session()) {
             return session.executeRead(tx -> {
@@ -104,6 +114,7 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
         var params = externalParams(request.external());
         params.put("candidate", request.canonicalCandidate().canonicalId());
         params.put("kind", request.canonicalCandidate().kind());
+        params.put("externalType",request.remoteType());
         params.putAll(modelParams(request.model()));
         params.put("archimateType", request.archimateType());
         params.put("mappingVersion", request.mappingVersion());
@@ -112,13 +123,15 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
         try (var session = driver.session()) {
             return session.executeWrite(tx -> {
                 // Fence this external resource before observing its canonical assignment.
-                String canonical = tx.run("""
+                var external = tx.run("""
                         MERGE (e:IntegrationExternalBinding {system:$system, targetInstanceId:$target,
                             resourceKind:$resourceKind, resourceId:$resourceId})
-                        ON CREATE SET e.canonicalId=$candidate
+                        ON CREATE SET e.canonicalId=$candidate,e.externalType=$externalType,e.nativeId=$nativeId
                         SET e.fence=coalesce(e.fence,0)+1
-                        RETURN e.canonicalId AS canonical
-                        """, params).single().get("canonical").asString();
+                        RETURN e.canonicalId AS canonical,properties(e) AS external
+                        """, params).single();
+                Neo4jFederationRegistry.checkNative(external.get("external"),request.external());
+                String canonical=external.get("canonical").asString();
                 params.put("canonical", canonical);
                 var claim=tx.run("""
                         MERGE (c:IntegrationIdentityClaim {instanceId:$instance,sourceModelId:$sourceModel,entityKind:$entityKind,entityId:$entityId})
@@ -129,23 +142,26 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                 var object = tx.run("""
                         MERGE (c:IntegrationCanonicalObject {canonicalId:$canonical})
                         ON CREATE SET c.kind=$kind
-                        RETURN c.kind AS kind
+                        RETURN coalesce(c.semanticKind,c.kind) AS kind,c.kind AS legacyKind,c.semanticKind AS semantic
                         """, params).single();
                 if (!request.canonicalCandidate().kind().equals(object.get("kind").asString()))
                     throw new IllegalStateException("Canonical kind conflict");
+                if (!object.get("semantic").isNull() && external.get("external").get("identityProofId").isNull())
+                    throw new PublicationModel.Failure(409,"IDENTITY_PROOF_REQUIRED");
+                String externalType=external.get("external").get("externalType").asString(object.get("legacyKind").asString());
+                if (!request.remoteType().equals(externalType)) throw new IllegalStateException("External type conflict");
                 var binding = tx.run("""
                         MERGE (b:IntegrationModelBinding {instanceId:$instance, sourceModelId:$sourceModel,
                             entityKind:$entityKind, canonicalId:$canonical})
                         ON CREATE SET b.entityId=$entityId, b.archimateType=$archimateType,
                             b.mappingVersion=$mappingVersion, b.opBatchId=$batch, b.state='PREPARED', b.bindingMode=$bindingMode,
                             b.acceptedRevision=0, b.system=$system, b.targetInstanceId=$target,
-                            b.resourceKind=$resourceKind, b.resourceId=$resourceId
+                            b.resourceKind=$resourceKind, b.resourceId=$resourceId,b.nativeId=$nativeId,b.externalType=$externalType
                         RETURN properties(b) AS binding
                         """, params).single();
-                ReservedImport result = readBinding(binding, request.canonicalCandidate().kind());
+                ReservedImport result = readBinding(binding, request.canonicalCandidate().kind(),externalType);
                 if (!result.archimateType().equals(request.archimateType())
-                        || !result.mappingVersion().equals(request.mappingVersion())
-                        || !result.external().equals(request.external()))
+                        || result.external().equals(request.external()) && !result.mappingVersion().equals(request.mappingVersion()))
                     throw new IllegalStateException("Existing binding has incompatible type, mapping or origin");
                 return result;
             });
@@ -159,10 +175,11 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                         MATCH (e:IntegrationExternalBinding {system:$system,targetInstanceId:$target,
                             resourceKind:$resourceKind,resourceId:$resourceId})
                         MATCH (c:IntegrationCanonicalObject {canonicalId:e.canonicalId})
-                        RETURN c.canonicalId AS canonical,c.kind AS kind
+                        RETURN c.canonicalId AS canonical,coalesce(c.semanticKind,c.kind) AS kind,properties(e) AS external
                         """, externalParams(key));
                 if (!rows.hasNext()) return Optional.empty();
                 var row = rows.single();
+                Neo4jFederationRegistry.checkNative(row.get("external"),key);
                 return Optional.of(new CanonicalObject(row.get("canonical").asString(), row.get("kind").asString()));
             });
         }
@@ -186,14 +203,15 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                 if (!b.isNull() && !p.isNull() && !b.get("canonicalId").equals(p.get("canonicalId"))) throw new IllegalStateException("Conflicting publication identity");
                 var chosen=b.isNull() ? p : b;
                 String canonical=chosen.get("canonicalId").asString();
-                var kind=tx.run("MATCH (c:IntegrationCanonicalObject {canonicalId:$id}) RETURN c.kind AS kind",Map.of("id",canonical)).single().get("kind").asString();
-                return Optional.of(new PublicationIdentity(key,new CanonicalObject(canonical,kind),chosen.get("archimateType").asString(),chosen.get("mappingVersion").asString()));
+                var types=tx.run("MATCH (c:IntegrationCanonicalObject {canonicalId:$id}) RETURN coalesce(c.semanticKind,c.kind) AS kind,c.kind AS legacyKind",Map.of("id",canonical)).single();
+                String kind=types.get("kind").asString(); String remote=chosen.get("externalType").asString(types.get("legacyKind").asString());
+                return Optional.of(new PublicationIdentity(key,new CanonicalObject(canonical,kind),chosen.get("archimateType").asString(),chosen.get("mappingVersion").asString(),kind.equals(remote) ? null : remote));
             });
         }
     }
     @Override public PublicationIdentity reservePublicationIdentity(PublicationIdentity identity) {
         requireSchema(); var params=modelParams(identity.model());
-        params.put("candidate",identity.canonical().canonicalId()); params.put("kind",identity.canonical().kind());
+        params.put("candidate",identity.canonical().canonicalId()); params.put("kind",identity.canonical().kind()); params.put("externalType",identity.remoteType());
         params.put("type",required(identity.archimateType())); params.put("mapping",required(identity.mappingVersion()));
         try (var session=driver.session()) {
             return session.executeWrite(tx -> {
@@ -209,11 +227,11 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                 var claim=row.single(); String canonical=claim.get("canonical").asString();
                 if (!identity.canonical().canonicalId().equals(canonical)) throw new IllegalStateException("Publication identity changed; preview again");
                 params.put("canonical",canonical);
-                String kind=tx.run("MERGE (c:IntegrationCanonicalObject {canonicalId:$canonical}) ON CREATE SET c.kind=$kind RETURN c.kind AS kind",params).single().get("kind").asString();
+                String kind=tx.run("MERGE (c:IntegrationCanonicalObject {canonicalId:$canonical}) ON CREATE SET c.kind=$kind RETURN coalesce(c.semanticKind,c.kind) AS kind",params).single().get("kind").asString();
                 if (!identity.canonical().kind().equals(kind)) throw new IllegalStateException("Canonical type conflict");
                 var publication=tx.run("""
                         MERGE (p:IntegrationPublicationIdentity {instanceId:$instance,sourceModelId:$sourceModel,entityKind:$entityKind,entityId:$entityId})
-                        ON CREATE SET p.canonicalId=$canonical,p.archimateType=$type,p.mappingVersion=$mapping
+                        ON CREATE SET p.canonicalId=$canonical,p.archimateType=$type,p.mappingVersion=$mapping,p.externalType=$externalType
                         RETURN p.canonicalId AS canonical,p.archimateType AS type,p.mappingVersion AS mapping
                         """,params).single();
                 if (!canonical.equals(publication.get("canonical").asString()) || !identity.archimateType().equals(publication.get("type").asString())
@@ -226,7 +244,7 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
         required(canonicalId); required(system); required(target); java.util.Objects.requireNonNull(kind);
         try (var session=driver.session()) {
             return session.executeRead(tx -> {
-                var rows=tx.run("MATCH (e:IntegrationExternalBinding {canonicalId:$canonical,system:$system,targetInstanceId:$target,resourceKind:$kind}) RETURN e.resourceId AS id",
+                var rows=tx.run("MATCH (e:IntegrationExternalBinding {canonicalId:$canonical,system:$system,targetInstanceId:$target,resourceKind:$kind}) RETURN coalesce(e.nativeId,e.resourceId) AS id",
                         Map.of("canonical",canonicalId,"system",system,"target",target,"kind",kind.name()));
                 return rows.hasNext() ? Optional.of(new ExternalResourceKey(system,target,kind,rows.single().get("id").asString())) : Optional.empty();
             });
@@ -236,19 +254,30 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
         requireSchema(); if (revision<1) throw new IllegalArgumentException("Publication requires accepted state");
         var params=modelParams(identity.model()); params.putAll(externalParams(external));
         params.put("canonical",identity.canonical().canonicalId()); params.put("type",identity.archimateType());
-        params.put("mapping",identity.mappingVersion()); params.put("revision",revision); params.put("batch",required(jobId));
+        params.put("mapping",identity.mappingVersion()); params.put("externalType",identity.remoteType()); params.put("revision",revision); params.put("batch",required(jobId));
         try (var session=driver.session()) {
             session.executeWrite(tx -> {
                 String canonical=tx.run("""
                         MERGE (e:IntegrationExternalBinding {system:$system,targetInstanceId:$target,resourceKind:$resourceKind,resourceId:$resourceId})
-                        ON CREATE SET e.canonicalId=$canonical
+                        ON CREATE SET e.canonicalId=$canonical,e.externalType=$externalType,e.nativeId=$nativeId
                         SET e.fence=coalesce(e.fence,0)+1 RETURN e.canonicalId AS canonical
                         """,params).single().get("canonical").asString();
                 if (!canonical.equals(identity.canonical().canonicalId())) throw new IllegalStateException("External identity conflict");
+                var registered=tx.run("MATCH (c:IntegrationCanonicalObject {canonicalId:$canonical}) RETURN c.semanticKind AS semantic,c.registryInstanceId AS owner",params).single();
+                if (!registered.get("semantic").isNull()) {
+                    if (!identity.model().instanceId().equals(registered.get("owner").asString(null))) throw new PublicationModel.Failure(409,"IDENTITY_REGISTRY_OWNER_CONFLICT");
+                    String proof="identity-publish:"+IntegrationIdentity.sha256(jobId+":"+external.targetInstanceId()+":"+canonical);
+                    var data=json.createObjectNode().put("canonicalId",canonical).put("mode","PUBLISH").put("jobId",jobId)
+                            .put("sourceModelId",identity.model().sourceModelId()).put("sourceRevision",revision)
+                            .put("externalType",identity.remoteType()).put("resourceId",external.resourceId()).put("targetInstanceId",external.targetInstanceId());
+                    params.put("proof",proof); params.put("proofData",data.toString());
+                    tx.run("MERGE (d:IntegrationStateDocument {instanceId:$instance,kind:'IDENTITY_PROOF',id:$proof}) ON CREATE SET d.version=1,d.dataJson=$proofData",params).consume();
+                    tx.run("MATCH (e:IntegrationExternalBinding {system:$system,targetInstanceId:$target,resourceKind:$resourceKind,resourceId:$resourceId}) SET e.identityProofId=coalesce(e.identityProofId,$proof)",params).consume();
+                }
                 var binding=tx.run("""
                         MERGE (b:IntegrationModelBinding {instanceId:$instance,sourceModelId:$sourceModel,entityKind:$entityKind,entityId:$entityId})
                         ON CREATE SET b.canonicalId=$canonical,b.archimateType=$type,b.mappingVersion=$mapping,
-                            b.system=$system,b.targetInstanceId=$target,b.resourceKind=$resourceKind,b.resourceId=$resourceId,
+                            b.system=$system,b.targetInstanceId=$target,b.resourceKind=$resourceKind,b.resourceId=$resourceId,b.nativeId=$nativeId,b.externalType=$externalType,
                             b.state='ACTIVE',b.bindingMode='PUBLISHED',b.acceptedRevision=$revision,b.opBatchId=$batch
                         RETURN b.canonicalId AS canonical
                         """,params).single();
@@ -282,11 +311,12 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                             resourceKind:$resourceKind,resourceId:$resourceId})
                         MATCH (c:IntegrationCanonicalObject {canonicalId:e.canonicalId})
                         MATCH (b:IntegrationModelBinding {instanceId:$instance,sourceModelId:$sourceModel,canonicalId:e.canonicalId})
-                        WHERE b.entityKind=CASE WHEN $resourceKind='CARD' THEN 'ELEMENT' ELSE 'RELATIONSHIP' END
-                        RETURN properties(b) AS binding,c.kind AS kind
+                        WHERE b.entityKind=CASE WHEN $resourceKind IN ['CARD','ENTITY'] THEN 'ELEMENT' ELSE 'RELATIONSHIP' END
+                            AND ($nativeId IS NULL OR e.nativeId=$nativeId)
+                        RETURN properties(b) AS binding,coalesce(c.semanticKind,c.kind) AS kind,c.kind AS legacyKind
                         """,params);
                 if (!rows.hasNext()) return Optional.empty();
-                var row=rows.single(); return Optional.of(readBinding(row,row.get("kind").asString()));
+                var row=rows.single(); return Optional.of(readBinding(row,row.get("kind").asString(),row.get("legacyKind").asString()));
             });
         }
     }
@@ -296,11 +326,11 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                 MATCH (b:IntegrationModelBinding {instanceId:$instance,sourceModelId:$sourceModel,
                     entityKind:$entityKind,entityId:$entityId})
                 MATCH (c:IntegrationCanonicalObject {canonicalId:b.canonicalId})
-                RETURN properties(b) AS binding,c.kind AS kind
+                RETURN properties(b) AS binding,coalesce(c.semanticKind,c.kind) AS kind,c.kind AS legacyKind
                 """, params);
         if (!rows.hasNext()) return Optional.empty();
         var row = rows.single();
-        return Optional.of(readBinding(row, row.get("kind").asString()));
+        return Optional.of(readBinding(row, row.get("kind").asString(),row.get("legacyKind").asString()));
     }
 
     @Override public ReservedImport confirmImport(ModelElementKey key, String opBatchId) {
@@ -337,9 +367,9 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                     MATCH (c:IntegrationCanonicalObject {canonicalId:b.canonicalId})
                     WITH b,c,toString(size(b.sourceModelId))+':'+b.sourceModelId+':'+b.entityId AS cursor
                     WHERE ($model='' OR b.sourceModelId=$model) AND b.state<>'PREPARED' AND cursor>$after
-                    RETURN properties(b) AS binding,c.kind AS kind ORDER BY cursor LIMIT $limit
+                    RETURN properties(b) AS binding,coalesce(c.semanticKind,c.kind) AS kind,c.kind AS legacyKind ORDER BY cursor LIMIT $limit
                     """,Map.of("instance",instance,"target",target,"model",model==null ? "" : model,"after",after,"limit",limit))
-                    .list(row -> readBinding(row,row.get("kind").asString())));
+                    .list(row -> readBinding(row,row.get("kind").asString(),row.get("legacyKind").asString())));
         }
     }
     @Override public void orphanBinding(ModelElementKey key) {
@@ -398,15 +428,15 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
         }
     }
 
-    private static ReservedImport readBinding(Record row, String kind) {
+    private static ReservedImport readBinding(Record row, String kind,String legacyType) {
         var b = row.get("binding");
         return new ReservedImport(new ModelElementKey(b.get("instanceId").asString(), b.get("sourceModelId").asString(),
                 EntityKind.valueOf(b.get("entityKind").asString()), b.get("entityId").asString()),
                 new CanonicalObject(b.get("canonicalId").asString(), kind),
                 new ExternalResourceKey(b.get("system").asString(), b.get("targetInstanceId").asString(),
-                        ResourceKind.valueOf(b.get("resourceKind").asString()), b.get("resourceId").asString()),
+                        ResourceKind.valueOf(b.get("resourceKind").asString()), b.get("nativeId").asString(b.get("resourceId").asString())),
                 b.get("archimateType").asString(), b.get("mappingVersion").asString(), b.get("opBatchId").asString(),
-                BindingState.valueOf(b.get("state").asString()), b.get("acceptedRevision").asLong(), b.get("bindingMode").asString("CREATE"));
+                BindingState.valueOf(b.get("state").asString()), b.get("acceptedRevision").asLong(), b.get("bindingMode").asString("CREATE"),kind.equals(b.get("externalType").asString(legacyType)) ? null : b.get("externalType").asString(legacyType));
     }
 
     private static Map<String, Object> modelParams(ModelElementKey key) {
@@ -414,8 +444,7 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                 "entityKind",key.entityKind().name(),"entityId",key.entityId()));
     }
     private static Map<String, Object> externalParams(ExternalResourceKey key) {
-        return new HashMap<>(Map.of("system",key.system(),"target",key.targetInstanceId(),
-                "resourceKind",key.resourceKind().name(),"resourceId",key.resourceId()));
+        return Neo4jFederationRegistry.parameters(key);
     }
     private static Map<String, Object> documentParams(String instance, DocumentKind kind, String id) {
         required(instance); required(id);

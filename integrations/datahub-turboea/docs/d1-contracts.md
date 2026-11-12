@@ -4,6 +4,11 @@ Date: 2026-11-12. Status: first D1 increment implemented; D1 remains in progress
 The runtime DataHub adapter, neutral durable identity migration and independent
 bridge execution are not enabled or implemented by this increment.
 
+Update: the [second D1 registry/migration increment](d1-registry-migration.md) now
+implements durable neutral bindings, reviewed legacy classification and v2 archives
+with v1 recovery. The validation and remaining-work list below describe the first
+increment; consult that update for current delivery boundaries.
+
 ## Delivered
 
 The [shared contract library](../../../shared/federation-core/README.md) is outside

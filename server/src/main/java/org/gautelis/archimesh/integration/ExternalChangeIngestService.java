@@ -90,10 +90,10 @@ public class ExternalChangeIngestService {
                 validateBinding(binding,target);
                 if (!target.mapping().version().equals(data.path("mappingVersion").asText())) throw new Failure(409,"INBOUND_BASELINE_MIGRATION_REQUIRED");
                 if (data.has("pending")) { finishPending(state,binding); return; }
-                if (InboundFields.normalMappings(target,binding.canonical().kind(),binding.canonical().canonicalId()).isEmpty()) return;
+                if (InboundFields.normalMappings(target,binding.remoteType(),binding.canonical().canonicalId()).isEmpty()) return;
                 runtime.validateTarget(key);
                 var card=runtime.connector(key).getObject(binding.external().resourceId());
-                if (!card.type().equals(binding.canonical().kind())) throw new Failure(409,"EXTERNAL_TYPE_CONFLICT");
+                if (!card.type().equals(binding.remoteType())) throw new Failure(409,"EXTERNAL_TYPE_CONFLICT");
                 if (!"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_OBJECT_RETIRED");
                 var remote=InboundFields.remote(json,target,card,binding.canonical().canonicalId()); var snapshot=models.getSnapshot(binding.model().sourceModelId(),"HEAD");
                 validateLocal(binding,snapshot);
@@ -124,7 +124,7 @@ public class ExternalChangeIngestService {
     public Inspection inspect(String model,String key,AuthorizationSubject subject,String element) {
         var target=access.administrator(model,key,subject); var binding=binding(model,element,target); validateBinding(binding,target);
         runtime.validateTarget(key); var card=runtime.connector(key).getObject(binding.external().resourceId());
-        if (!card.type().equals(binding.canonical().kind()) || !"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_TYPE_OR_LIFECYCLE_CONFLICT");
+        if (!card.type().equals(binding.remoteType()) || !"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_TYPE_OR_LIFECYCLE_CONFLICT");
         var remote=InboundFields.remote(json,target,card,binding.canonical().canonicalId()); var snapshot=models.getSnapshot(model,"HEAD"); validateLocal(binding,snapshot);
         var local=InboundFields.local(json,snapshot,element,keys(remote)); var policy=policy(model,key);
         long revision=snapshot.path("headRevision").asLong();
@@ -203,10 +203,10 @@ public class ExternalChangeIngestService {
     private ProposalDelivery proposalDelivery(StateDocument state) { return new ProposalDelivery(state.data().path("state").asText(),state.data().path("code").asText(null),state.data().path("verifiedRevision").asLong()); }
     private record ProposalFrame(JsonNode local,JsonNode remote,long revision,String digest) { }
     private ProposalFrame proposalFrame(ReservedImport binding,IntegrationConfiguration.Target target,StateDocument proof,ExternalRepositoryConnector.ExternalObject card) {
-        if (!card.type().equals(binding.canonical().kind()) || !"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_TYPE_OR_LIFECYCLE_CONFLICT");
+        if (!card.type().equals(binding.remoteType()) || !"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_TYPE_OR_LIFECYCLE_CONFLICT");
         var selected=CentralFields.keys(proof.data().path("proposed"));
         if (!PublicationJson.equal(CentralFields.remote(json,target,card,selected),proof.data().path("proposed"))) throw new Failure(409,"CENTRAL_REMOTE_ADVANCED");
-        var remote=InboundFields.remote(json,card,proposalGrants.fields(target,binding.canonical().kind(),proof));
+        var remote=InboundFields.remote(json,card,proposalGrants.fields(target,binding.remoteType(),proof));
         var snapshot=models.getSnapshot(binding.model().sourceModelId(),"HEAD"); validateLocal(binding,snapshot);
         var local=InboundFields.local(json,snapshot,binding.model().entityId(),CentralFields.keys(remote)); long revision=snapshot.path("headRevision").asLong();
         String digest=PublicationJson.digest(json.valueToTree(List.of(proof.id(),proof.version(),binding,revision,local,remote)));
@@ -275,7 +275,7 @@ public class ExternalChangeIngestService {
             if (op.path("type").asText().equals("SetProperty") && op.path("targetId").asText().equals(binding.model().entityId())) imported.set("property:"+op.path("key").asText(),op.path("value"));
         }
         if (!found) return baseline;
-        var mappings=InboundFields.normalMappings(target,binding.canonical().kind(),binding.canonical().canonicalId());
+        var mappings=InboundFields.normalMappings(target,binding.remoteType(),binding.canonical().canonicalId());
         for (String field:fields) if (mappings.containsKey(field) && target.catalogAccess().fields().contains(mappings.get(field).remoteField())) {
             JsonNode value=imported.get(field);
             baseline.set(field,value==null ? field.startsWith("property:") ? json.nullNode() : json.getNodeFactory().textNode("") : value);
@@ -285,7 +285,7 @@ public class ExternalChangeIngestService {
     private void validateBinding(ReservedImport binding,IntegrationConfiguration.Target target) {
         if (binding.state()!=BindingState.ACTIVE) throw new Failure(409,"BINDING_ORPHANED");
         if (!binding.external().targetInstanceId().equals(target.instanceId()) || !binding.mappingVersion().equals(target.mapping().version())) throw new Failure(409,"BINDING_MAPPING_OR_TARGET_CHANGED");
-        if (!binding.archimateType().equals(target.mapping().archimateType(binding.canonical().kind()))) throw new Failure(409,"BINDING_TYPE_CONFLICT");
+        if (!binding.archimateType().equals(target.mapping().archimateType(binding.remoteType()))) throw new Failure(409,"BINDING_TYPE_CONFLICT");
     }
     private void validateLocal(ReservedImport binding,JsonNode snapshot) {
         var element=InboundFields.element(snapshot,binding.model().entityId());

@@ -24,6 +24,8 @@ public class IntegrationOperationsEndpoint {
     @POST @Path("/archive/export") public Response export() { return invoke(() -> operations.exportArchive(subject())); }
     @POST @Path("/archive/preview") public Response preview(IntegrationArchive.Package request) { return invoke(() -> operations.previewRestore(subject(),request)); }
     @POST @Path("/archive/restore") public Response restore(RestoreRequest request) { return invoke(() -> operations.restore(subject(),request)); }
+    @POST @Path("/identities/preview") public Response identityPreview(IdentityClassification request) { return invoke(() -> operations.previewIdentity(subject(),request)); }
+    @POST @Path("/identities/classify") public Response identityClassify(IdentityClassification request) { return invoke(() -> operations.classifyIdentity(subject(),request)); }
     @GET @Path("/models/{model}/review") public Response model(@PathParam("model") String model) { return invoke(() -> operations.previewAttachment(subject(),model)); }
     @POST @Path("/models/{model}/pause") public Response pauseModel(@PathParam("model") String model,Decision request) { return invoke(() -> { if (request==null) throw new IllegalArgumentException(); return operations.pauseModel(subject(),model,request.expectedVersion()); }); }
     @POST @Path("/models/{model}/attach") public Response attach(@PathParam("model") String model,Decision request) { return invoke(() -> operations.attach(subject(),model,request)); }

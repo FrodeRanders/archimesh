@@ -6,6 +6,10 @@ and canonical authority enforcement are implemented in the
 [first D1 increment](../../integrations/datahub-turboea/docs/d1-contracts.md).
 Other runtime/state boundaries below remain planned; no DataHub connector is enabled.
 
+The [second D1 increment](../../integrations/datahub-turboea/docs/d1-registry-migration.md)
+adds durable neutral bindings and reviewed legacy classification with v2 archives
+and v1 recovery. Connector dispatch and governed bridge execution remain pending.
+
 Extends [ADR 0001](0001-external-repository-integration.md). Delivery and acceptance
 are specified in the [federation assignment](../../integrations/datahub-turboea/docs/implementation.md).
 
@@ -13,6 +17,9 @@ are specified in the [federation assignment](../../integrations/datahub-turboea/
 
 The agency uses self-hosted DataHub OSS, Turbo EA and Archi/ArchiMesh. This project
 will own both the DataHub–Turbo EA bridge and their integration with ArchiMesh.
+The bridge has two required source directions: DataHub supplies dataset/product
+metadata to Turbo EA; Turbo EA supplies enterprise applications referenced in
+DataHub. See the [direction/representation decision](../../integrations/datahub-turboea/docs/authority-directions.md).
 Publishing a DataHub dataset into Turbo EA and importing the resulting card into
 ArchiMesh must resolve the original asset, including when an architect already
 imported it directly from DataHub. A mirror must preserve information authority.
@@ -151,9 +158,11 @@ be a separate, optional upstream change.
 
 Bridge policy is independent of model publication policy. It names selected source
 entities/types, target instance, type/field/relation mappings, visibility scope,
-approvers and mapping/policy versions. Default disabled; initially DataHub reads
-only, with approved writes to Turbo EA. Reverse DataHub writes require a separate
-aspect-safe design and explicit approval scope.
+approvers and mapping/policy versions. Default disabled. The dataset/product lane
+reads DataHub and writes approved Turbo EA projections; the application-reference
+lane reads Turbo EA and writes approved DataHub representations/references. Use
+separate source/target principals and aspect-safe application writes. Optional edits
+back to source-owned fields require their own proposal/write-through scope.
 
 Use dedicated bridge permissions for preview, approval, execution and reconciliation;
 model/global administrator roles do not implicitly grant them. Validate that the

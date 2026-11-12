@@ -145,6 +145,62 @@ class IntegrationOperationsIT {
             var lane=runtime.metadata().load(runtime.settings().instanceId(),DocumentKind.CENTRAL_LANE,CentralEditModel.laneId(runtime.settings().targets().getFirst().instanceId(),owned.get(model).canonicalId())).orElseThrow(); assertTrue(lane.data().has("inFlight")); assertEquals(1,fixture(null).path("writes").asInt());
         } finally { field.set(bean,old); }
     }
+    @Test void identityClassificationIsOperatorReviewedPausesOldWorkAndRetainsCanonicalModelAndTagIds() throws Exception {
+        String canonical=owned.get(model).canonicalId(),element=owned.get(model).elementId();
+        var queued=requestCentral("Old queued request");
+        models.createModelTag(model,"classification","Before semantic classification"); var tag=models.getSnapshot(model,"classification"); var snapshot=models.getSnapshot(model);
+        var request=new IdentityClassification(canonical,"enterprise.application",null);
+        assertThrows(PublicationModel.Failure.class,() -> operations.previewIdentity(operator,request));
+        operations.pause(operator,controlVersion());
+        assertEquals(403,api("/identities/preview","POST",json.valueToTree(request),"outsider","admin").statusCode());
+        var reviewed=operations.previewIdentity(operator,request);
+        fixture(json.createObjectNode().put("id","card-a").set("fields",json.createObjectNode().put("name","Changed during classification review")));
+        assertThrows(PublicationModel.Failure.class,() -> operations.classifyIdentity(operator,new IdentityClassification(canonical,"enterprise.application",reviewed.digest())));
+        var current=operations.previewIdentity(operator,request);
+        operations.classifyIdentity(operator,new IdentityClassification(canonical,"enterprise.application",current.digest()));
+        assertEquals(snapshot,models.getSnapshot(model)); assertEquals(tag,models.getSnapshot(model,"classification"));
+        var binding=runtime.metadata().findBinding(new IntegrationIdentity.ModelElementKey(runtime.settings().instanceId(),model,IntegrationIdentity.EntityKind.ELEMENT,element)).orElseThrow();
+        assertEquals(canonical,binding.canonical().canonicalId()); assertEquals("enterprise.application",binding.canonical().kind()); assertEquals("Application",binding.remoteType());
+        assertTrue(runtime.modelScope(model).data().path("paused").asBoolean());
+        assertEquals(IntegrationArchive.FORMAT,operations.exportArchive(operator).format());
+        resume(); central.run(queued.id()); assertEquals(0,fixture(null).path("writes").asInt());
+        assertThrows(PublicationModel.Failure.class,() -> runtime.requireModelActive(model)); attach(model); approve(model); inbound.refresh(model,"fixture",publisher,element);
+        assertEquals("Initial name",local(model,"name"));
+        var baselineReview=inbound.inspect(model,"fixture",publisher,element);
+        inbound.acceptRemote(model,"fixture",publisher,new ExternalChangeIngestService.Resolution(element,baselineReview.digest()));
+        assertEquals("Changed during classification review",local(model,"name")); assertEquals(tag,models.getSnapshot(model,"classification"));
+        String second=provision(true); assertEquals(canonical,owned.get(second).canonicalId());
+        var fresh=requestCentral("Fresh classified central request"); for (int i=0;i<3;i++) central.run(fresh.id());
+        assertEquals("SYNCED",central.get(model,"fixture",fresh.id(),architect).state());
+        assertEquals("Fresh classified central request",local(model,"property:central")); assertEquals("Fresh classified central request",local(second,"property:central"));
+        assertEquals(1,fixture(null).path("writes").asInt());
+        property(model,"owner","Unowned remote");
+        var publication=((IntegrationOperationsService)io.quarkus.arc.ClientProxy.unwrap(operations)).publication;
+        var spec=new PublicationModel.PolicySpec(PublicationModel.Mode.HEAD,"HEAD",List.of(element),List.of(),Set.of(element));
+        var publishing=publication.preview(model,"fixture",publisher,spec);
+        assertEquals("enterprise.application",publishing.plan().resources().getFirst().identity().canonical().kind());
+        assertEquals("Application",publishing.plan().resources().getFirst().remoteType());
+        publication.approve(model,"fixture",publisher,new PublicationModel.Approval(spec,0,publishing.digest()));
+        var job=publication.enqueue(model,"fixture",publisher,new PublicationModel.RunRequest(UUID.randomUUID().toString(),null)); publication.runJob(job.id());
+        assertEquals("SYNCED",runtime.metadata().load(runtime.settings().instanceId(),DocumentKind.PUBLICATION_JOB,job.id()).orElseThrow().data().path("state").asText());
+        assertDoesNotThrow(() -> operations.pause(operator,controlVersion())); assertDoesNotThrow(() -> operations.exportArchive(operator));
+    }
+    @Test void originalV1PackageDigestIsStillAcceptedOnRestorePreview() throws Exception {
+        operations.pause(operator,controlVersion()); var exported=operations.exportArchive(operator);
+        var legacy=new ArrayList<IntegrationArchive.Node>();
+        for (var node:exported.nodes()) {
+            var p=new HashMap<>(node.properties()); p.remove("externalType");
+            legacy.add(new IntegrationArchive.Node(node.label(),p));
+        }
+        for (String id:owned.keySet()) models.deleteModel(id,true);
+        try (var driver=sourceDriver()) { clearMetadata(driver); }
+        operations.pause(operator,0);
+        String digest=PublicationJson.digest(json.valueToTree(List.of(IntegrationArchive.LEGACY_FORMAT,runtime.settings().instanceId(),exported.targets(),legacy)));
+        var archive=new IntegrationArchive.Package(IntegrationArchive.LEGACY_FORMAT,runtime.settings().instanceId(),exported.exportedAt(),exported.targets(),legacy,digest);
+        var review=operations.previewRestore(operator,archive); operations.restore(operator,new RestoreRequest(archive,review.digest()));
+        assertTrue(operations.overview(operator).path("paused").asBoolean());
+        assertEquals(owned.get(model).canonicalId(),runtime.metadata().bindings(runtime.settings().instanceId(),runtime.settings().targets().getFirst().instanceId(),model,"",100).getFirst().canonical().canonicalId());
+    }
     @Test void metadataAndModelRecoveryPreserveAmbiguousFenceAndResumeTwoModelsOnlyAfterReviewedAttachment() throws Exception {
         String numeric="1.12345678901234567890123456789"; var proposed=Map.<String,JsonNode>of("property:budget",json.getNodeFactory().textNode(numeric));
         var numericPreview=central.preview(model,"fixture",architect,new CentralEditModel.PreviewRequest("HEAD",owned.get(model).elementId(),proposed));

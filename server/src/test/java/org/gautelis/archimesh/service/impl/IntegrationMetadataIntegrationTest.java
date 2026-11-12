@@ -70,6 +70,112 @@ class IntegrationMetadataIntegrationTest {
                 new ExternalResourceKey("turboea",scope,ResourceKind.CARD,resource),"ApplicationComponent","mapping-v1",batch);
     }
 
+    private org.gautelis.federation.Identity.Representation source(String id) {
+        return new org.gautelis.federation.Identity.Representation(new org.gautelis.federation.Identity.Resource(
+                new org.gautelis.federation.Identity.Repository("datahub",scope),org.gautelis.federation.Identity.ResourceKind.OBJECT,id),"dataset");
+    }
+    private org.gautelis.federation.Identity.Canonical neutral(String id) {
+        return new org.gautelis.federation.Identity.Canonical("urn:"+scope+":"+id,"catalog.dataset");
+    }
+    private org.gautelis.federation.IdentityRegistry.Evidence evidence(String id) {
+        return new org.gautelis.federation.IdentityRegistry.Evidence(id,"synthetic-steward","a".repeat(64));
+    }
+    @Test void independentConcurrentSourceReservationsPersistExactLongNativeIdentity() throws Exception {
+        var source=source("urn:li:dataset:"+"å".repeat(2000)); var registry=metadata.identities(scope);
+        try (var executor=Executors.newFixedThreadPool(4)) {
+            var calls=new ArrayList<java.util.concurrent.Callable<org.gautelis.federation.IdentityRegistry.Binding>>();
+            for (int i=0;i<12;i++) { int n=i; calls.add(() -> registry.reserveSource(source,neutral("candidate-"+n),evidence("reserve-"+n))); }
+            var results=executor.invokeAll(calls); var winner=results.getFirst().get();
+            for (var result:results) assertEquals(winner,result.get());
+            var reopened=new Neo4jIntegrationStateRepository(driver,json,false); reopened.installSchema();
+            assertEquals(winner,reopened.identities(scope).find(source.resource()).orElseThrow());
+            assertEquals(source.resource().nativeId(),winner.representation().resource().nativeId());
+        }
+        try (var session=driver.session()) {
+            assertEquals(0,session.run("MATCH (b:IntegrationModelBinding {instanceId:$scope}) RETURN count(b) AS n",Map.of("scope",scope)).single().get("n").asInt());
+            var stored=session.run("MATCH (e:IntegrationExternalBinding {targetInstanceId:$scope}) RETURN e.nativeId AS native,e.resourceId AS index",Map.of("scope",scope)).single();
+            assertEquals(source.resource().nativeId(),stored.get("native").asString()); assertTrue(stored.get("index").asString().startsWith("sha256:"));
+        }
+    }
+    @Test void independentBindingSharesCanonicalAndOneModelOccurrenceAcrossDifferentNativeTypes() {
+        var source=source("urn:li:dataset:synthetic"); var registry=metadata.identities(scope);
+        var reserved=registry.reserveSource(source,neutral("dataset"),evidence("source"));
+        var representation=new org.gautelis.federation.Identity.Representation(new org.gautelis.federation.Identity.Resource(
+                new org.gautelis.federation.Identity.Repository("turboea",scope),org.gautelis.federation.Identity.ResourceKind.OBJECT,"card-dataset"),"DataObject");
+        registry.bindRepresentation(reserved.canonical(),representation,evidence("representation"));
+        assertEquals(registry.lookup(source.resource()),registry.lookup(representation.resource()));
+        var canonical=new CanonicalObject(reserved.canonical().id(),reserved.canonical().semanticKind());
+        var nativeSource=new ExternalResourceKey("datahub",scope,ResourceKind.ENTITY,source.resource().nativeId());
+        var first=metadata.reserveImport(new ImportReservation(new ModelElementKey(scope,model,EntityKind.ELEMENT,"elem:data"),canonical,nativeSource,"DataObject","datahub-v1","batch-source","CREATE","dataset"));
+        var card=new ExternalResourceKey("turboea",scope,ResourceKind.CARD,"card-dataset");
+        var second=metadata.reserveImport(new ImportReservation(new ModelElementKey(scope,model,EntityKind.ELEMENT,"elem:other"),canonical,card,"DataObject","turboea-v1","batch-mirror","CREATE","DataObject"));
+        assertEquals(first,second); assertEquals("dataset",second.remoteType()); assertEquals("catalog.dataset",second.canonical().kind());
+        assertEquals(first,metadata.findModelBinding(scope,model,card).orElseThrow());
+        assertEquals(first,metadata.findModelBinding(scope,model,nativeSource).orElseThrow());
+    }
+    @Test void registryRejectsSemanticReassignmentRequestReuseOwnerChangeAndIndexMismatch() {
+        var registry=metadata.identities(scope); var source=source("urn:li:dataset:synthetic");
+        var canonical=neutral("dataset"); registry.reserveSource(source,canonical,evidence("request"));
+        var other=registry.reserveSource(source("urn:li:dataset:another"),neutral("another"),evidence("another-source"));
+        assertThrows(RuntimeException.class,() -> registry.bindRepresentation(canonical,other.representation(),evidence("cannot-merge")));
+        assertThrows(RuntimeException.class,() -> registry.reserveSource(source("urn:li:dataset:renamed"),canonical,evidence("cannot-rename")));
+        assertThrows(RuntimeException.class,() -> registry.reserveSource(source,neutral("changed-request"),evidence("request")));
+        assertThrows(RuntimeException.class,() -> registry.reserveSource(source,new org.gautelis.federation.Identity.Canonical(canonical.id(),"catalog.data-product"),evidence("wrong-kind")));
+        assertThrows(RuntimeException.class,() -> metadata.identities(scope+"-another-owner").find(source.resource()));
+        try (var session=driver.session()) { session.run("MATCH (e:IntegrationExternalBinding {canonicalId:$canonical}) SET e.nativeId='different-native-id'",Map.of("canonical",canonical.id())).consume(); }
+        assertThrows(RuntimeException.class,() -> registry.find(source.resource()));
+        assertThrows(RuntimeException.class,() -> registry.reserveSource(source,canonical,evidence("hash-conflict")));
+    }
+    @Test void applicationReferencesCanStartInTurboEaWhileDatasetReferencesStartInDataHub() {
+        var registry=metadata.identities(scope);
+        var application=new org.gautelis.federation.Identity.Canonical("urn:"+scope+":application","enterprise.application");
+        var card=new org.gautelis.federation.Identity.Representation(new org.gautelis.federation.Identity.Resource(
+                new org.gautelis.federation.Identity.Repository("turboea",scope),org.gautelis.federation.Identity.ResourceKind.OBJECT,"application-card"),"Application");
+        registry.reserveSource(card,application,evidence("application-source"));
+        var reference=new org.gautelis.federation.Identity.Representation(new org.gautelis.federation.Identity.Resource(
+                new org.gautelis.federation.Identity.Repository("datahub",scope),org.gautelis.federation.Identity.ResourceKind.OBJECT,"urn:li:application:reviewed-reference"),"application");
+        registry.bindRepresentation(application,reference,evidence("reviewed-application-reference"));
+        var dataset=registry.reserveSource(source("urn:li:dataset:separate"),neutral("dataset"),evidence("dataset-source"));
+        assertEquals(application,registry.lookup(reference.resource()).orElseThrow());
+        assertEquals("Application",registry.find(card.resource()).orElseThrow().representation().externalType());
+        assertEquals("application",registry.find(reference.resource()).orElseThrow().representation().externalType());
+        assertNotEquals(application,dataset.canonical());
+    }
+    @Test void registryOnlyArchiveRestoresFullIdentityProofAndUnknownOutcomeWithoutAnyModels() {
+        var registry=metadata.identities(scope); var source=source("urn:li:dataset:synthetic");
+        var binding=registry.reserveSource(source,neutral("dataset"),evidence("request"));
+        metadata.save(new StateDocument(scope,DocumentKind.CENTRAL_LANE,"unknown",0,json.createObjectNode().put("canonicalId",binding.canonical().id()).set("inFlight",json.createObjectNode().put("operationId","keep-unknown"))));
+        var archive=metadata.archive(scope); assertTrue(archive.stream().anyMatch(n -> n.label().equals("IntegrationCanonicalObject")));
+        assertTrue(archive.stream().anyMatch(n -> "IDENTITY_PROOF".equals(n.properties().get("kind"))));
+        try (var session=driver.session()) { session.run("MATCH (n) WHERE n.instanceId=$scope OR n.registryInstanceId=$scope OR n.targetInstanceId=$scope DETACH DELETE n",Map.of("scope",scope)).consume(); }
+        metadata.save(new StateDocument(scope,DocumentKind.OPERATIONS,"control",0,json.createObjectNode().put("paused",true)));
+        metadata.restoreArchive(scope,archive);
+        assertEquals(binding,metadata.identities(scope).find(source.resource()).orElseThrow());
+        assertEquals("keep-unknown",metadata.load(scope,DocumentKind.CENTRAL_LANE,"unknown").orElseThrow().data().path("inFlight").path("operationId").asText());
+        assertThrows(RuntimeException.class,() -> metadata.restoreArchive(scope,archive));
+    }
+    @Test void semanticClassificationRequiresPauseRejectsUnknownAndStaleReviewsAndKeepsAllIds() {
+        modelRepository.registerModel(model,"Classification fixture");
+        var first=metadata.reserveImport(request(model,"a","legacy","candidate","batch"));
+        String canonical=first.canonical().canonicalId();
+        assertThrows(RuntimeException.class,() -> metadata.previewIdentityMigration(scope,canonical,"enterprise.application"));
+        metadata.save(new StateDocument(scope,DocumentKind.OPERATIONS,"control",0,json.createObjectNode().put("paused",true)));
+        var review=metadata.previewIdentityMigration(scope,canonical,"enterprise.application");
+        var uncertain=metadata.save(new StateDocument(scope,DocumentKind.CENTRAL_LANE,"lane",0,json.createObjectNode().put("canonicalId",canonical).set("inFlight",json.createObjectNode().put("operationId","unknown"))));
+        assertThrows(RuntimeException.class,() -> metadata.migrateIdentity(scope,canonical,"enterprise.application",review.path("metadataDigest").asText(),"steward"));
+        metadata.save(new StateDocument(scope,DocumentKind.CENTRAL_LANE,"lane",uncertain.version(),json.createObjectNode().put("canonicalId",canonical)));
+        assertThrows(RuntimeException.class,() -> metadata.migrateIdentity(scope,canonical,"enterprise.application",review.path("metadataDigest").asText(),"steward"));
+        var refreshed=metadata.previewIdentityMigration(scope,canonical,"enterprise.application");
+        metadata.migrateIdentity(scope,canonical,"enterprise.application",refreshed.path("metadataDigest").asText(),"steward");
+        var migrated=metadata.findBinding(first.model()).orElseThrow();
+        assertEquals(first.model(),migrated.model()); assertEquals(first.external(),migrated.external()); assertEquals(first.opBatchId(),migrated.opBatchId());
+        assertEquals(canonical,migrated.canonical().canonicalId()); assertEquals("enterprise.application",migrated.canonical().kind()); assertEquals("application",migrated.remoteType());
+        assertTrue(metadata.load(scope,DocumentKind.MODEL_SCOPE,org.gautelis.archimesh.integration.PublicationJson.key("model-scope:",model)).orElseThrow().data().path("paused").asBoolean());
+        var coreResource=new org.gautelis.federation.Identity.Resource(new org.gautelis.federation.Identity.Repository("turboea",scope),org.gautelis.federation.Identity.ResourceKind.OBJECT,"legacy");
+        assertEquals(canonical,metadata.identities(scope).lookup(coreResource).orElseThrow().id());
+        assertDoesNotThrow(() -> metadata.archive(scope));
+    }
+
     @Test void repeatAndCrossModelImportsReuseCanonicalIdentityAndDurableReservation() {
         var first=metadata.reserveImport(request(model,"a","remote","candidate-a","batch-a"));
         var repeat=metadata.reserveImport(request(model,"another","remote","candidate-b","batch-b"));

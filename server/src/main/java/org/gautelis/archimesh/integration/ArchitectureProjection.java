@@ -28,7 +28,7 @@ public final class ArchitectureProjection {
             var bound=metadata.findPublicationIdentity(key);
             var candidates=target.mapping().cardTypes().entrySet().stream().filter(e -> e.getValue().equals(localType)
                     && target.publicationAccess().cardTypes().contains(e.getKey())).map(Map.Entry::getKey).toList();
-            String remote=bound.map(b -> b.canonical().kind()).filter(candidates::contains).orElseGet(() -> {
+            String remote=bound.map(PublicationIdentity::remoteType).filter(candidates::contains).orElseGet(() -> {
                 if (candidates.size()!=1) throw new Failure(409,"AMBIGUOUS_OR_UNMAPPED_CARD_TYPE"); return candidates.getFirst();
             });
             var identity=identity(key,remote,localType,target.mapping().version(),bound);
@@ -85,7 +85,7 @@ public final class ArchitectureProjection {
     private PublicationIdentity identity(ModelElementKey key,String kind,String type,String mapping,Optional<PublicationIdentity> existing) {
         if (existing.isPresent()) {
             var value=existing.get();
-            if (!value.archimateType().equals(type) || !value.mappingVersion().equals(mapping) || !value.canonical().kind().equals(kind))
+            if (!value.archimateType().equals(type) || !value.mappingVersion().equals(mapping) || !value.remoteType().equals(kind))
                 throw new Failure(409,"BINDING_MAPPING_MIGRATION_REQUIRED");
             return value;
         }

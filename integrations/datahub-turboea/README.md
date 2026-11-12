@@ -10,6 +10,9 @@ stages; this tooling does not enable synchronization or change ArchiMesh models.
 The [first D1 increment](docs/d1-contracts.md) adds an independently reusable
 [shared core](../../shared/federation-core/README.md) and ArchiMesh canonical field
 enforcement. The core lives outside this subproject; D0 commands do not build it.
+The [durable registry/classification increment](docs/d1-registry-migration.md)
+adds model-independent bindings and reviewed v1/v2 recovery. Application references
+in DataHub derive from Turbo EA; dataset/product projections derive from DataHub.
 
 ## Boundaries
 
@@ -25,6 +28,7 @@ enforcement. The core lives outside this subproject; D0 commands do not build it
   dependencies/links; it should not require moving the ArchiMesh model engine.
 
 See the [implementation stages](docs/implementation.md), [D0 assessment](docs/d0-assessment.md),
+[two source directions](docs/authority-directions.md),
 [shared identity ADR](../../docs/adr/0002-three-repository-federation.md) and the
 [ArchiMesh consumer boundary](../../docs/datahub-integration.md).
 
