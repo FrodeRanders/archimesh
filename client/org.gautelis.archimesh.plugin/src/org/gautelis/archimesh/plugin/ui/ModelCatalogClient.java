@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.gautelis.archimesh.plugin.util.ArchimeshAuthHints;
+import org.gautelis.archimesh.plugin.util.ClientBootstrapIdentity;
 import org.gautelis.archimesh.plugin.util.SimpleJson;
 
 /**
@@ -152,6 +153,7 @@ public final class ModelCatalogClient {
         if(bearerToken != null && !bearerToken.isBlank()) {
             builder.header("Authorization", "Bearer " + bearerToken.trim());
         }
+        ClientBootstrapIdentity.applyRestHeaders(builder, uri, bearerToken);
         return builder;
     }
 

@@ -29,6 +29,25 @@ The local bundle pool can be prepared from either:
 - Build standalone plugin:
   - `./scripts/build-client-standalone.sh`
 
+Run these commands from the repository root. The build prints the full path to
+the installable JAR, currently:
+
+```text
+client/org.gautelis.archimesh.plugin/target/org.gautelis.archimesh.plugin-5.8.0-SNAPSHOT.jar
+```
+
+To install that build into Archi, close Archi and run:
+
+```bash
+./scripts/install-archimesh-plugin.sh --no-build
+```
+
+Omitting `--no-build` builds the plugin first using the same pinned Maven wrapper.
+On macOS, the default destination is
+`~/Library/Application Support/Archi/dropins/eclipse/plugins/`; use `--dropins`
+to override the dropins root. Restart Archi with `-clean` after installation.
+The JAR is a Maven build output in `target/`, which is ignored by Git.
+
 ## Notes
 
 - Builds use `client/mvnw`, pinned to Maven 3.9.16 for Tycho compatibility.
@@ -36,6 +55,9 @@ The local bundle pool can be prepared from either:
 - It does not require syncing plugin sources to another repo.
 - If required bundles change in `MANIFEST.MF`, update `scripts/prepare-client-target-platform.sh`.
 - Building/running Tycho client builds may require escalated permissions in this environment due to `~/.m2` lock behavior.
+- Text fields use JSON escaping for all control characters, including multiline documentation.
+  On reconnect, legacy queued payloads with raw control characters are repaired after
+  saving an adjacent `.before-json-escaping.bak` backup. Text, operation IDs and queue order are preserved.
 
 ## Startup Pull From Server (Optional)
 
@@ -43,6 +65,19 @@ You can opt in to opening an Archimesh model from the central server when Archi 
 
 You can also open directly from server at runtime using:
 - `Tools -> Open Archimesh Model from Server...`
+
+For the order-management demo, this is the normal starting point: the bootstrap
+already imports its JSON package on the server. Follow the
+[server-first demo workflow](../examples/order-management/README.md#open-the-shared-model-in-archi).
+Opening one of the demo `.archimate` files alone creates an offline model and does
+not associate it with the server timeline.
+
+For a local bootstrap-mode server that requires authorization, supply both
+`ARCHIMESH_BOOTSTRAP_USER` and `ARCHIMESH_BOOTSTRAP_ROLES` when launching Archi
+(or Java properties `archimesh.bootstrap.user` and `archimesh.bootstrap.roles`).
+The plugin uses these for REST discovery/API calls and WebSocket connections to
+loopback hosts. Bearer-token sessions take precedence. The demo prints a complete
+launch command with its allocated port: `./scripts/demo.sh connection`.
 
 Or convert the currently active local model to Archimesh-backed collaboration:
 - `Tools -> Switch Active Model to Server-Backed...`
@@ -78,6 +113,11 @@ Behavior:
 - Runs only when enabled.
 - Skips startup pull if one or more models are already open.
 - Opens an in-memory model, connects to the Archimesh server, and forces a cold snapshot bootstrap before applying any later deltas.
+
+The Open/Switch/Connect dialogs use the active connection URL when connected,
+otherwise this same configured startup URL, then the default on port 8081.
+**Resynchronize Model** requests a new snapshot; replacement of the local projection
+is guarded so its cleanup does not publish deletions to the shared model.
 
 ## Inbound enterprise updates (M4)
 

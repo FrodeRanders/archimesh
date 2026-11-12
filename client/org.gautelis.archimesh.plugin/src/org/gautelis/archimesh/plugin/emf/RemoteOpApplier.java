@@ -794,7 +794,7 @@ public class RemoteOpApplier {
                 }
             }
             for(EObject referencing : referencingComponents) {
-                EcoreUtil.delete(referencing, true);
+                removeDiagramComponent(referencing);
             }
 
             // Defensive cleanup: ensure no relationship remains with a missing endpoint.
@@ -1007,19 +1007,7 @@ public class RemoteOpApplier {
         if(eObject == null) {
             return false;
         }
-        if(eObject instanceof IDiagramModelArchimateObject viewObject && viewObject.getArchimateElement() == null) {
-            // Do not keep dangling objects in the model. Remove from parent container if possible.
-            if(viewObject.eContainer() instanceof IDiagramModelContainer container) {
-                container.getChildren().remove(viewObject);
-            }
-            else {
-                EcoreUtil.delete(eObject, true);
-            }
-            viewObjectNotationClocks.remove(viewObjectId);
-            ArchimeshPlugin.logTrace("Removed dangling view object id=vo:" + viewObjectId);
-            return true;
-        }
-        EcoreUtil.delete(eObject, true);
+        removeDiagramComponent(eObject);
         viewObjectNotationClocks.remove(viewObjectId);
         ArchimeshPlugin.logTrace("Applied DeleteViewObject id=vo:" + viewObjectId);
         return true;
@@ -1030,10 +1018,33 @@ public class RemoteOpApplier {
                 new ArrayList<>(relationship.getReferencingDiagramConnections());
         for(IDiagramModelArchimateConnection connection : referencingConnections) {
             if(connection instanceof EObject eo) {
-                EcoreUtil.delete(eo, true);
+                removeDiagramComponent(eo);
             }
         }
         EcoreUtil.delete(relationship, true);
+    }
+
+    private void removeDiagramComponent(EObject object) {
+        // Match Archi's delete commands: disconnect figures before detaching their
+        // objects. EcoreUtil.delete can otherwise null an endpoint while a live
+        // edit part still refreshes the connection through ViewpointManager.
+        if(object instanceof com.archimatetool.model.IDiagramModelConnection connection) {
+            connection.disconnect();
+            return;
+        }
+        var connections = new java.util.LinkedHashSet<com.archimatetool.model.IDiagramModelConnection>();
+        if(object instanceof IConnectable connectable) {
+            connections.addAll(connectable.getSourceConnections());
+            connections.addAll(connectable.getTargetConnections());
+        }
+        for(var iter = object.eAllContents(); iter.hasNext();) {
+            if(iter.next() instanceof IConnectable connectable) {
+                connections.addAll(connectable.getSourceConnections());
+                connections.addAll(connectable.getTargetConnections());
+            }
+        }
+        for(var connection : connections) connection.disconnect();
+        EcoreUtil.remove(object);
     }
 
     private boolean applyCreateConnection(String opJson) {
@@ -1078,7 +1089,7 @@ public class RemoteOpApplier {
         if(eObject == null) {
             return false;
         }
-        EcoreUtil.delete(eObject, true);
+        removeDiagramComponent(eObject);
         connectionNotationClocks.remove(connectionId);
         ArchimeshPlugin.logTrace("Applied DeleteConnection id=conn:" + connectionId);
         return true;
@@ -1980,10 +1991,7 @@ public class RemoteOpApplier {
     }
 
     private String escapeJson(String value) {
-        if(value == null) {
-            return "";
-        }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+        return SimpleJson.escapeString(value);
     }
 
     private List<String> extractNotationFields(String notationJson) {

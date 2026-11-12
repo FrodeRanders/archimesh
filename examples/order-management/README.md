@@ -7,9 +7,12 @@ Turbo EA and ArchiMesh, plus a native Archi model and small business-record CSVs
 The named COTS products are illustrative; the demo does not install or execute them.
 There is no cloud deployment or dependency on agency data or credentials.
 
-Ready-to-open Archi files are included: [viewless source model](models/order-management.archimate)
-and [model with a synthesized view](models/order-management-synthesized.archimate).
-These are snapshots of the declarative fixture, not exports from an agency repository.
+The shared-model starting point is the [ArchiMesh import package](models/archimesh-model.json).
+The demo imports it on the server; Archi then opens that model from the server.
+The included [viewless Archi file](models/order-management.archimate) and
+[Archi file with a synthesized view](models/order-management-synthesized.archimate)
+are optional offline examples. Opening either file alone does not connect it to
+the server model. All three files come from the synthetic declarative fixture.
 
 ## Clean-checkout demo: one command
 
@@ -29,10 +32,78 @@ required. First use needs internet access to public source/package/image registr
 all running services and data remain local. Subsequent builds reuse the local cache.
 
 The command prints the three web URLs and the location of private access details.
+It also prints the Archi connection URL, model ID, bootstrap identity and a launch
+command that opens the prepared server model. Ports belong to each run and are
+allocated dynamically; the default Archi dialog URL on port 8081 is usually a
+different development server. Archi does not automatically discover demo servers.
 It leaves the demo running. The Turbo EA UI includes its normal catalog/navigation;
 its separate DrawIO distribution is omitted from this compact demo image. Archi
 models and the synthesized view are supplied separately above. Archi desktop is an
 optional client, not installed by the script.
+
+## Open the shared model in Archi
+
+`./scripts/demo.sh up` already imports `archimesh-model.json` through
+`POST /admin/models/import?overwrite=false`. ArchiMesh restores the model history
+and materialized graph in Neo4j. No client-side `.archimate` file is required.
+The command prints the Archi WebSocket base URL, model ID and import-package path;
+these are also recorded in the run's `access.json` under `archiConnection`.
+
+With the Archimesh plugin installed:
+
+1. Close open models, quit Archi and use the launch command printed by the script. It supplies the
+   demo bootstrap identity and automatically opens the prepared server model.
+   The current plugin is required; rebuild/install it after updating this checkout.
+2. Alternatively, launch Archi with `ARCHIMESH_BOOTSTRAP_USER=northstar-demo-admin`
+   and `ARCHIMESH_BOOTSTRAP_ROLES=admin` in its environment, then choose
+   **Tools → Open Archimesh Model from Server…**.
+3. Enter the printed **WebSocket Base URL** (`ws://127.0.0.1:<archimesh-port>`,
+   without `/admin-ui/`), then click **Load** beside the model selector.
+4. Select `northstar-order-management-demo-v1` and reference **HEAD**, then open it.
+
+Leave the bearer token empty for this local bootstrap-mode demo. The plugin sends
+the configured identity on catalog requests and the WebSocket handshake. These
+explicit bootstrap settings apply to loopback servers only; bearer authentication
+takes precedence when supplied. For another Archi executable location, set
+`ARCHI_EXECUTABLE` when printing the launch command.
+
+Redisplay the addresses and launch command at any time, even with Docker stopped:
+
+```bash
+./scripts/demo.sh connection
+./scripts/demo.sh connection --run <run>
+```
+
+This reads recorded addresses; `./scripts/demo.sh status` also checks containers.
+To stop the separate development stack and resume the existing prepared demo:
+
+```bash
+./scripts/dev-down.sh
+./scripts/demo.sh start
+```
+
+Use `./scripts/demo.sh down` followed by `./scripts/demo.sh start` to stop/resume
+the same demo while retaining its model, ports and credentials. `up` creates a
+fresh run with new ports and credentials. `dev-up.sh` starts separate model storage
+and does not load the demo model or configure a Turbo EA catalog.
+
+The plugin fetches the central snapshot into a server-backed model and connects
+for subsequent updates. HEAD is writable; a named tag opens a read-only snapshot.
+The demo model has no diagrams: expand its Application, Relations and Technology
+folders to inspect its semantic content. A local file with the same content is
+not automatically associated with this server timeline.
+
+For manual loading into a separate ArchiMesh environment, open the admin UI's
+**Versions → Import / Export**, choose
+[`models/archimesh-model.json`](models/archimesh-model.json), and click
+**Import Package**. Then open the imported model from Archi as above, using that
+environment's URL and authentication. The import package includes the complete
+initial operation history, rather than only a graph snapshot. Use the server's
+import API/UI so it can maintain revisions and model identity.
+
+If the demo bootstrap has already loaded the model, skip manual import. Leave
+overwrite disabled to preserve any subsequent edits. Model export in this same
+admin panel produces a package of the current server model for backup/restore.
 
 ```bash
 ./scripts/demo.sh status
@@ -110,8 +181,9 @@ connections derived from the existing semantic graph. Layout is a simple
 deterministic arrangement, intended as a starting point for an architect.
 
 The original model remains viewless. The generated view is a separate local Archi
-artifact; the loader does not install it into ArchiMesh. Publishing diagram edits
-can subsequently use the ordinary ArchiMesh plugin workflow.
+artifact; the loader does not install it into ArchiMesh. To create a shared diagram,
+open the server-backed model as above and create the view there. Opening the
+synthesized offline file does not publish its diagram to the server.
 
 Access direction is encoded natively in the Archi file. The current ArchiMesh
 operation format stores the relationship name and a `demo.accessType` custom
@@ -212,6 +284,11 @@ This is a seed-and-verify fixture. It does not implement or prove continuous
 DataHub ↔ Turbo EA synchronization, registry convergence, least-privilege connector
 permissions, fault recovery across repositories or production disclosure controls.
 ArchiMesh integration workers stay disabled in this disposable stack.
+The Turbo EA catalog in Archi's Enterprise Repository dialog is also disabled:
+the demo does not install an approved connector/registry configuration or supply
+its Turbo EA service credentials to ArchiMesh. Reaching the correct model server
+does not by itself enable this catalog. See the
+[M2 catalog configuration](../../docs/turboea/m2-import.md) for that separate setup.
 
 ## Module boundary
 

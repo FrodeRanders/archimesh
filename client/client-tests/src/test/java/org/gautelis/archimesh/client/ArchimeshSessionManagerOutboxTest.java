@@ -20,6 +20,51 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 class ArchimeshSessionManagerOutboxTest {
 
+    @Test
+    void reloadRepairsLegacyJsonWithoutChangingPendingEditsOrQueueOrder() throws Exception {
+        String model="legacy-json";
+        String first=submitOps(model,7,"first").replace("\"ops\":[{\"op\":\"Noop\"}]", "\"ops\":[{\"type\":\"UpdateElement\",\"elementId\":\"elem:e\",\"patch\":{\"documentation\":\"First\nsecond\tline\"}}]");
+        Assertions.assertTrue(first.contains("\n"),"Fixture must contain the legacy malformed string");
+        String second=submitOps(model,7,"second");
+        Path directory=tempHome.resolve("Archi/archimesh-cache"); Files.createDirectories(directory);
+        Path file=directory.resolve(model+"__HEAD.archimate.outbox.properties");
+        var properties=new java.util.Properties(); properties.setProperty("count","2"); properties.setProperty("modelId",model);
+        properties.setProperty("item.0.payload",java.util.Base64.getEncoder().encodeToString(first.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        properties.setProperty("item.1.payload",java.util.Base64.getEncoder().encodeToString(second.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        try(var output=Files.newOutputStream(file)) { properties.store(output,"Legacy outbox"); }
+        byte[] original=Files.readAllBytes(file);
+        var manager=new ArchimeshSessionManager();
+        Method load=ArchimeshSessionManager.class.getDeclaredMethod("loadOutboxFromDisk",String.class); load.setAccessible(true);
+        load.invoke(manager,model);
+        var queued=queuedPayloads(manager);
+        Assertions.assertEquals(2,queued.size());
+        Assertions.assertEquals(org.gautelis.archimesh.plugin.util.SimpleJson.repairUnescapedControlCharacters(first),queued.getFirst());
+        Assertions.assertEquals(second,queued.get(1));
+        Assertions.assertArrayEquals(original,Files.readAllBytes(file.resolveSibling(file.getFileName()+".before-json-escaping.bak")));
+        var loadedAgain=new ArchimeshSessionManager(); load.invoke(loadedAgain,model);
+        Assertions.assertEquals(queued,queuedPayloads(loadedAgain),"Repaired payloads must remain durable across another restart");
+        ControlledWebSocket ws=new ControlledWebSocket(); setField(loadedAgain,"webSocket",ws); setField(loadedAgain,"currentModelId",model);
+        loadedAgain.setLastKnownRevision(7);
+        Assertions.assertTrue(ws.sentTexts.getFirst().contains("First\\u000asecond\\u0009line"));
+        ws.completeSend(0,null);
+        loadedAgain.onServerOpsAccepted("first");
+        Assertions.assertEquals(1,queuedPayloads(loadedAgain).size());
+        Assertions.assertTrue(ws.sentTexts.get(1).contains("\"opBatchId\":\"second\""));
+        ws.completeSend(1,null); loadedAgain.onServerOpsAccepted("second");
+    }
+
+    @Test
+    void reconnectActorStringsEscapeNewlinesAndTabs() throws Exception {
+        var manager=new ArchimeshSessionManager(); var ws=new ControlledWebSocket(); setField(manager,"webSocket",ws);
+        manager.setActor("northstar-demo-admin\n", "session\tvalue");
+        manager.sendJoin(null);
+        String json=ws.sentTexts.getFirst();
+        Assertions.assertTrue(json.chars().noneMatch(c -> c<32));
+        String payload=org.gautelis.archimesh.plugin.util.SimpleJson.readRawField(json,"payload");
+        String actor=org.gautelis.archimesh.plugin.util.SimpleJson.readRawField(payload,"actor");
+        Assertions.assertEquals("northstar-demo-admin\n",org.gautelis.archimesh.plugin.util.SimpleJson.readStringField(actor,"userId"));
+    }
+
     private String originalUserHome;
     private Path tempHome;
 

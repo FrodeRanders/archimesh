@@ -1,8 +1,10 @@
 import io
+from contextlib import redirect_stdout
 import json
 from pathlib import Path
 import tarfile
 import tempfile
+import shlex
 import unittest
 from unittest.mock import patch
 
@@ -11,6 +13,35 @@ import local
 
 
 class BootstrapTest(unittest.TestCase):
+    def test_connection_summary_contains_run_urls_and_matching_archi_launch_identity(self):
+        state = {"run":"0123456789ab","env":{"DEMO_ARCHIMESH_PORT":"18081", "DEMO_TURBO_UI_PORT":"18920"}}
+        with tempfile.TemporaryDirectory() as temp, patch.object(local,"directory",return_value=Path(temp)), \
+             patch.object(local,"datahub",return_value={"env":{"DATAHUB_FRONTEND_PORT":"19002"},"directory":"/private/demo-datahub"}):
+            (Path(temp)/"artifacts").mkdir()
+            (Path(temp)/"artifacts/archimesh-model.json").write_text(json.dumps({"model":{"modelId":"prepared-model"}}))
+            output = io.StringIO()
+            with redirect_stdout(output): bootstrap.access(state)
+            summary = output.getvalue()
+            for text in ("http://127.0.0.1:18081/admin-ui/", "http://127.0.0.1:18920", "http://127.0.0.1:19002",
+                         "ws://127.0.0.1:18081", "prepared-model (HEAD)", "catalog in Archi: disabled", "access.json"):
+                self.assertIn(text,summary)
+            launch = shlex.split(next(line.strip() for line in summary.splitlines() if line.startswith("  env ")))
+            self.assertIn("ARCHIMESH_BOOTSTRAP_USER=northstar-demo-admin",launch)
+            self.assertIn("ARCHIMESH_BOOTSTRAP_ROLES=admin",launch)
+            self.assertIn("ARCHIMESH_STARTUP_PULL_WS_BASE_URL=ws://127.0.0.1:18081",launch)
+            self.assertIn("ARCHIMESH_STARTUP_PULL_MODEL_ID=prepared-model",launch)
+            access = json.loads((Path(temp)/"access.json").read_text())
+            self.assertEqual("prepared-model",access["archiConnection"]["modelId"])
+
+    def test_connection_command_does_not_require_docker_or_start_services(self):
+        state = {"mode":"compose"}
+        with patch.object(bootstrap,"preflight") as preflight, patch.object(local,"load",return_value=state), \
+             patch.object(bootstrap,"access") as access, patch("sys.argv",["bootstrap.py","connection","--run","0123456789ab"]), \
+             redirect_stdout(io.StringIO()):
+            bootstrap.main()
+            preflight.assert_not_called()
+            access.assert_called_once_with(state)
+
     def archive(self, path, kind, name):
         with tarfile.open(path,"w:gz") as stream:
             member = tarfile.TarInfo("turbo-ea-" + bootstrap.REVISION + "/" + name)

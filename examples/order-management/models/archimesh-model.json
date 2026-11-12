@@ -1,0 +1,2944 @@
+{
+  "format": "archi-model-export-v1",
+  "exportedAt": "2026-01-15T12:00:00Z",
+  "model": {
+    "modelId": "northstar-order-management-demo-v1",
+    "modelName": "Northstar Trade — order to cash",
+    "headRevision": 176
+  },
+  "snapshot": {
+    "format": "archimate-materialized-v1",
+    "modelId": "northstar-order-management-demo-v1",
+    "headRevision": 176,
+    "elements": [
+      {
+        "id": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "archimateType": "ApplicationComponent",
+        "name": "Northstar Order Management",
+        "documentation": "Accepts sales orders, validates prices, reserves stock and coordinates fulfilment and invoicing. Sourcing: in-house\nDemo canonical reference: urn:demo:northstar:application:oms"
+      },
+      {
+        "id": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+        "archimateType": "ApplicationComponent",
+        "name": "Northstar Trade Portal",
+        "documentation": "Business customer storefront and order-status portal. Sourcing: in-house\nDemo canonical reference: urn:demo:northstar:application:storefront"
+      },
+      {
+        "id": "elem:id-256dd9a321365a89bdff29d0bfe6d1f0",
+        "archimateType": "ApplicationComponent",
+        "name": "Sales CRM (SuiteCRM)",
+        "documentation": "On-premises CRM: customer accounts and sales opportunities. Sourcing: COTS\nDemo canonical reference: urn:demo:northstar:application:crm"
+      },
+      {
+        "id": "elem:id-01de1e9065045ec38fb1ab9d949ff43e",
+        "archimateType": "ApplicationComponent",
+        "name": "Finance ERP (Odoo)",
+        "documentation": "On-premises ERP: product prices, invoices and settlement records. Sourcing: COTS\nDemo canonical reference: urn:demo:northstar:application:erp"
+      },
+      {
+        "id": "elem:id-f86283d59d7655208535428b062b04c8",
+        "archimateType": "ApplicationComponent",
+        "name": "Warehouse Management (ERPNext)",
+        "documentation": "Illustrative on-premises warehouse application: stock, picking and shipment confirmation. Sourcing: COTS\nDemo canonical reference: urn:demo:northstar:application:wms"
+      },
+      {
+        "id": "elem:id-22104b12ced25ed2a4df16730a0957a4",
+        "archimateType": "ApplicationComponent",
+        "name": "Sales Analytics (Apache Superset)",
+        "documentation": "On-premises sales reporting over the curated analytics warehouse. Sourcing: COTS\nDemo canonical reference: urn:demo:northstar:application:analytics"
+      },
+      {
+        "id": "elem:id-34d2c3daa128562ca4a63564ab9a93c2",
+        "archimateType": "DataObject",
+        "name": "Customer account",
+        "documentation": "Logical trading account; not equivalent to a physical dataset.\nDemo canonical reference: urn:demo:northstar:logical-data:customer"
+      },
+      {
+        "id": "elem:id-39ec4bf969335a6d869cb7eb303860f1",
+        "archimateType": "DataObject",
+        "name": "Product and price",
+        "documentation": "Logical sellable product and agreed list price.\nDemo canonical reference: urn:demo:northstar:logical-data:product"
+      },
+      {
+        "id": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+        "archimateType": "DataObject",
+        "name": "Sales order",
+        "documentation": "Logical customer order including header and lines.\nDemo canonical reference: urn:demo:northstar:logical-data:order"
+      },
+      {
+        "id": "elem:id-f5cd591cdc285d79b8e37a9f9e3a65d4",
+        "archimateType": "DataObject",
+        "name": "Stock availability",
+        "documentation": "Logical available inventory and reservations.\nDemo canonical reference: urn:demo:northstar:logical-data:stock"
+      },
+      {
+        "id": "elem:id-cbe9fa295fe85cbd8113e06dc76408da",
+        "archimateType": "DataObject",
+        "name": "Shipment",
+        "documentation": "Logical outbound shipment and delivery status.\nDemo canonical reference: urn:demo:northstar:logical-data:shipment"
+      },
+      {
+        "id": "elem:id-530e3d3dd60f536984c9bbd323f16e8f",
+        "archimateType": "DataObject",
+        "name": "Sales invoice",
+        "documentation": "Logical invoice and settlement status.\nDemo canonical reference: urn:demo:northstar:logical-data:invoice"
+      },
+      {
+        "id": "elem:id-d403b51f7a615526ab436216bb554774",
+        "archimateType": "Node",
+        "name": "Trade application cluster",
+        "documentation": "On-premises Kubernetes runtime; illustrative deployment dependency, not a discovered cluster.\nDemo canonical reference: urn:demo:northstar:infrastructure:kubernetes"
+      },
+      {
+        "id": "elem:id-0e775a67372858d08a3028b8c6ae71a2",
+        "archimateType": "Node",
+        "name": "Operational PostgreSQL service",
+        "documentation": "On-premises database service with separate application databases.\nDemo canonical reference: urn:demo:northstar:infrastructure:postgres"
+      },
+      {
+        "id": "elem:id-87ea2445e05b5e09b76794f417cf547d",
+        "archimateType": "Node",
+        "name": "Packaged-application MariaDB service",
+        "documentation": "Illustrative on-premises database service for the CRM and warehouse applications; catalogued using the MySQL-compatible platform.\nDemo canonical reference: urn:demo:northstar:infrastructure:mariadb"
+      },
+      {
+        "id": "elem:id-d2f886c8225956f4b7850fe5c2ab578a",
+        "archimateType": "Node",
+        "name": "Trade event broker",
+        "documentation": "On-premises Kafka service carrying order and shipment events.\nDemo canonical reference: urn:demo:northstar:infrastructure:kafka"
+      },
+      {
+        "id": "elem:id-ba4b3b66832d5dad9fb3ce087be7860a",
+        "archimateType": "Node",
+        "name": "Trade analytics warehouse",
+        "documentation": "On-premises PostgreSQL analytical store.\nDemo canonical reference: urn:demo:northstar:infrastructure:warehouse"
+      },
+      {
+        "id": "elem:id-609d9bc0830f5327959f37a6c2f2aaf9",
+        "archimateType": "Node",
+        "name": "Trade virtual machine platform",
+        "documentation": "On-premises virtual machines hosting packaged business applications.\nDemo canonical reference: urn:demo:northstar:infrastructure:virtualization"
+      },
+      {
+        "id": "elem:id-ab7f25860732599d97f55c4d195b4037",
+        "archimateType": "ApplicationFunction",
+        "name": "Capture sales order",
+        "documentation": "Validate customer and capture requested order lines.\nDemo canonical reference: urn:demo:northstar:function:capture"
+      },
+      {
+        "id": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+        "archimateType": "ApplicationFunction",
+        "name": "Validate order pricing",
+        "documentation": "Check agreed prices and calculate order value.\nDemo canonical reference: urn:demo:northstar:function:price"
+      },
+      {
+        "id": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674",
+        "archimateType": "ApplicationFunction",
+        "name": "Reserve available stock",
+        "documentation": "Request reservation from the warehouse application.\nDemo canonical reference: urn:demo:northstar:function:reserve"
+      },
+      {
+        "id": "elem:id-88bee996429e52b3998c65a12965dbc6",
+        "archimateType": "ApplicationFunction",
+        "name": "Coordinate fulfilment",
+        "documentation": "Release accepted order to the warehouse and track shipment.\nDemo canonical reference: urn:demo:northstar:function:fulfil"
+      },
+      {
+        "id": "elem:id-bf54dcc824895bf4b2bc45e9fe8dfa7f",
+        "archimateType": "ApplicationFunction",
+        "name": "Request sales invoice",
+        "documentation": "Request invoice creation in the finance ERP after shipment.\nDemo canonical reference: urn:demo:northstar:function:invoice"
+      },
+      {
+        "id": "elem:id-5178680c3e675578a1937d2ae35d942c",
+        "archimateType": "ApplicationFunction",
+        "name": "Provide order status",
+        "documentation": "Expose order state to the trade portal.\nDemo canonical reference: urn:demo:northstar:function:status"
+      },
+      {
+        "id": "elem:id-b05b0ffdc0a951db8bb8ad839c9517de",
+        "archimateType": "ApplicationService",
+        "name": "Sales order submission",
+        "documentation": "Service exposed by the in-house order application."
+      },
+      {
+        "id": "elem:id-884a61518359597a8c42d5bc25ed6690",
+        "archimateType": "ApplicationService",
+        "name": "Order tracking",
+        "documentation": "Service exposed by the in-house order application."
+      }
+    ],
+    "relationships": [
+      {
+        "id": "rel:id-81a0722314f451bb9fe79699968e4b74",
+        "archimateType": "AssignmentRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-ab7f25860732599d97f55c4d195b4037",
+        "name": "",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-df79e87ed1e6542fb982bf9900c85212",
+        "archimateType": "AssignmentRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+        "name": "",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-61dae03ca52150b28e6d4070b16b1074",
+        "archimateType": "AssignmentRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674",
+        "name": "",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-63d8dc4106e057a996e12a07990d632a",
+        "archimateType": "AssignmentRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-88bee996429e52b3998c65a12965dbc6",
+        "name": "",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-dc02b27ff0c755338ecd79367d82cee2",
+        "archimateType": "AssignmentRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-bf54dcc824895bf4b2bc45e9fe8dfa7f",
+        "name": "",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-d654b021896c5cefb8961eee20b00a46",
+        "archimateType": "AssignmentRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-5178680c3e675578a1937d2ae35d942c",
+        "name": "",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-0a250879b4455bd48ec923e6d9bda84a",
+        "archimateType": "FlowRelationship",
+        "sourceId": "elem:id-ab7f25860732599d97f55c4d195b4037",
+        "targetId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+        "name": "Submitted order",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-87ed926732245fd2a6ad41e821f8d872",
+        "archimateType": "FlowRelationship",
+        "sourceId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+        "targetId": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674",
+        "name": "Priced order",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-ab5d42f02b225fe49334939f097af504",
+        "archimateType": "FlowRelationship",
+        "sourceId": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674",
+        "targetId": "elem:id-88bee996429e52b3998c65a12965dbc6",
+        "name": "Reservation confirmed",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-3002cab667b4533d8928d7d9f3569ccb",
+        "archimateType": "FlowRelationship",
+        "sourceId": "elem:id-88bee996429e52b3998c65a12965dbc6",
+        "targetId": "elem:id-bf54dcc824895bf4b2bc45e9fe8dfa7f",
+        "name": "Shipment confirmed",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-778349a22b865df584bd7a9baa2acc2d",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-ab7f25860732599d97f55c4d195b4037",
+        "targetId": "elem:id-34d2c3daa128562ca4a63564ab9a93c2",
+        "name": "Read",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-0849539aa1a656fb8bdebd1b5a6862be",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-ab7f25860732599d97f55c4d195b4037",
+        "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+        "name": "Write",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Write"
+      },
+      {
+        "id": "rel:id-df76498a70ad5db992f4abcc906182ca",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+        "targetId": "elem:id-39ec4bf969335a6d869cb7eb303860f1",
+        "name": "Read",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-fd2df1a847035576824f48a69dc46cab",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+        "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+        "name": "ReadWrite",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "ReadWrite"
+      },
+      {
+        "id": "rel:id-5ce3f104ce9253f5ab6d385bd85fad4d",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674",
+        "targetId": "elem:id-f5cd591cdc285d79b8e37a9f9e3a65d4",
+        "name": "Read",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-1f10935b0811524b9cfa629e509b35dd",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-88bee996429e52b3998c65a12965dbc6",
+        "targetId": "elem:id-cbe9fa295fe85cbd8113e06dc76408da",
+        "name": "Read",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-7bbfa0a020ca5d2d91e25883ae0123ff",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-bf54dcc824895bf4b2bc45e9fe8dfa7f",
+        "targetId": "elem:id-530e3d3dd60f536984c9bbd323f16e8f",
+        "name": "Read",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-8d352c8734e25ed09c819ade183e8a5f",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-5178680c3e675578a1937d2ae35d942c",
+        "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+        "name": "Read",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-ea9d73179a8453e7aa8c78c95ebf90bc",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-256dd9a321365a89bdff29d0bfe6d1f0",
+        "targetId": "elem:id-34d2c3daa128562ca4a63564ab9a93c2",
+        "name": "CRUD",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "ReadWrite"
+      },
+      {
+        "id": "rel:id-ec9a3925fab85d5fbc8cb7423d9befa5",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-01de1e9065045ec38fb1ab9d949ff43e",
+        "targetId": "elem:id-39ec4bf969335a6d869cb7eb303860f1",
+        "name": "CRUD",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "ReadWrite"
+      },
+      {
+        "id": "rel:id-462b8d3a15a3512eaaca4689bde18026",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-01de1e9065045ec38fb1ab9d949ff43e",
+        "targetId": "elem:id-530e3d3dd60f536984c9bbd323f16e8f",
+        "name": "CRUD",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "ReadWrite"
+      },
+      {
+        "id": "rel:id-63d3c3e1fa6653d6ba88e2c4ff6cdbdc",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-34d2c3daa128562ca4a63564ab9a93c2",
+        "name": "R",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-8db7f8ba19da5aab84fa6797d47da882",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-39ec4bf969335a6d869cb7eb303860f1",
+        "name": "R",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-19be046729db5974a497601faf3722f8",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+        "name": "CRUD",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "ReadWrite"
+      },
+      {
+        "id": "rel:id-c458bb16ddfe5a61967bc4bce43f95ff",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-f5cd591cdc285d79b8e37a9f9e3a65d4",
+        "name": "R",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-5a1b31bb0eb65fb7bbdea76e2efd61c1",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-cbe9fa295fe85cbd8113e06dc76408da",
+        "name": "R",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-e9c07a6a38b652fcb1e83fad619b202d",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-530e3d3dd60f536984c9bbd323f16e8f",
+        "name": "R",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-da9eff9135ea5694901a7d58e29aa3a7",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+        "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+        "name": "R",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-c1f192ef0ef657e481c26b139810ec50",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+        "targetId": "elem:id-39ec4bf969335a6d869cb7eb303860f1",
+        "name": "R",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-d3df95777312584cb94e3f5c43d8e344",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-f86283d59d7655208535428b062b04c8",
+        "targetId": "elem:id-f5cd591cdc285d79b8e37a9f9e3a65d4",
+        "name": "CRUD",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "ReadWrite"
+      },
+      {
+        "id": "rel:id-4f8bd1fb3e0654828e95a0c002439e94",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-f86283d59d7655208535428b062b04c8",
+        "targetId": "elem:id-cbe9fa295fe85cbd8113e06dc76408da",
+        "name": "CRUD",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "ReadWrite"
+      },
+      {
+        "id": "rel:id-f0e34feb13fe5b2e85a980e6bae1c69f",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-f86283d59d7655208535428b062b04c8",
+        "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+        "name": "R",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-2ce0a8eecdcc50029aae0a9206078555",
+        "archimateType": "AccessRelationship",
+        "sourceId": "elem:id-22104b12ced25ed2a4df16730a0957a4",
+        "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+        "name": "R",
+        "documentation": "Synthetic Northstar demonstration relationship.",
+        "accessType": "Read"
+      },
+      {
+        "id": "rel:id-9b13a2473e9a58f5b4b77d5735fbdce2",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-d403b51f7a615526ab436216bb554774",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-36724adcec8a54b38c86adab1a31df38",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-0e775a67372858d08a3028b8c6ae71a2",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-20d87e06e5875ae2bd9eca55e4401c9e",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+        "targetId": "elem:id-d2f886c8225956f4b7850fe5c2ab578a",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-bfd35f8987e459fbb2ea9194b287a154",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+        "targetId": "elem:id-d403b51f7a615526ab436216bb554774",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-3a91a61249515ceb843f1d4f7b31a148",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-256dd9a321365a89bdff29d0bfe6d1f0",
+        "targetId": "elem:id-609d9bc0830f5327959f37a6c2f2aaf9",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-c015b04a16d85fa4859d7e7b768dce13",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-256dd9a321365a89bdff29d0bfe6d1f0",
+        "targetId": "elem:id-87ea2445e05b5e09b76794f417cf547d",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-8870b4e399185a658f87510979d255b1",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-01de1e9065045ec38fb1ab9d949ff43e",
+        "targetId": "elem:id-609d9bc0830f5327959f37a6c2f2aaf9",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-a50c51927b03505d805ffe5f4fddcf0e",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-01de1e9065045ec38fb1ab9d949ff43e",
+        "targetId": "elem:id-0e775a67372858d08a3028b8c6ae71a2",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-e8d24387162f53a387f045fb330cf944",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-f86283d59d7655208535428b062b04c8",
+        "targetId": "elem:id-609d9bc0830f5327959f37a6c2f2aaf9",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-315dd8d3cf8955c189230f741502bcca",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-f86283d59d7655208535428b062b04c8",
+        "targetId": "elem:id-87ea2445e05b5e09b76794f417cf547d",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-3183213007b4521683d2735eb321afa8",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-22104b12ced25ed2a4df16730a0957a4",
+        "targetId": "elem:id-d403b51f7a615526ab436216bb554774",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-2ef5b41d1a295e759235a895410ac405",
+        "archimateType": "AssociationRelationship",
+        "sourceId": "elem:id-22104b12ced25ed2a4df16730a0957a4",
+        "targetId": "elem:id-ba4b3b66832d5dad9fb3ce087be7860a",
+        "name": "deployment dependency",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-3a1816ca468a52c881212a0d70c7a5f5",
+        "archimateType": "RealizationRelationship",
+        "sourceId": "elem:id-ab7f25860732599d97f55c4d195b4037",
+        "targetId": "elem:id-b05b0ffdc0a951db8bb8ad839c9517de",
+        "name": "",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-b4889de3d46a5117a93f0d32fdf2438c",
+        "archimateType": "ServingRelationship",
+        "sourceId": "elem:id-b05b0ffdc0a951db8bb8ad839c9517de",
+        "targetId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+        "name": "",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-c0fea44da8b55263a26687298b1abb71",
+        "archimateType": "RealizationRelationship",
+        "sourceId": "elem:id-5178680c3e675578a1937d2ae35d942c",
+        "targetId": "elem:id-884a61518359597a8c42d5bc25ed6690",
+        "name": "",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      },
+      {
+        "id": "rel:id-95f53d8241d05b34b125c5cf2b3121d5",
+        "archimateType": "ServingRelationship",
+        "sourceId": "elem:id-884a61518359597a8c42d5bc25ed6690",
+        "targetId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+        "name": "",
+        "documentation": "Synthetic Northstar demonstration relationship."
+      }
+    ],
+    "folders": [
+      {
+        "id": "folder:root-application",
+        "folderType": "APPLICATION",
+        "name": "Application"
+      },
+      {
+        "id": "folder:root-relations",
+        "folderType": "RELATIONS",
+        "name": "Relations"
+      },
+      {
+        "id": "folder:root-technology",
+        "folderType": "TECHNOLOGY",
+        "name": "Technology & Physical"
+      }
+    ],
+    "views": [],
+    "elementFolderMembers": [
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-256dd9a321365a89bdff29d0bfe6d1f0"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-01de1e9065045ec38fb1ab9d949ff43e"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-f86283d59d7655208535428b062b04c8"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-22104b12ced25ed2a4df16730a0957a4"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-34d2c3daa128562ca4a63564ab9a93c2"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-39ec4bf969335a6d869cb7eb303860f1"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-f5cd591cdc285d79b8e37a9f9e3a65d4"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-cbe9fa295fe85cbd8113e06dc76408da"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-530e3d3dd60f536984c9bbd323f16e8f"
+      },
+      {
+        "folderId": "folder:root-technology",
+        "elementId": "elem:id-d403b51f7a615526ab436216bb554774"
+      },
+      {
+        "folderId": "folder:root-technology",
+        "elementId": "elem:id-0e775a67372858d08a3028b8c6ae71a2"
+      },
+      {
+        "folderId": "folder:root-technology",
+        "elementId": "elem:id-87ea2445e05b5e09b76794f417cf547d"
+      },
+      {
+        "folderId": "folder:root-technology",
+        "elementId": "elem:id-d2f886c8225956f4b7850fe5c2ab578a"
+      },
+      {
+        "folderId": "folder:root-technology",
+        "elementId": "elem:id-ba4b3b66832d5dad9fb3ce087be7860a"
+      },
+      {
+        "folderId": "folder:root-technology",
+        "elementId": "elem:id-609d9bc0830f5327959f37a6c2f2aaf9"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-ab7f25860732599d97f55c4d195b4037"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-88bee996429e52b3998c65a12965dbc6"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-bf54dcc824895bf4b2bc45e9fe8dfa7f"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-5178680c3e675578a1937d2ae35d942c"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-b05b0ffdc0a951db8bb8ad839c9517de"
+      },
+      {
+        "folderId": "folder:root-application",
+        "elementId": "elem:id-884a61518359597a8c42d5bc25ed6690"
+      }
+    ],
+    "relationshipFolderMembers": [
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-81a0722314f451bb9fe79699968e4b74"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-df79e87ed1e6542fb982bf9900c85212"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-61dae03ca52150b28e6d4070b16b1074"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-63d8dc4106e057a996e12a07990d632a"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-dc02b27ff0c755338ecd79367d82cee2"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-d654b021896c5cefb8961eee20b00a46"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-0a250879b4455bd48ec923e6d9bda84a"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-87ed926732245fd2a6ad41e821f8d872"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-ab5d42f02b225fe49334939f097af504"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-3002cab667b4533d8928d7d9f3569ccb"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-778349a22b865df584bd7a9baa2acc2d"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-0849539aa1a656fb8bdebd1b5a6862be"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-df76498a70ad5db992f4abcc906182ca"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-fd2df1a847035576824f48a69dc46cab"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-5ce3f104ce9253f5ab6d385bd85fad4d"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-1f10935b0811524b9cfa629e509b35dd"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-7bbfa0a020ca5d2d91e25883ae0123ff"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-8d352c8734e25ed09c819ade183e8a5f"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-ea9d73179a8453e7aa8c78c95ebf90bc"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-ec9a3925fab85d5fbc8cb7423d9befa5"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-462b8d3a15a3512eaaca4689bde18026"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-63d3c3e1fa6653d6ba88e2c4ff6cdbdc"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-8db7f8ba19da5aab84fa6797d47da882"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-19be046729db5974a497601faf3722f8"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-c458bb16ddfe5a61967bc4bce43f95ff"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-5a1b31bb0eb65fb7bbdea76e2efd61c1"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-e9c07a6a38b652fcb1e83fad619b202d"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-da9eff9135ea5694901a7d58e29aa3a7"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-c1f192ef0ef657e481c26b139810ec50"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-d3df95777312584cb94e3f5c43d8e344"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-4f8bd1fb3e0654828e95a0c002439e94"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-f0e34feb13fe5b2e85a980e6bae1c69f"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-2ce0a8eecdcc50029aae0a9206078555"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-9b13a2473e9a58f5b4b77d5735fbdce2"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-36724adcec8a54b38c86adab1a31df38"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-20d87e06e5875ae2bd9eca55e4401c9e"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-bfd35f8987e459fbb2ea9194b287a154"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-3a91a61249515ceb843f1d4f7b31a148"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-c015b04a16d85fa4859d7e7b768dce13"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-8870b4e399185a658f87510979d255b1"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-a50c51927b03505d805ffe5f4fddcf0e"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-e8d24387162f53a387f045fb330cf944"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-315dd8d3cf8955c189230f741502bcca"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-3183213007b4521683d2735eb321afa8"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-2ef5b41d1a295e759235a895410ac405"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-3a1816ca468a52c881212a0d70c7a5f5"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-b4889de3d46a5117a93f0d32fdf2438c"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-c0fea44da8b55263a26687298b1abb71"
+      },
+      {
+        "folderId": "folder:root-relations",
+        "relationshipId": "rel:id-95f53d8241d05b34b125c5cf2b3121d5"
+      }
+    ],
+    "viewFolderMembers": [],
+    "viewObjects": [],
+    "viewObjectChildMembers": [],
+    "connections": []
+  },
+  "opBatches": [
+    {
+      "modelId": "northstar-order-management-demo-v1",
+      "opBatchId": "id-be72c0e31d195617974317a641c5f76c",
+      "baseRevision": 0,
+      "assignedRevisionRange": {
+        "from": 1,
+        "to": 176
+      },
+      "timestamp": "2026-01-15T12:00:00Z",
+      "ops": [
+        {
+          "type": "CreateFolder",
+          "folder": {
+            "id": "folder:root-application",
+            "folderType": "APPLICATION",
+            "name": "Application"
+          },
+          "causal": {
+            "lamport": 1,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateFolder",
+          "folder": {
+            "id": "folder:root-relations",
+            "folderType": "RELATIONS",
+            "name": "Relations"
+          },
+          "causal": {
+            "lamport": 2,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateFolder",
+          "folder": {
+            "id": "folder:root-technology",
+            "folderType": "TECHNOLOGY",
+            "name": "Technology & Physical"
+          },
+          "causal": {
+            "lamport": 3,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "archimateType": "ApplicationComponent",
+            "name": "Northstar Order Management",
+            "documentation": "Accepts sales orders, validates prices, reserves stock and coordinates fulfilment and invoicing. Sourcing: in-house\nDemo canonical reference: urn:demo:northstar:application:oms"
+          },
+          "causal": {
+            "lamport": 4,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 5,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+            "archimateType": "ApplicationComponent",
+            "name": "Northstar Trade Portal",
+            "documentation": "Business customer storefront and order-status portal. Sourcing: in-house\nDemo canonical reference: urn:demo:northstar:application:storefront"
+          },
+          "causal": {
+            "lamport": 6,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 7,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-256dd9a321365a89bdff29d0bfe6d1f0",
+            "archimateType": "ApplicationComponent",
+            "name": "Sales CRM (SuiteCRM)",
+            "documentation": "On-premises CRM: customer accounts and sales opportunities. Sourcing: COTS\nDemo canonical reference: urn:demo:northstar:application:crm"
+          },
+          "causal": {
+            "lamport": 8,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-256dd9a321365a89bdff29d0bfe6d1f0",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 9,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-01de1e9065045ec38fb1ab9d949ff43e",
+            "archimateType": "ApplicationComponent",
+            "name": "Finance ERP (Odoo)",
+            "documentation": "On-premises ERP: product prices, invoices and settlement records. Sourcing: COTS\nDemo canonical reference: urn:demo:northstar:application:erp"
+          },
+          "causal": {
+            "lamport": 10,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-01de1e9065045ec38fb1ab9d949ff43e",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 11,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-f86283d59d7655208535428b062b04c8",
+            "archimateType": "ApplicationComponent",
+            "name": "Warehouse Management (ERPNext)",
+            "documentation": "Illustrative on-premises warehouse application: stock, picking and shipment confirmation. Sourcing: COTS\nDemo canonical reference: urn:demo:northstar:application:wms"
+          },
+          "causal": {
+            "lamport": 12,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-f86283d59d7655208535428b062b04c8",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 13,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-22104b12ced25ed2a4df16730a0957a4",
+            "archimateType": "ApplicationComponent",
+            "name": "Sales Analytics (Apache Superset)",
+            "documentation": "On-premises sales reporting over the curated analytics warehouse. Sourcing: COTS\nDemo canonical reference: urn:demo:northstar:application:analytics"
+          },
+          "causal": {
+            "lamport": 14,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-22104b12ced25ed2a4df16730a0957a4",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 15,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-34d2c3daa128562ca4a63564ab9a93c2",
+            "archimateType": "DataObject",
+            "name": "Customer account",
+            "documentation": "Logical trading account; not equivalent to a physical dataset.\nDemo canonical reference: urn:demo:northstar:logical-data:customer"
+          },
+          "causal": {
+            "lamport": 16,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-34d2c3daa128562ca4a63564ab9a93c2",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 17,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-39ec4bf969335a6d869cb7eb303860f1",
+            "archimateType": "DataObject",
+            "name": "Product and price",
+            "documentation": "Logical sellable product and agreed list price.\nDemo canonical reference: urn:demo:northstar:logical-data:product"
+          },
+          "causal": {
+            "lamport": 18,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-39ec4bf969335a6d869cb7eb303860f1",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 19,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+            "archimateType": "DataObject",
+            "name": "Sales order",
+            "documentation": "Logical customer order including header and lines.\nDemo canonical reference: urn:demo:northstar:logical-data:order"
+          },
+          "causal": {
+            "lamport": 20,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 21,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-f5cd591cdc285d79b8e37a9f9e3a65d4",
+            "archimateType": "DataObject",
+            "name": "Stock availability",
+            "documentation": "Logical available inventory and reservations.\nDemo canonical reference: urn:demo:northstar:logical-data:stock"
+          },
+          "causal": {
+            "lamport": 22,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-f5cd591cdc285d79b8e37a9f9e3a65d4",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 23,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-cbe9fa295fe85cbd8113e06dc76408da",
+            "archimateType": "DataObject",
+            "name": "Shipment",
+            "documentation": "Logical outbound shipment and delivery status.\nDemo canonical reference: urn:demo:northstar:logical-data:shipment"
+          },
+          "causal": {
+            "lamport": 24,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-cbe9fa295fe85cbd8113e06dc76408da",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 25,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-530e3d3dd60f536984c9bbd323f16e8f",
+            "archimateType": "DataObject",
+            "name": "Sales invoice",
+            "documentation": "Logical invoice and settlement status.\nDemo canonical reference: urn:demo:northstar:logical-data:invoice"
+          },
+          "causal": {
+            "lamport": 26,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-530e3d3dd60f536984c9bbd323f16e8f",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 27,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-d403b51f7a615526ab436216bb554774",
+            "archimateType": "Node",
+            "name": "Trade application cluster",
+            "documentation": "On-premises Kubernetes runtime; illustrative deployment dependency, not a discovered cluster.\nDemo canonical reference: urn:demo:northstar:infrastructure:kubernetes"
+          },
+          "causal": {
+            "lamport": 28,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-d403b51f7a615526ab436216bb554774",
+          "folderId": "folder:root-technology",
+          "causal": {
+            "lamport": 29,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-0e775a67372858d08a3028b8c6ae71a2",
+            "archimateType": "Node",
+            "name": "Operational PostgreSQL service",
+            "documentation": "On-premises database service with separate application databases.\nDemo canonical reference: urn:demo:northstar:infrastructure:postgres"
+          },
+          "causal": {
+            "lamport": 30,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-0e775a67372858d08a3028b8c6ae71a2",
+          "folderId": "folder:root-technology",
+          "causal": {
+            "lamport": 31,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-87ea2445e05b5e09b76794f417cf547d",
+            "archimateType": "Node",
+            "name": "Packaged-application MariaDB service",
+            "documentation": "Illustrative on-premises database service for the CRM and warehouse applications; catalogued using the MySQL-compatible platform.\nDemo canonical reference: urn:demo:northstar:infrastructure:mariadb"
+          },
+          "causal": {
+            "lamport": 32,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-87ea2445e05b5e09b76794f417cf547d",
+          "folderId": "folder:root-technology",
+          "causal": {
+            "lamport": 33,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-d2f886c8225956f4b7850fe5c2ab578a",
+            "archimateType": "Node",
+            "name": "Trade event broker",
+            "documentation": "On-premises Kafka service carrying order and shipment events.\nDemo canonical reference: urn:demo:northstar:infrastructure:kafka"
+          },
+          "causal": {
+            "lamport": 34,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-d2f886c8225956f4b7850fe5c2ab578a",
+          "folderId": "folder:root-technology",
+          "causal": {
+            "lamport": 35,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-ba4b3b66832d5dad9fb3ce087be7860a",
+            "archimateType": "Node",
+            "name": "Trade analytics warehouse",
+            "documentation": "On-premises PostgreSQL analytical store.\nDemo canonical reference: urn:demo:northstar:infrastructure:warehouse"
+          },
+          "causal": {
+            "lamport": 36,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-ba4b3b66832d5dad9fb3ce087be7860a",
+          "folderId": "folder:root-technology",
+          "causal": {
+            "lamport": 37,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-609d9bc0830f5327959f37a6c2f2aaf9",
+            "archimateType": "Node",
+            "name": "Trade virtual machine platform",
+            "documentation": "On-premises virtual machines hosting packaged business applications.\nDemo canonical reference: urn:demo:northstar:infrastructure:virtualization"
+          },
+          "causal": {
+            "lamport": 38,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-609d9bc0830f5327959f37a6c2f2aaf9",
+          "folderId": "folder:root-technology",
+          "causal": {
+            "lamport": 39,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-ab7f25860732599d97f55c4d195b4037",
+            "archimateType": "ApplicationFunction",
+            "name": "Capture sales order",
+            "documentation": "Validate customer and capture requested order lines.\nDemo canonical reference: urn:demo:northstar:function:capture"
+          },
+          "causal": {
+            "lamport": 40,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-ab7f25860732599d97f55c4d195b4037",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 41,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+            "archimateType": "ApplicationFunction",
+            "name": "Validate order pricing",
+            "documentation": "Check agreed prices and calculate order value.\nDemo canonical reference: urn:demo:northstar:function:price"
+          },
+          "causal": {
+            "lamport": 42,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 43,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674",
+            "archimateType": "ApplicationFunction",
+            "name": "Reserve available stock",
+            "documentation": "Request reservation from the warehouse application.\nDemo canonical reference: urn:demo:northstar:function:reserve"
+          },
+          "causal": {
+            "lamport": 44,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 45,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-88bee996429e52b3998c65a12965dbc6",
+            "archimateType": "ApplicationFunction",
+            "name": "Coordinate fulfilment",
+            "documentation": "Release accepted order to the warehouse and track shipment.\nDemo canonical reference: urn:demo:northstar:function:fulfil"
+          },
+          "causal": {
+            "lamport": 46,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-88bee996429e52b3998c65a12965dbc6",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 47,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-bf54dcc824895bf4b2bc45e9fe8dfa7f",
+            "archimateType": "ApplicationFunction",
+            "name": "Request sales invoice",
+            "documentation": "Request invoice creation in the finance ERP after shipment.\nDemo canonical reference: urn:demo:northstar:function:invoice"
+          },
+          "causal": {
+            "lamport": 48,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-bf54dcc824895bf4b2bc45e9fe8dfa7f",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 49,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-5178680c3e675578a1937d2ae35d942c",
+            "archimateType": "ApplicationFunction",
+            "name": "Provide order status",
+            "documentation": "Expose order state to the trade portal.\nDemo canonical reference: urn:demo:northstar:function:status"
+          },
+          "causal": {
+            "lamport": 50,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-5178680c3e675578a1937d2ae35d942c",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 51,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-b05b0ffdc0a951db8bb8ad839c9517de",
+            "archimateType": "ApplicationService",
+            "name": "Sales order submission",
+            "documentation": "Service exposed by the in-house order application."
+          },
+          "causal": {
+            "lamport": 52,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-b05b0ffdc0a951db8bb8ad839c9517de",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 53,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateElement",
+          "element": {
+            "id": "elem:id-884a61518359597a8c42d5bc25ed6690",
+            "archimateType": "ApplicationService",
+            "name": "Order tracking",
+            "documentation": "Service exposed by the in-house order application."
+          },
+          "causal": {
+            "lamport": 54,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveElementToFolder",
+          "elementId": "elem:id-884a61518359597a8c42d5bc25ed6690",
+          "folderId": "folder:root-application",
+          "causal": {
+            "lamport": 55,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-81a0722314f451bb9fe79699968e4b74",
+            "archimateType": "AssignmentRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-ab7f25860732599d97f55c4d195b4037",
+            "name": "",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 56,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-81a0722314f451bb9fe79699968e4b74",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 57,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-df79e87ed1e6542fb982bf9900c85212",
+            "archimateType": "AssignmentRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+            "name": "",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 58,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-df79e87ed1e6542fb982bf9900c85212",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 59,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-61dae03ca52150b28e6d4070b16b1074",
+            "archimateType": "AssignmentRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674",
+            "name": "",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 60,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-61dae03ca52150b28e6d4070b16b1074",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 61,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-63d8dc4106e057a996e12a07990d632a",
+            "archimateType": "AssignmentRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-88bee996429e52b3998c65a12965dbc6",
+            "name": "",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 62,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-63d8dc4106e057a996e12a07990d632a",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 63,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-dc02b27ff0c755338ecd79367d82cee2",
+            "archimateType": "AssignmentRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-bf54dcc824895bf4b2bc45e9fe8dfa7f",
+            "name": "",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 64,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-dc02b27ff0c755338ecd79367d82cee2",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 65,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-d654b021896c5cefb8961eee20b00a46",
+            "archimateType": "AssignmentRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-5178680c3e675578a1937d2ae35d942c",
+            "name": "",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 66,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-d654b021896c5cefb8961eee20b00a46",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 67,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-0a250879b4455bd48ec923e6d9bda84a",
+            "archimateType": "FlowRelationship",
+            "sourceId": "elem:id-ab7f25860732599d97f55c4d195b4037",
+            "targetId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+            "name": "Submitted order",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 68,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-0a250879b4455bd48ec923e6d9bda84a",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 69,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-87ed926732245fd2a6ad41e821f8d872",
+            "archimateType": "FlowRelationship",
+            "sourceId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+            "targetId": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674",
+            "name": "Priced order",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 70,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-87ed926732245fd2a6ad41e821f8d872",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 71,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-ab5d42f02b225fe49334939f097af504",
+            "archimateType": "FlowRelationship",
+            "sourceId": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674",
+            "targetId": "elem:id-88bee996429e52b3998c65a12965dbc6",
+            "name": "Reservation confirmed",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 72,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-ab5d42f02b225fe49334939f097af504",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 73,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-3002cab667b4533d8928d7d9f3569ccb",
+            "archimateType": "FlowRelationship",
+            "sourceId": "elem:id-88bee996429e52b3998c65a12965dbc6",
+            "targetId": "elem:id-bf54dcc824895bf4b2bc45e9fe8dfa7f",
+            "name": "Shipment confirmed",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 74,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-3002cab667b4533d8928d7d9f3569ccb",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 75,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-778349a22b865df584bd7a9baa2acc2d",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-ab7f25860732599d97f55c4d195b4037",
+            "targetId": "elem:id-34d2c3daa128562ca4a63564ab9a93c2",
+            "name": "Read",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 76,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-778349a22b865df584bd7a9baa2acc2d",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 77,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-778349a22b865df584bd7a9baa2acc2d",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 78,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-0849539aa1a656fb8bdebd1b5a6862be",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-ab7f25860732599d97f55c4d195b4037",
+            "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+            "name": "Write",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 79,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-0849539aa1a656fb8bdebd1b5a6862be",
+          "key": "demo.accessType",
+          "value": "Write",
+          "causal": {
+            "lamport": 80,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-0849539aa1a656fb8bdebd1b5a6862be",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 81,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-df76498a70ad5db992f4abcc906182ca",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+            "targetId": "elem:id-39ec4bf969335a6d869cb7eb303860f1",
+            "name": "Read",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 82,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-df76498a70ad5db992f4abcc906182ca",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 83,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-df76498a70ad5db992f4abcc906182ca",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 84,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-fd2df1a847035576824f48a69dc46cab",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-ecdbd7ada38f5c1ab12649eabc7186c5",
+            "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+            "name": "ReadWrite",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 85,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-fd2df1a847035576824f48a69dc46cab",
+          "key": "demo.accessType",
+          "value": "ReadWrite",
+          "causal": {
+            "lamport": 86,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-fd2df1a847035576824f48a69dc46cab",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 87,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-5ce3f104ce9253f5ab6d385bd85fad4d",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-d699ac180dd85d72bc2ed9d5a9a8b674",
+            "targetId": "elem:id-f5cd591cdc285d79b8e37a9f9e3a65d4",
+            "name": "Read",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 88,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-5ce3f104ce9253f5ab6d385bd85fad4d",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 89,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-5ce3f104ce9253f5ab6d385bd85fad4d",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 90,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-1f10935b0811524b9cfa629e509b35dd",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-88bee996429e52b3998c65a12965dbc6",
+            "targetId": "elem:id-cbe9fa295fe85cbd8113e06dc76408da",
+            "name": "Read",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 91,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-1f10935b0811524b9cfa629e509b35dd",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 92,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-1f10935b0811524b9cfa629e509b35dd",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 93,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-7bbfa0a020ca5d2d91e25883ae0123ff",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-bf54dcc824895bf4b2bc45e9fe8dfa7f",
+            "targetId": "elem:id-530e3d3dd60f536984c9bbd323f16e8f",
+            "name": "Read",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 94,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-7bbfa0a020ca5d2d91e25883ae0123ff",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 95,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-7bbfa0a020ca5d2d91e25883ae0123ff",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 96,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-8d352c8734e25ed09c819ade183e8a5f",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-5178680c3e675578a1937d2ae35d942c",
+            "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+            "name": "Read",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 97,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-8d352c8734e25ed09c819ade183e8a5f",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 98,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-8d352c8734e25ed09c819ade183e8a5f",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 99,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-ea9d73179a8453e7aa8c78c95ebf90bc",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-256dd9a321365a89bdff29d0bfe6d1f0",
+            "targetId": "elem:id-34d2c3daa128562ca4a63564ab9a93c2",
+            "name": "CRUD",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 100,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-ea9d73179a8453e7aa8c78c95ebf90bc",
+          "key": "demo.accessType",
+          "value": "ReadWrite",
+          "causal": {
+            "lamport": 101,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-ea9d73179a8453e7aa8c78c95ebf90bc",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 102,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-ec9a3925fab85d5fbc8cb7423d9befa5",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-01de1e9065045ec38fb1ab9d949ff43e",
+            "targetId": "elem:id-39ec4bf969335a6d869cb7eb303860f1",
+            "name": "CRUD",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 103,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-ec9a3925fab85d5fbc8cb7423d9befa5",
+          "key": "demo.accessType",
+          "value": "ReadWrite",
+          "causal": {
+            "lamport": 104,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-ec9a3925fab85d5fbc8cb7423d9befa5",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 105,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-462b8d3a15a3512eaaca4689bde18026",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-01de1e9065045ec38fb1ab9d949ff43e",
+            "targetId": "elem:id-530e3d3dd60f536984c9bbd323f16e8f",
+            "name": "CRUD",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 106,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-462b8d3a15a3512eaaca4689bde18026",
+          "key": "demo.accessType",
+          "value": "ReadWrite",
+          "causal": {
+            "lamport": 107,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-462b8d3a15a3512eaaca4689bde18026",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 108,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-63d3c3e1fa6653d6ba88e2c4ff6cdbdc",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-34d2c3daa128562ca4a63564ab9a93c2",
+            "name": "R",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 109,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-63d3c3e1fa6653d6ba88e2c4ff6cdbdc",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 110,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-63d3c3e1fa6653d6ba88e2c4ff6cdbdc",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 111,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-8db7f8ba19da5aab84fa6797d47da882",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-39ec4bf969335a6d869cb7eb303860f1",
+            "name": "R",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 112,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-8db7f8ba19da5aab84fa6797d47da882",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 113,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-8db7f8ba19da5aab84fa6797d47da882",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 114,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-19be046729db5974a497601faf3722f8",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+            "name": "CRUD",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 115,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-19be046729db5974a497601faf3722f8",
+          "key": "demo.accessType",
+          "value": "ReadWrite",
+          "causal": {
+            "lamport": 116,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-19be046729db5974a497601faf3722f8",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 117,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-c458bb16ddfe5a61967bc4bce43f95ff",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-f5cd591cdc285d79b8e37a9f9e3a65d4",
+            "name": "R",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 118,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-c458bb16ddfe5a61967bc4bce43f95ff",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 119,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-c458bb16ddfe5a61967bc4bce43f95ff",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 120,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-5a1b31bb0eb65fb7bbdea76e2efd61c1",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-cbe9fa295fe85cbd8113e06dc76408da",
+            "name": "R",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 121,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-5a1b31bb0eb65fb7bbdea76e2efd61c1",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 122,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-5a1b31bb0eb65fb7bbdea76e2efd61c1",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 123,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-e9c07a6a38b652fcb1e83fad619b202d",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-530e3d3dd60f536984c9bbd323f16e8f",
+            "name": "R",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 124,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-e9c07a6a38b652fcb1e83fad619b202d",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 125,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-e9c07a6a38b652fcb1e83fad619b202d",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 126,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-da9eff9135ea5694901a7d58e29aa3a7",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+            "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+            "name": "R",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 127,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-da9eff9135ea5694901a7d58e29aa3a7",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 128,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-da9eff9135ea5694901a7d58e29aa3a7",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 129,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-c1f192ef0ef657e481c26b139810ec50",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+            "targetId": "elem:id-39ec4bf969335a6d869cb7eb303860f1",
+            "name": "R",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 130,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-c1f192ef0ef657e481c26b139810ec50",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 131,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-c1f192ef0ef657e481c26b139810ec50",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 132,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-d3df95777312584cb94e3f5c43d8e344",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-f86283d59d7655208535428b062b04c8",
+            "targetId": "elem:id-f5cd591cdc285d79b8e37a9f9e3a65d4",
+            "name": "CRUD",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 133,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-d3df95777312584cb94e3f5c43d8e344",
+          "key": "demo.accessType",
+          "value": "ReadWrite",
+          "causal": {
+            "lamport": 134,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-d3df95777312584cb94e3f5c43d8e344",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 135,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-4f8bd1fb3e0654828e95a0c002439e94",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-f86283d59d7655208535428b062b04c8",
+            "targetId": "elem:id-cbe9fa295fe85cbd8113e06dc76408da",
+            "name": "CRUD",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 136,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-4f8bd1fb3e0654828e95a0c002439e94",
+          "key": "demo.accessType",
+          "value": "ReadWrite",
+          "causal": {
+            "lamport": 137,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-4f8bd1fb3e0654828e95a0c002439e94",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 138,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-f0e34feb13fe5b2e85a980e6bae1c69f",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-f86283d59d7655208535428b062b04c8",
+            "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+            "name": "R",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 139,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-f0e34feb13fe5b2e85a980e6bae1c69f",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 140,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-f0e34feb13fe5b2e85a980e6bae1c69f",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 141,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-2ce0a8eecdcc50029aae0a9206078555",
+            "archimateType": "AccessRelationship",
+            "sourceId": "elem:id-22104b12ced25ed2a4df16730a0957a4",
+            "targetId": "elem:id-b3ba68c983b05fd28e4d531bf0d2fcda",
+            "name": "R",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 142,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "SetProperty",
+          "targetId": "rel:id-2ce0a8eecdcc50029aae0a9206078555",
+          "key": "demo.accessType",
+          "value": "Read",
+          "causal": {
+            "lamport": 143,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-2ce0a8eecdcc50029aae0a9206078555",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 144,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-9b13a2473e9a58f5b4b77d5735fbdce2",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-d403b51f7a615526ab436216bb554774",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 145,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-9b13a2473e9a58f5b4b77d5735fbdce2",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 146,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-36724adcec8a54b38c86adab1a31df38",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-0e775a67372858d08a3028b8c6ae71a2",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 147,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-36724adcec8a54b38c86adab1a31df38",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 148,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-20d87e06e5875ae2bd9eca55e4401c9e",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-87e5151fb29853a2bdffabd4e3a3084c",
+            "targetId": "elem:id-d2f886c8225956f4b7850fe5c2ab578a",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 149,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-20d87e06e5875ae2bd9eca55e4401c9e",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 150,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-bfd35f8987e459fbb2ea9194b287a154",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+            "targetId": "elem:id-d403b51f7a615526ab436216bb554774",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 151,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-bfd35f8987e459fbb2ea9194b287a154",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 152,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-3a91a61249515ceb843f1d4f7b31a148",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-256dd9a321365a89bdff29d0bfe6d1f0",
+            "targetId": "elem:id-609d9bc0830f5327959f37a6c2f2aaf9",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 153,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-3a91a61249515ceb843f1d4f7b31a148",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 154,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-c015b04a16d85fa4859d7e7b768dce13",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-256dd9a321365a89bdff29d0bfe6d1f0",
+            "targetId": "elem:id-87ea2445e05b5e09b76794f417cf547d",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 155,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-c015b04a16d85fa4859d7e7b768dce13",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 156,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-8870b4e399185a658f87510979d255b1",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-01de1e9065045ec38fb1ab9d949ff43e",
+            "targetId": "elem:id-609d9bc0830f5327959f37a6c2f2aaf9",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 157,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-8870b4e399185a658f87510979d255b1",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 158,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-a50c51927b03505d805ffe5f4fddcf0e",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-01de1e9065045ec38fb1ab9d949ff43e",
+            "targetId": "elem:id-0e775a67372858d08a3028b8c6ae71a2",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 159,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-a50c51927b03505d805ffe5f4fddcf0e",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 160,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-e8d24387162f53a387f045fb330cf944",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-f86283d59d7655208535428b062b04c8",
+            "targetId": "elem:id-609d9bc0830f5327959f37a6c2f2aaf9",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 161,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-e8d24387162f53a387f045fb330cf944",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 162,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-315dd8d3cf8955c189230f741502bcca",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-f86283d59d7655208535428b062b04c8",
+            "targetId": "elem:id-87ea2445e05b5e09b76794f417cf547d",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 163,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-315dd8d3cf8955c189230f741502bcca",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 164,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-3183213007b4521683d2735eb321afa8",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-22104b12ced25ed2a4df16730a0957a4",
+            "targetId": "elem:id-d403b51f7a615526ab436216bb554774",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 165,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-3183213007b4521683d2735eb321afa8",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 166,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-2ef5b41d1a295e759235a895410ac405",
+            "archimateType": "AssociationRelationship",
+            "sourceId": "elem:id-22104b12ced25ed2a4df16730a0957a4",
+            "targetId": "elem:id-ba4b3b66832d5dad9fb3ce087be7860a",
+            "name": "deployment dependency",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 167,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-2ef5b41d1a295e759235a895410ac405",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 168,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-3a1816ca468a52c881212a0d70c7a5f5",
+            "archimateType": "RealizationRelationship",
+            "sourceId": "elem:id-ab7f25860732599d97f55c4d195b4037",
+            "targetId": "elem:id-b05b0ffdc0a951db8bb8ad839c9517de",
+            "name": "",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 169,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-3a1816ca468a52c881212a0d70c7a5f5",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 170,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-b4889de3d46a5117a93f0d32fdf2438c",
+            "archimateType": "ServingRelationship",
+            "sourceId": "elem:id-b05b0ffdc0a951db8bb8ad839c9517de",
+            "targetId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+            "name": "",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 171,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-b4889de3d46a5117a93f0d32fdf2438c",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 172,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-c0fea44da8b55263a26687298b1abb71",
+            "archimateType": "RealizationRelationship",
+            "sourceId": "elem:id-5178680c3e675578a1937d2ae35d942c",
+            "targetId": "elem:id-884a61518359597a8c42d5bc25ed6690",
+            "name": "",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 173,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-c0fea44da8b55263a26687298b1abb71",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 174,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "CreateRelationship",
+          "relationship": {
+            "id": "rel:id-95f53d8241d05b34b125c5cf2b3121d5",
+            "archimateType": "ServingRelationship",
+            "sourceId": "elem:id-884a61518359597a8c42d5bc25ed6690",
+            "targetId": "elem:id-6d19cecf78cf5a3290b59b5a0bb9235d",
+            "name": "",
+            "documentation": "Synthetic Northstar demonstration relationship."
+          },
+          "causal": {
+            "lamport": 175,
+            "clientId": "northstar-demo"
+          }
+        },
+        {
+          "type": "MoveRelationshipToFolder",
+          "relationshipId": "rel:id-95f53d8241d05b34b125c5cf2b3121d5",
+          "folderId": "folder:root-relations",
+          "causal": {
+            "lamport": 176,
+            "clientId": "northstar-demo"
+          }
+        }
+      ]
+    }
+  ],
+  "tags": []
+}

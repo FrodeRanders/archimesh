@@ -25,7 +25,10 @@ public final class ModelProjectionReset {
         if(model == null) {
             return;
         }
+        RemoteApplyGuard.runAsRemoteApply(() -> clearInternal(model));
+    }
 
+    private static void clearInternal(IArchimateModel model) {
         List<EObject> views = new ArrayList<>();
         List<EObject> concepts = new ArrayList<>();
 

@@ -5,7 +5,9 @@ import fcntl
 import hashlib
 import http.client
 import json
+import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -153,14 +155,34 @@ def verify_pages(state):
 
 def access(state):
     dh_state = local.datahub(state)
+    model_package = local.directory(state) / "artifacts/archimesh-model.json"
+    model_id = json.loads(model_package.read_text())["model"]["modelId"]
+    archi_connection = {"wsBaseUrl":"ws://127.0.0.1:" + state["env"]["DEMO_ARCHIMESH_PORT"],
+                       "modelId":model_id, "modelRef":"HEAD", "modelPackage":str(model_package)}
     endpoints = {"archimesh":"http://127.0.0.1:" + state["env"]["DEMO_ARCHIMESH_PORT"] + "/admin-ui/",
                  "turboea":"http://127.0.0.1:" + state["env"]["DEMO_TURBO_UI_PORT"],
                  "datahub":"http://127.0.0.1:" + dh_state["env"]["DATAHUB_FRONTEND_PORT"]}
     save(local.directory(state) / "access.json",{"run":state["run"],"endpoints":endpoints,
         "turboCredentials":"state.json", "datahubCredentials":str(Path(dh_state["directory"]) / "user.props"),
-        "archimeshBootstrapUser":"northstar-demo-admin","archimeshBootstrapRoles":"admin"})
-    for name,url in endpoints.items(): print(name + ": " + url,flush=True)
+        "archimeshBootstrapUser":"northstar-demo-admin","archimeshBootstrapRoles":"admin",
+        "archiConnection":archi_connection})
+    print("\nDemo connection details — run " + state["run"],flush=True)
+    for name,url in endpoints.items(): print(name + " web UI: " + url,flush=True)
+    print("Archi: Tools -> Open Archimesh Model from Server...",flush=True)
+    print("  WebSocket Base URL: " + archi_connection["wsBaseUrl"],flush=True)
+    print("  Model: " + model_id + " (HEAD)",flush=True)
+    print("  Server import package: " + str(model_package),flush=True)
+    print("  Identity: northstar-demo-admin; bootstrap roles: admin; bearer token: leave empty",flush=True)
+    print("Turbo EA catalog in Archi: disabled in this demo; the three systems are seeded separately.",flush=True)
     print("Private access details: " + str(local.directory(state) / "access.json"),flush=True)
+    executable = os.environ.get("ARCHI_EXECUTABLE", "/Applications/Archi.app/Contents/MacOS/Archi" if sys.platform == "darwin" else "Archi")
+    launch = ["env", "ARCHIMESH_BOOTSTRAP_USER=northstar-demo-admin", "ARCHIMESH_BOOTSTRAP_ROLES=admin",
+              "ARCHIMESH_STARTUP_PULL_ENABLED=true", "ARCHIMESH_STARTUP_PULL_USER_ID=northstar-demo-admin",
+              "ARCHIMESH_STARTUP_PULL_WS_BASE_URL=" + archi_connection["wsBaseUrl"],
+              "ARCHIMESH_STARTUP_PULL_MODEL_ID=" + model_id, executable, "-clean"]
+    print("Close open models, quit Archi, then launch it connected to this model (requires the current plugin):",flush=True)
+    print("  " + shlex.join(launch),flush=True)
+    print("Redisplay these addresses: ./scripts/demo.sh connection --run " + state["run"],flush=True)
 
 
 def inventory(state):
@@ -174,15 +196,19 @@ def inventory(state):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action",nargs="?",default="up",choices=["up","test","start","status","seed","verify","restart","down"])
+    parser.add_argument("action",nargs="?",default="up",choices=["up","test","start","status","connection","seed","verify","restart","down"])
     parser.add_argument("--run",help="Run ID; defaults to the last up created by this bootstrap")
     parser.add_argument("--volumes",action="store_true",help="Explicitly remove this demo's volumes on down")
     args = parser.parse_args()
     if args.volumes and args.action != "down": parser.error("--volumes applies only to down")
     if args.action in ("up","test") and args.run: parser.error("up/test always create fresh demo storage")
-    preflight()
+    if args.action != "connection": preflight()
     state = local.initialize(containerized=True) if args.action in ("up","test") else local.load(args.run or json.loads(CURRENT.read_text()))
     require(state.get("mode") == "compose","containerized demo run")
+    if args.action == "connection":
+        access(state)
+        print("Saved addresses only; server availability has not been checked.",flush=True)
+        return
     if args.action == "up": save(CURRENT,state["run"])
     if args.action in ("up","test"): override(state)
     # CURRENT is a JSON string, not unvalidated shell content.
@@ -206,6 +232,7 @@ def main():
             elif args.action == "status":
                 print(local.compose(state,"ps").stdout)
                 print(local.dh.compose(local.datahub(state),"ps",capture=True)[1])
+                access(state)
             if args.action in ("restart","test"):
                 print("Restarting without reseeding",flush=True)
                 local.server_stop(state)

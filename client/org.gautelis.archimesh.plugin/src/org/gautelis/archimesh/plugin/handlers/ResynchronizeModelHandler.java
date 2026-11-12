@@ -7,7 +7,6 @@ import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.ui.handlers.HandlerUtil;
 
 import org.gautelis.archimesh.plugin.ArchimeshPlugin;
-import org.gautelis.archimesh.plugin.emf.ModelProjectionReset;
 import org.gautelis.archimesh.plugin.ws.ArchimeshSessionManager;
 import com.archimatetool.model.IArchimateModel;
 
@@ -66,7 +65,8 @@ public class ResynchronizeModelHandler extends AbstractHandler {
             return null;
         }
 
-        ModelProjectionReset.clear(model);
+        // The incoming snapshot replaces the local projection under RemoteApplyGuard.
+        // Clearing here would capture local deletes and publish them to the server.
         sessionManager.attachModel(model);
         ArchimeshPlugin.logInfo("Forced model resynchronization modelId=" + modelId + " ref=" + modelRef);
         return null;

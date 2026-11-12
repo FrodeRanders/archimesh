@@ -12,6 +12,7 @@ import org.eclipse.ui.handlers.HandlerUtil;
 
 import org.gautelis.archimesh.plugin.ArchimeshPlugin;
 import org.gautelis.archimesh.plugin.ui.OpenServerModelDialog;
+import org.gautelis.archimesh.plugin.util.ClientConnectionSettings;
 import org.gautelis.archimesh.plugin.ws.ArchimeshSessionManager;
 import com.archimatetool.editor.model.IEditorModelManager;
 import com.archimatetool.model.IArchimateFactory;
@@ -23,8 +24,6 @@ import com.archimatetool.model.IIdentifier;
  */
 public class OpenServerModelHandler extends AbstractHandler {
 
-    private static final String DEFAULT_WS_BASE_URL = "ws://localhost:8081";
-
     @Override
     public Object execute(ExecutionEvent event) throws ExecutionException {
         ArchimeshPlugin plugin = ArchimeshPlugin.getInstance();
@@ -35,7 +34,7 @@ public class OpenServerModelHandler extends AbstractHandler {
         ArchimeshSessionManager sessionManager = plugin.getSessionManager();
         OpenServerModelDialog dialog = new OpenServerModelDialog(
                 HandlerUtil.getActiveShell(event),
-                DEFAULT_WS_BASE_URL,
+                ClientConnectionSettings.wsBaseUrl(sessionManager.getCurrentWsBaseUrl()),
                 sessionManager.getCurrentModelId(),
                 "",
                 sessionManager.getCurrentModelRef(),
@@ -67,6 +66,7 @@ public class OpenServerModelHandler extends AbstractHandler {
         }
 
         boolean alreadyConnectedSameModel = sessionManager.isConnected()
+                && dialog.getWsBaseUrl().equals(sessionManager.getCurrentWsBaseUrl())
                 && dialog.getModelId().equals(sessionManager.getCurrentModelId())
                 && dialog.getModelRef().equalsIgnoreCase(sessionManager.getCurrentModelRef());
         if(alreadyConnectedSameModel && reusedExistingModel) {

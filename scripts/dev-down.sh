@@ -29,12 +29,11 @@ if [[ -f "${PID_FILE}" ]]; then
 fi
 
 echo "Stopping any remaining Archimesh server dev processes"
-mapfile -t MATCHED_PIDS < <(
+while IFS= read -r pid; do
+  [[ -n "${pid}" ]] && stop_pid "${pid}"
+done < <(
   pgrep -f "archimesh-server-dev\\.jar|quarkus:dev.*server/pom\\.xml" || true
 )
-for pid in "${MATCHED_PIDS[@]}"; do
-  stop_pid "${pid}"
-done
 
 rm -f "${PID_FILE}" "${MODE_FILE}"
 

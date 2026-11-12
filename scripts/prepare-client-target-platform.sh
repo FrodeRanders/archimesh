@@ -5,7 +5,8 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 ARCHI_DIR="${ARCHI_DIR:-$ROOT_DIR/../archi}"
 ARCHI_APP_PATH="${ARCHI_APP_PATH:-/Applications/Archi.app}"
 ARCHI_APP_PLUGINS_DIR="${ARCHI_APP_PLUGINS_DIR:-$ARCHI_APP_PATH/Contents/Eclipse/plugins}"
-TP_DIR="$ROOT_DIR/client/target-platform/plugins"
+CLIENT_DIR="${CLIENT_DIR:-$ROOT_DIR/client}"
+TP_DIR="$CLIENT_DIR/target-platform/plugins"
 
 mkdir -p "$TP_DIR"
 

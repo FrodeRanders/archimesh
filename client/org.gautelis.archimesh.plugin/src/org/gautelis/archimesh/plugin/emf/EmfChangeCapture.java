@@ -68,6 +68,8 @@ public class EmfChangeCapture extends EContentAdapter {
     private final java.util.Set<String> pendingConnectionRelationshipIds = ConcurrentHashMap.newKeySet();
     // Folder ids are tracked locally so rename/move handling can keep referring to immutable ids.
     private final java.util.Set<String> knownFolderIds = ConcurrentHashMap.newKeySet();
+    private final java.util.Set<IDiagramModelArchimateObject> pendingViewObjectRemovals = ConcurrentHashMap.newKeySet();
+    private volatile boolean closed;
 
     public EmfChangeCapture(ArchimeshSessionManager sessionManager) {
         this.sessionManager = sessionManager;
@@ -345,6 +347,7 @@ public class EmfChangeCapture extends EContentAdapter {
                     sessionManager.getUserId(),
                     sessionManager.getSessionId()),
                     "RemoveViewObjectChildMember");
+            deferViewObjectDeletion(childViewObject);
             return;
         }
 
@@ -362,6 +365,7 @@ public class EmfChangeCapture extends EContentAdapter {
                         sessionManager.getUserId(),
                         sessionManager.getSessionId()),
                         "RemoveViewObjectChildMember(container)");
+                deferViewObjectDeletion(childViewObject);
                 return;
             }
         }
@@ -424,14 +428,7 @@ public class EmfChangeCapture extends EContentAdapter {
             return;
         }
         if(oldValue instanceof IDiagramModelArchimateObject viewObject) {
-            cancelPending("vo:" + viewObject.getId());
-            send(opMapper.toDeleteViewObjectSubmitOps(
-                    viewObject,
-                    sessionManager.getCurrentModelId(),
-                    sessionManager.getLastKnownRevision(),
-                    sessionManager.getUserId(),
-                    sessionManager.getSessionId()),
-                    "DeleteViewObject");
+            deferViewObjectDeletion(viewObject);
             return;
         }
         if(oldValue instanceof IDiagramModelArchimateConnection connection) {
@@ -1120,7 +1117,33 @@ public class EmfChangeCapture extends EContentAdapter {
         }
     }
 
+    private void deferViewObjectDeletion(IDiagramModelArchimateObject object) {
+        if(!pendingViewObjectRemovals.add(object)) return;
+        String modelId = sessionManager.getCurrentModelId();
+        IArchimateModel model = sessionManager.getAttachedModel();
+        deferAfterLocalChange(() -> {
+            pendingViewObjectRemovals.remove(object);
+            // REMOVE is also emitted by reparenting. Inspect the completed local change,
+            // including when a nested-connections dialog runs a modal SWT event loop.
+            if(closed || object.getDiagramModel() != null
+                    || !java.util.Objects.equals(modelId, sessionManager.getCurrentModelId())
+                    || model != sessionManager.getAttachedModel()) return;
+            cancelPending("vo:" + object.getId());
+            send(opMapper.toDeleteViewObjectSubmitOps(object, modelId,
+                    sessionManager.getLastKnownRevision(), sessionManager.getUserId(), sessionManager.getSessionId()),
+                    "DeleteViewObject");
+        });
+    }
+
+    protected void deferAfterLocalChange(Runnable task) {
+        if(ArchimeshPlugin.getInstance() == null) { task.run(); return; }
+        var display = org.eclipse.swt.widgets.Display.getDefault();
+        if(display != null && !display.isDisposed()) display.asyncExec(task);
+    }
+
     public void close() {
+        closed = true;
+        pendingViewObjectRemovals.clear();
         pendingNotationUpdates.values().forEach(f -> f.cancel(false));
         pendingNotationUpdates.clear();
         pendingConnectionCreates.values().forEach(f -> f.cancel(false));

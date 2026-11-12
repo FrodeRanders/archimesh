@@ -9,6 +9,7 @@ import org.eclipse.ui.handlers.HandlerUtil;
 
 import org.gautelis.archimesh.plugin.ArchimeshPlugin;
 import org.gautelis.archimesh.plugin.ui.ArchimeshConnectDialog;
+import org.gautelis.archimesh.plugin.util.ClientConnectionSettings;
 import org.gautelis.archimesh.plugin.ws.ArchimeshSessionManager;
 import com.archimatetool.model.IArchimateModel;
 import com.archimatetool.model.IIdentifier;
@@ -17,8 +18,6 @@ import com.archimatetool.model.IIdentifier;
  * Switches the active local model to server-backed Archimesh mode.
  */
 public class SwitchActiveModelServerBackedHandler extends AbstractHandler {
-
-    private static final String DEFAULT_WS_BASE_URL = "ws://localhost:8081";
 
     @Override
     public Object execute(ExecutionEvent event) throws ExecutionException {
@@ -41,7 +40,7 @@ public class SwitchActiveModelServerBackedHandler extends AbstractHandler {
 
         ArchimeshConnectDialog dialog = new ArchimeshConnectDialog(
                 HandlerUtil.getActiveShell(event),
-                DEFAULT_WS_BASE_URL,
+                ClientConnectionSettings.wsBaseUrl(sessionManager.getCurrentWsBaseUrl()),
                 defaultModelId,
                 sessionManager.getUserId(),
                 sessionManager.getSessionId(),

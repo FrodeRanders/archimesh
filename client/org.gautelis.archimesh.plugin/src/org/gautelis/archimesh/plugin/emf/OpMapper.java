@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 import org.gautelis.archimesh.plugin.notation.NotationSerializer;
+import org.gautelis.archimesh.plugin.util.SimpleJson;
 import com.archimatetool.model.FolderType;
 import com.archimatetool.model.IArchimateElement;
 import com.archimatetool.model.IArchimateDiagramModel;
@@ -873,9 +874,6 @@ public class OpMapper {
     }
 
     private String escape(String value) {
-        if(value == null) {
-            return "";
-        }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+        return SimpleJson.escapeString(value);
     }
 }

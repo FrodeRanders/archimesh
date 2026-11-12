@@ -13,6 +13,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.Flow;
 import java.util.regex.Pattern;
 import org.gautelis.archimesh.plugin.util.SimpleJson;
+import org.gautelis.archimesh.plugin.util.ClientBootstrapIdentity;
 
 /** Talks only to ArchiMesh. No external repository credential or external HTTP URL is accepted. */
 public final class EnterpriseRepositoryClient implements AutoCloseable {
@@ -97,6 +98,7 @@ public final class EnterpriseRepositoryClient implements AutoCloseable {
         var request=HttpRequest.newBuilder(URI.create(origin+path+suffix)).timeout(Duration.ofSeconds(20)).header("Accept","application/json");
         if (token!=null && !token.isBlank()) request.header("Authorization","Bearer "+token.trim());
         if (user!=null && !user.isBlank()) request.header("X-Archimesh-User",user);
+        ClientBootstrapIdentity.applyRestHeaders(request, origin, token);
         if (body == null) request.GET();
         else request.header("Content-Type","application/json").method(method,HttpRequest.BodyPublishers.ofString(body));
         var pending=http.sendAsync(request.build(),info -> new BoundedBody());
@@ -121,13 +123,7 @@ public final class EnterpriseRepositoryClient implements AutoCloseable {
     static String encode(String text) { return URLEncoder.encode(text == null ? "" : text,StandardCharsets.UTF_8).replace("+","%20"); }
     static String quote(String value) {
         if (value == null) return "null";
-        StringBuilder result=new StringBuilder("\"");
-        for (char c:value.toCharArray()) {
-            if (c=='"' || c=='\\') result.append('\\').append(c);
-            else if (c<32) result.append(String.format("\\u%04x",(int)c));
-            else result.append(c);
-        }
-        return result.append('"').toString();
+        return "\"" + SimpleJson.escapeString(value) + "\"";
     }
     @Override public void close() { http.shutdownNow(); }
     private static final class BoundedBody implements HttpResponse.BodySubscriber<byte[]> {

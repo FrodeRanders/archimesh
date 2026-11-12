@@ -1,6 +1,7 @@
 package org.gautelis.archimesh.plugin.notation;
 
 import java.util.Iterator;
+import org.gautelis.archimesh.plugin.util.SimpleJson;
 
 import com.archimatetool.model.IBounds;
 import com.archimatetool.model.IDiagramModelArchimateConnection;
@@ -107,9 +108,6 @@ public class NotationSerializer {
     }
 
     private String escape(String value) {
-        if(value == null) {
-            return "";
-        }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+        return SimpleJson.escapeString(value);
     }
 }

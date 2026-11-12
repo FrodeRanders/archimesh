@@ -143,7 +143,9 @@ public class ArchimeshSessionManager {
             if(authToken != null && !authToken.isBlank()) {
                 wsBuilder.header("Authorization", "Bearer " + authToken.trim());
             }
-            webSocket = wsBuilder.buildAsync(uri, new Listener()).join();
+            webSocket = wsBuilder.buildAsync(
+                    org.gautelis.archimesh.plugin.util.ClientBootstrapIdentity.webSocketUri(uri, authToken),
+                    new Listener()).join();
             currentWsBaseUrl = baseWsUrl;
             currentModelId = modelId;
             currentModelRef = normalizedRef;
@@ -813,7 +815,7 @@ public class ArchimeshSessionManager {
     }
 
     private String escape(String value) {
-        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
+        return SimpleJson.escapeString(value);
     }
 
     private String normalizeModelRef(String modelRef) {
@@ -1139,6 +1141,7 @@ public class ArchimeshSessionManager {
         }
 
         int loaded = 0;
+        int repaired = 0;
         for(int i = 0; i < count; i++) {
             String encoded = properties.getProperty("item." + i + ".payload");
             if(encoded == null || encoded.isBlank()) {
@@ -1148,6 +1151,11 @@ public class ArchimeshSessionManager {
             if(json == null || json.isBlank()) {
                 continue;
             }
+            String corrected = SimpleJson.repairUnescapedControlCharacters(json);
+            if(!corrected.equals(json)) {
+                json = corrected;
+                repaired++;
+            }
             long queuedAt = parseLong(properties.getProperty("item." + i + ".queuedAtEpochMs"), System.currentTimeMillis());
             int replayAttempts = (int)parseLong(properties.getProperty("item." + i + ".replayAttempts"), 0L);
             long nextRetryEpochMs = parseLong(properties.getProperty("item." + i + ".nextRetryEpochMs"), 0L);
@@ -1156,6 +1164,19 @@ public class ArchimeshSessionManager {
             }
             offlineOutbox.addLast(new QueuedSubmitOp(modelId, json, queuedAt, replayAttempts, nextRetryEpochMs));
             loaded++;
+        }
+
+        if(repaired > 0) {
+            Path backup = outboxFile.toPath().resolveSibling(outboxFile.getName() + ".before-json-escaping.bak");
+            try {
+                if(!java.nio.file.Files.exists(backup)) java.nio.file.Files.copy(outboxFile.toPath(), backup,
+                        java.nio.file.StandardCopyOption.COPY_ATTRIBUTES);
+            } catch(IOException ex) {
+                throw new IllegalStateException("Could not back up the outbox before JSON escaping repair", ex);
+            }
+            persistOutboxToDisk(modelId);
+            ArchimeshPlugin.logInfo("Repaired legacy JSON escaping in durable outbox entries modelId=" + modelId
+                    + " count=" + repaired + "; operation IDs and queue order preserved");
         }
 
         if(loaded > 0) {

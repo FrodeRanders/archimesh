@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ARCHIMATE_REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-ARCHI_SOURCE_DIR_DEFAULT="$(cd "${ARCHIMATE_REPO_DIR}/../archi" && pwd 2>/dev/null || true)"
+ARCHI_SOURCE_DIR_DEFAULT="${ARCHIMATE_REPO_DIR}/../archi"
 CLIENT_DIR_DEFAULT="${ARCHIMATE_REPO_DIR}/client"
 BUILD_MODE_DEFAULT="client"
 
@@ -20,12 +20,15 @@ fi
 DROPINS_DIR="${DROPINS_DIR:-${DROPINS_DIR_DEFAULT}}"
 PLUGIN_MODULE="org.gautelis.archimesh.plugin"
 PLUGIN_ID="org.gautelis.archimesh.plugin"
+source "${SCRIPT_DIR}/client-plugin-artifact.sh"
 
 usage() {
   cat <<USAGE
 Usage: $(basename "$0") [options]
 
 Builds the Archimesh plugin from source and installs it into Archi dropins.
+Use --no-build to install the JAR from an earlier build without rebuilding.
+Client builds use the workspace's pinned Maven wrapper, just like build-client-standalone.sh.
 
 Options:
   --build-mode <client|archi>
@@ -122,43 +125,34 @@ else
   fi
 fi
 
+if [[ "${DO_BUILD}" == "true" ]]; then
+  if [[ "${BUILD_MODE}" == "client" ]]; then
+    echo "[build] Building ${PLUGIN_MODULE} from standalone client at ${CLIENT_DIR}"
+    CLIENT_DIR="${CLIENT_DIR}" ARCHI_APP_PATH="${ARCHI_APP_PATH}" "${SCRIPT_DIR}/build-client-standalone.sh"
+  else
+    echo "[build] Building ${PLUGIN_MODULE} from ${ARCHI_SOURCE_DIR}"
+    mvn -q -pl "${PLUGIN_MODULE}" -am -DskipTests package -f "${ARCHI_SOURCE_DIR}/pom.xml"
+  fi
+fi
+
+if [[ "${BUILD_MODE}" == "client" ]]; then
+  PLUGIN_JAR="$(find_client_plugin_jar "${CLIENT_DIR}")"
+else
+  PLUGIN_JAR="$(find_client_plugin_jar "${ARCHI_SOURCE_DIR}")"
+fi
+
+if [[ "${PATCH_INI}" == "true" && ! -f "${ARCHI_INI_PATH}" ]]; then
+  echo "Archi.ini not found: ${ARCHI_INI_PATH}" >&2
+  exit 1
+fi
+
 if [[ "${CLEAR_RUNTIME_CACHE}" == "true" ]]; then
   RUNTIME_CACHE_DIR="${HOME}/Library/Application Support/Archi/config"
   echo "[cleanup] Clearing Archi runtime cache at ${RUNTIME_CACHE_DIR}"
   rm -rf "${RUNTIME_CACHE_DIR}"
 fi
 
-PLUGIN_JAR=""
-if [[ "${DO_BUILD}" == "true" ]]; then
-  if [[ "${BUILD_MODE}" == "client" ]]; then
-    echo "[build] Building ${PLUGIN_MODULE} from standalone client at ${CLIENT_DIR}"
-    "${ARCHIMATE_REPO_DIR}/scripts/prepare-client-target-platform.sh"
-    mvn -q -DskipTests clean package -f "${CLIENT_DIR}/pom.xml"
-    PLUGIN_JAR="$(ls -1t "${CLIENT_DIR}/${PLUGIN_MODULE}/target/${PLUGIN_ID}"-*.jar 2>/dev/null | head -n1 || true)"
-  else
-    echo "[build] Building ${PLUGIN_MODULE} from ${ARCHI_SOURCE_DIR}"
-    mvn -q -pl "${PLUGIN_MODULE}" -am -DskipTests package -f "${ARCHI_SOURCE_DIR}/pom.xml"
-    PLUGIN_JAR="$(ls -1t "${ARCHI_SOURCE_DIR}/${PLUGIN_MODULE}/target/${PLUGIN_ID}"-*.jar 2>/dev/null | head -n1 || true)"
-  fi
-fi
-
-if [[ -z "${PLUGIN_JAR}" ]]; then
-  if [[ "${BUILD_MODE}" == "client" ]]; then
-    PLUGIN_JAR="$(ls -1t "${CLIENT_DIR}/${PLUGIN_MODULE}/target/${PLUGIN_ID}"-*.jar 2>/dev/null | head -n1 || true)"
-  else
-    PLUGIN_JAR="$(ls -1t "${ARCHI_SOURCE_DIR}/${PLUGIN_MODULE}/target/${PLUGIN_ID}"-*.jar 2>/dev/null | head -n1 || true)"
-  fi
-fi
-
-if [[ -z "${PLUGIN_JAR}" || ! -f "${PLUGIN_JAR}" ]]; then
-  if [[ "${BUILD_MODE}" == "client" ]]; then
-    echo "Plugin jar not found under ${CLIENT_DIR}/${PLUGIN_MODULE}/target" >&2
-  else
-    echo "Plugin jar not found under ${ARCHI_SOURCE_DIR}/${PLUGIN_MODULE}/target" >&2
-  fi
-  exit 1
-fi
-
+echo "[artifact] ${PLUGIN_JAR}"
 PLUGIN_DROPINS_DIR="${DROPINS_DIR}/eclipse/plugins"
 cleanup_archimesh_jars() {
   local dir="$1"
@@ -210,12 +204,12 @@ if [[ "${PATCH_INI}" == "true" ]]; then
   awk -v arg="${DROPINS_ARG}" '
     BEGIN { inserted=0 }
     /^-Dorg\.eclipse\.equinox\.p2\.reconciler\.dropins\.directory=/ { next }
-    /^-vmargs$/ && inserted==0 { print arg; inserted=1 }
+    /^-vmargs$/ && inserted==0 { print; print arg; inserted=1; next }
     { print }
     END {
       if(inserted==0) {
-        print arg
         print "-vmargs"
+        print arg
       }
     }
   ' "${ARCHI_INI_PATH}" > "${TMP_FILE}"
@@ -236,6 +230,6 @@ Next:
        Help -> About Archi -> Installation Details -> Plug-ins
        Look for: ${PLUGIN_ID}
   3. Tools menu should include:
-       Connect Archimesh...
-       Disconnect Archimesh
+       Open Archimesh Model from Server...
+       Switch Active Model to Server-Backed...
 NEXT

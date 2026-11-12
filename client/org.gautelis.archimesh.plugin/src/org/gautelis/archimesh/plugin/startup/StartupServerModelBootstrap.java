@@ -9,6 +9,7 @@ import org.eclipse.ui.PlatformUI;
 
 import org.gautelis.archimesh.plugin.ArchimeshPlugin;
 import org.gautelis.archimesh.plugin.ui.ModelCatalogClient;
+import org.gautelis.archimesh.plugin.util.ClientConnectionSettings;
 import org.gautelis.archimesh.plugin.ws.ArchimeshSessionManager;
 import com.archimatetool.editor.model.IEditorModelManager;
 import com.archimatetool.model.IArchimateFactory;
@@ -22,7 +23,6 @@ import com.archimatetool.model.IIdentifier;
 final class StartupServerModelBootstrap {
 
     private static final String PROP_ENABLED = "archimesh.startup.pull.enabled";
-    private static final String PROP_WS_BASE_URL = "archimesh.startup.pull.wsBaseUrl";
     private static final String PROP_MODEL_ID = "archimesh.startup.pull.modelId";
     private static final String PROP_USER_ID = "archimesh.startup.pull.userId";
     private static final String PROP_SESSION_ID = "archimesh.startup.pull.sessionId";
@@ -31,7 +31,6 @@ final class StartupServerModelBootstrap {
     private static final String PROP_AUTH_TOKEN = "archimesh.startup.pull.authToken";
 
     private static final String ENV_ENABLED = "ARCHIMESH_STARTUP_PULL_ENABLED";
-    private static final String ENV_WS_BASE_URL = "ARCHIMESH_STARTUP_PULL_WS_BASE_URL";
     private static final String ENV_MODEL_ID = "ARCHIMESH_STARTUP_PULL_MODEL_ID";
     private static final String ENV_USER_ID = "ARCHIMESH_STARTUP_PULL_USER_ID";
     private static final String ENV_SESSION_ID = "ARCHIMESH_STARTUP_PULL_SESSION_ID";
@@ -39,7 +38,6 @@ final class StartupServerModelBootstrap {
     private static final String ENV_MODEL_REF = "ARCHIMESH_STARTUP_PULL_MODEL_REF";
     private static final String ENV_AUTH_TOKEN = "ARCHIMESH_STARTUP_PULL_AUTH_TOKEN";
 
-    private static final String DEFAULT_WS_BASE_URL = "ws://localhost:8081";
     private static final String DEFAULT_USER_ID = "anonymous";
 
     void maybeBootstrap(ArchimeshPlugin plugin) {
@@ -145,7 +143,7 @@ final class StartupServerModelBootstrap {
 
         private static StartupConfig read() {
             boolean enabled = parseBoolean(readValue(PROP_ENABLED, ENV_ENABLED), false);
-            String wsBaseUrl = defaultIfBlank(readValue(PROP_WS_BASE_URL, ENV_WS_BASE_URL), DEFAULT_WS_BASE_URL);
+            String wsBaseUrl = ClientConnectionSettings.wsBaseUrl(null);
             String modelId = defaultIfBlank(readValue(PROP_MODEL_ID, ENV_MODEL_ID), "");
             String modelRef = defaultIfBlank(readValue(PROP_MODEL_REF, ENV_MODEL_REF), "HEAD");
             String userId = defaultIfBlank(readValue(PROP_USER_ID, ENV_USER_ID), DEFAULT_USER_ID);

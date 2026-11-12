@@ -16,6 +16,10 @@ if [[ "${RUN_MODE}" != "foreground" && "${RUN_MODE}" != "background" ]]; then
   exit 1
 fi
 
+echo "Starting the development stack (separate from the seeded three-system demo)."
+echo "For demo addresses and the prepared model: ./scripts/demo.sh connection"
+echo "To resume that demo: ./scripts/demo.sh start"
+
 echo "[1/4] Starting Neo4j + Kafka containers"
 docker compose -f "${ROOT_DIR}/docker-compose.yml" up -d
 

@@ -11,6 +11,40 @@ public final class SimpleJson {
     private SimpleJson() {
     }
 
+    /** Escape a JSON string body, including every control character forbidden by JSON. */
+    public static String escapeString(String value) {
+        if(value == null) return "";
+        StringBuilder result = new StringBuilder(value.length());
+        for(int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if(c == '\\' || c == '"') result.append('\\').append(c);
+            else if(c < 0x20) {
+                result.append("\\u00").append(Character.forDigit(c >> 4, 16)).append(Character.forDigit(c & 15, 16));
+            }
+            else result.append(c);
+        }
+        return result.toString();
+    }
+
+    /** Repair legacy outbox JSON affected by the old encoder, without rewriting other tokens. */
+    public static String repairUnescapedControlCharacters(String json) {
+        if(json == null) return null;
+        StringBuilder result = new StringBuilder(json.length());
+        boolean inString = false, escaped = false;
+        for(int i = 0; i < json.length(); i++) {
+            char c = json.charAt(i);
+            if(inString && !escaped && c < 0x20) {
+                result.append(escapeString(String.valueOf(c)));
+                continue;
+            }
+            result.append(c);
+            if(escaped) escaped = false;
+            else if(inString && c == '\\') escaped = true;
+            else if(c == '"') inString = !inString;
+        }
+        return result.toString();
+    }
+
     public static String readRawField(String jsonObject, String key) {
         if(jsonObject == null || key == null) {
             return null;

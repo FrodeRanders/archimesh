@@ -44,6 +44,9 @@ class DemoTest(unittest.TestCase):
     def test_ready_to_open_archi_files_match_the_semantic_fixture(self):
         _,elements,relationships = build()
         models = Path(__file__).resolve().parent / "models"
+        self.assertEqual(package(elements,relationships),
+                         json.loads((models/"archimesh-model.json").read_text()),
+                         "ready-to-import server package must match the fixture")
         self.assertEqual(archi(elements,relationships),(models/"order-management.archimate").read_bytes().rstrip(b"\n"))
         root = ET.parse(models/"order-management-synthesized.archimate").getroot()
         type_key = "{http://www.w3.org/2001/XMLSchema-instance}type"
