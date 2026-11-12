@@ -5,6 +5,11 @@
 **Mål:** Fungerande tvåvägsintegration mellan Archi (via ArchiMesh) och Turbo EA, utan att förlora ArchiMesh:s CRDT-, historik-, behörighets- eller återställningsegenskaper.  
 **Status:** Implementationsspecifikation, inte beskrivning av redan färdig integration.
 
+**Utökad omfattning 2026-11-12:** Projektet ansvarar nu även för en modulär
+DataHub OSS ↔ Turbo EA-integration. Se [federationsuppdraget](archimesh-datahub-turboea-integration-codex.md)
+och [ADR 0002](adr/0002-three-repository-federation.md). De utökar det ursprungliga
+undantaget för DataHub nedan; befintliga M0–M6-kontrakt gäller fortsatt.
+
 > **Instruktion till Codex:** Implementera uppdraget etappvis i det aktuella ArchiMesh-repositoryt. Läs och verifiera lokal kod och Turbo EA-instansens aktuella OpenAPI innan exakta API-anrop eller klassnamn bestäms. De klassnamn och endpoints som föreslås här är ansvarsfördelningar, inte nödvändigtvis redan existerande kod. Bevara existerande kontrakt och tester. Sluta inte efter enbart design eller scaffolding.
 
 ## 1. Varför integrationen behövs

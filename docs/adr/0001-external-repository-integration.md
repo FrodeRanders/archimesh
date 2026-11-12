@@ -4,6 +4,11 @@ Date: 2026-11-11. Status: accepted as the M0 implementation direction; runtime
 support belongs to M1–M6. See the [M0 investigation](../turboea/m0-analysis.md)
 for source evidence, API limitations, tests and remaining deployment checks.
 
+The DataHub direction is extended by [ADR 0002](0002-three-repository-federation.md),
+including this project's responsibility for a modular DataHub–Turbo EA bridge.
+The M0 exclusion of DataHub below records the original milestone scope; it is not
+an exclusion from the expanded project assignment.
+
 ## Context
 
 The [integration assignment](../archimesh-turboea-integration-codex.md) requires

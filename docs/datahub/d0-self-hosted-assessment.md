@@ -4,6 +4,12 @@ Date: 2026-11-12. Status: discovery plan; connector and runnable Compose environ
 not implemented or verified yet. This records the deployment constraint and the
 first concrete work package, rather than claiming a completed DataHub integration.
 
+The scope now also includes this project's responsibility for a model-independent
+DataHub–Turbo EA bridge. See the [modular federation assignment](../archimesh-datahub-turboea-integration-codex.md)
+and [ADR 0002](../adr/0002-three-repository-federation.md) for shared identity,
+authority, module boundaries and the round-trip acceptance contract. The D0–D4
+sequence below is elaborated there; D0 implementation remains the next step.
+
 ## Deployment constraint
 
 The target is the agency's locally deployed DataHub open-source offering. Cloud
