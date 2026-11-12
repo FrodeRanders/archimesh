@@ -1,13 +1,13 @@
 # DataHub OSS ↔ Turbo EA ↔ ArchiMesh implementation assignment
 
-Date: 2026-11-12. Status: agreed scope and modular delivery contract; DataHub
-connectors and bridge execution are not implemented yet.
+Date: 2026-11-12. Status: agreed modular delivery contract; the D0 Compose/API harness
+is implemented. DataHub runtime connectors and bridge execution are not implemented.
 
 This project takes responsibility for the DataHub–Turbo EA integration as well
 as integration of both repositories with Archi/ArchiMesh. It extends the
-[original Turbo EA assignment](archimesh-turboea-integration-codex.md), the
-[D0 assessment](datahub/d0-self-hosted-assessment.md) and
-[ADR 0002](adr/0002-three-repository-federation.md). ADR 0001 and existing M0–M6
+[original Turbo EA assignment](../../../docs/archimesh-turboea-integration-codex.md), the
+[D0 assessment](d0-assessment.md) and
+[ADR 0002](../../../docs/adr/0002-three-repository-federation.md). ADR 0001 and existing M0–M6
 safety/recovery contracts remain in force.
 
 ## Scope and first deliverable
@@ -15,8 +15,11 @@ safety/recovery contracts remain in force.
 Build a reusable DataHub OSS adapter and a model-independent bridge to Turbo EA,
 with one shared canonical identity registry and field-authority policy. ArchiMesh
 is a consumer of these modules and retains its own model acceptance pipeline.
-Hosting can initially use the existing Quarkus server; the bridge must not require
-an Archi model to publish an approved DataHub asset into Turbo EA.
+The bridge is a separately built/tested subproject in `integrations/datahub-turboea/`,
+with its own infrastructure, tooling, tests and operations documentation. Ordinary
+ArchiMesh builds must not depend on bridge internals. Shared adapters/contracts
+must be reusable through a versioned boundary. The bridge must not require an
+Archi model to publish an approved DataHub asset into Turbo EA.
 
 The first working slice is read-only toward DataHub and explicitly approved toward
 Turbo EA. It covers selected datasets and governed data products when verified in
@@ -180,6 +183,7 @@ and tested, or as unimplemented; they are not implied by the word integration.
 
 Existing M0–M6 supplies Turbo EA integration, durable metadata and recovery building
 blocks. It does not yet supply the neutral contracts, DataHub adapter or independent
-bridge above. The next implementation task is D0's Compose/API evidence, followed
-by D1. Existing native two-workbench and live deployment recovery acceptance gaps
+bridge above. D0 tooling and its [contract evidence](d0-contract-evidence.md) are in
+this subproject. The next implementation task is D1. Existing native two-workbench
+and live deployment recovery acceptance gaps
 remain as recorded for Turbo EA; the expanded scope does not close them.

@@ -1,0 +1,15 @@
+{
+  "version": "v1.8.0",
+  "source": "https://raw.githubusercontent.com/datahub-project/datahub/v1.8.0/docker/quickstart/docker-compose.quickstart-profile.yml",
+  "sha256": "4342e78a4c05aedc34d014d0c29d7d536caa3a04bc173aa0ade6a64a139b3b9f",
+  "license": "Apache-2.0",
+  "adaptations": [
+    "project-scoped storage/network; no container_name",
+    "no Actions or host credential/plugin mounts",
+    "no storage/broker/OTEL ports published",
+    "GMS auth, REST and view authorization enabled",
+    "generated local secrets; generated JAAS user.props",
+    "telemetry off; ingestion UI off",
+    "upstream dependency initialization ordering retained"
+  ]
+}

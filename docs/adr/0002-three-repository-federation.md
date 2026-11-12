@@ -6,7 +6,7 @@ contracts below are planned; this ADR does not enable a DataHub connector or cla
 a completed three-repository integration.
 
 Extends [ADR 0001](0001-external-repository-integration.md). Delivery and acceptance
-are specified in the [federation assignment](../archimesh-datahub-turboea-integration-codex.md).
+are specified in the [federation assignment](../../integrations/datahub-turboea/docs/implementation.md).
 
 ## Context
 
@@ -33,12 +33,16 @@ adapters and an ArchiMesh binding adapter. The DataHub–Turbo EA bridge must wo
 without an Archi model, model ACL, contribution, HEAD, view or active client.
 ArchiMesh imports must use that same registry rather than create a second mapping.
 
-Initial hosting is inside the existing server and its integration metadata store.
-Package boundaries must allow later extraction into libraries and a separate
-self-hosted worker without changing identity semantics. A separately deployable
-worker is an additional packaging step, not a capability supplied by this ADR.
-One active runtime owns a registry and its mutation lanes. Do not start two
-independent schedulers against it without implementing distributed coordination.
+The bridge is a separately built/tested subproject under
+`integrations/datahub-turboea/`. Its infrastructure, release-specific discovery,
+jobs and operations stay there; ordinary ArchiMesh builds do not depend on it.
+Shared contracts/adapters must be independently reusable, with no dependency from
+ArchiMesh into bridge application internals. D1 must define the runtime/storage
+boundary before enabling a separate worker: one active owner coordinates each
+logical identity registry and its mutation lanes. Separate packaging does not
+permit separate canonical mappings or independent writers without coordination.
+The subproject can later be extracted into its own repository without moving the
+model engine. Separate runtime execution is not yet implemented.
 
 | Module / planned package | Responsibility | Dependencies |
 | --- | --- | --- |
@@ -46,9 +50,9 @@ independent schedulers against it without implementing distributed coordination.
 | DataHub adapter / `integration.datahub` | OSS API/authentication, entities/aspects, source observations, capabilities and error classification | Core; HTTP/serialization |
 | Turbo EA adapter / existing `integration.turboea` | API/authentication, metamodel validation, card/relation read/write and readback | Core; HTTP/serialization |
 | Federation persistence / `integration.federation.store` | Atomic identity reservations, versioned state, baselines, audit, durable jobs and uncertainty fences | Core; existing integration metadata storage |
-| Bridge application / `integration.bridge` | Approved DataHub → Turbo EA projections, scheduling, conflict handling and reconciliation | Core ports; no concrete HTTP clients or model service |
+| Bridge application / subproject | Approved DataHub → Turbo EA projections, scheduling, conflict handling and reconciliation | Core ports; no concrete HTTP clients or model service |
 | ArchiMesh binding / existing integration application services | Catalog/import/link, occurrence bindings and ordinary accepted inbound model operations | Core ports; model service |
-| Runtime composition / `IntegrationRuntime` | Configuration, adapter construction, credentials, scheduling and operations endpoints | Wires all modules; domain modules do not depend on runtime |
+| Runtime composition / separate subproject composition and ArchiMesh `IntegrationRuntime` | Wire each application's configuration, adapter construction, credentials and operations | Versioned shared contracts; no default bridge dependency/startup in ArchiMesh |
 
 Extract and reuse existing capabilities where compatible. Do not build another
 generic commit/event engine, duplicate the Turbo EA client or duplicate mutation
@@ -181,7 +185,7 @@ integration backup, uncertainty fencing and paused restore procedure.
 
 All components remain self-hosted. DataHub OSS runs in an isolated, pinned Compose
 project for development/tests; Cloud APIs and features are excluded. Follow the
-[D0 environment plan](../datahub/d0-self-hosted-assessment.md).
+[D0 environment plan](../../integrations/datahub-turboea/docs/d0-assessment.md).
 
 Do not retrofit DataHub URNs into `CARD` or equate DataHub entity types with the
 current Turbo EA-derived canonical kind. Introduce neutral resource descriptors

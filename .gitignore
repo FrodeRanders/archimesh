@@ -6,6 +6,7 @@ server/target/
 .env
 *.pem
 *.key
+__pycache__/
 
 client/**/target/
 client/**/.classpath

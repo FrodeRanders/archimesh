@@ -1,14 +1,15 @@
 # DataHub D0 — self-hosted OSS assessment and development plan
 
-Date: 2026-11-12. Status: discovery plan; connector and runnable Compose environment
-not implemented or verified yet. This records the deployment constraint and the
-first concrete work package, rather than claiming a completed DataHub integration.
+Date: 2026-11-12. Status: D0 development harness implemented, with live API/restart
+validation recorded in the [contract evidence](d0-contract-evidence.md). The
+production connector and bridge runtime are not implemented. The environment,
+tooling and tests live entirely in this independent bridge subproject.
 
 The scope now also includes this project's responsibility for a model-independent
-DataHub–Turbo EA bridge. See the [modular federation assignment](../archimesh-datahub-turboea-integration-codex.md)
-and [ADR 0002](../adr/0002-three-repository-federation.md) for shared identity,
+DataHub–Turbo EA bridge. See the [modular federation assignment](implementation.md)
+and [ADR 0002](../../../docs/adr/0002-three-repository-federation.md) for shared identity,
 authority, module boundaries and the round-trip acceptance contract. The D0–D4
-sequence below is elaborated there; D0 implementation remains the next step.
+sequence below is elaborated there; D1 neutral contracts/migration is the next stage.
 
 ## Deployment constraint
 
@@ -16,22 +17,23 @@ The target is the agency's locally deployed DataHub open-source offering. Cloud
 hosting, Cloud APIs and Cloud-only features are outside this integration's scope.
 Development and integration tests will use Docker Compose, consistent with the
 other ArchiMesh components. The agency's exact installed version/API contract is
-not yet known. No locally running Docker containers were found during this review;
-no assumption is made that the agency deployment is on this developer machine.
+not yet known. No containers were running at the initial review. The subsequent
+D0 runs created only isolated synthetic development/test stacks; they did not
+inspect or alter an agency deployment.
 
 Use a pinned supported release matching the agency deployment when its version is
-available. The official v1.8.0 generated Compose manifest was inspected as a concrete
-reference, not selected as the agency's version or asserted to be the latest release.
+available. The official v1.8.0 generated Compose manifest was adapted as the
+development baseline, not selected as the agency's version or asserted to be latest.
 Avoid moving `master`, `latest` and unpinned quickstart image tags in committed tests.
 
-## Concrete local Compose setup to implement
+## Implemented local Compose baseline
 
-Keep the DataHub stack separate from the existing root Compose project:
+The implemented stack is separate from the existing root Compose project:
 
 | Concern | Development/test decision |
 | --- | --- |
 | Services | DataHub GMS, frontend, system-update job, and the release's supported database, search and messaging dependencies |
-| Project ownership | Dedicated `archimesh-datahub-dev`; integration runs use a unique `archimesh-datahub-it-<run>` project |
+| Project ownership | Dedicated `datahub-turboea-dev`; integration runs use a unique `datahub-turboea-it-<run>` project |
 | Networks and volumes | Project-scoped; no fixed upstream global network/volume names; no reuse of ArchiMesh Kafka or Neo4j volumes |
 | Host ports | Loopback only; proposed dev GMS `18080`, frontend `19002`; tests use allocated loopback ports |
 | Internal storage/broker ports | Not published to the host by default |
@@ -157,9 +159,10 @@ reach those models through accepted operations while preserving old tags; ordina
 local writes to those fields must be rejected. No DataHub write permission is needed
 for that initial read-only connector pilot.
 
-D0 is complete only after Compose bring-up, synthetic API/auth checks and a clean
-restart/reconciliation probe pass. The current document completes the scope and
-code-boundary assessment; it does not claim those runtime checks have happened.
+D0 development validation includes Compose bring-up, synthetic API/auth/aspect
+checks and a clean service restart/readback probe on retained isolated volumes.
+See the evidence for exact coverage and the observed OSS search-disclosure gap.
+This is not proof of agency-version compatibility or a complete federation runtime.
 
 ## Primary references reviewed
 

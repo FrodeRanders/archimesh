@@ -23,9 +23,12 @@ case "$MODE" in
   server-isolated)
     exec bash "$ROOT_DIR/scripts/run-isolated-server-gate.sh"
     ;;
+  datahub)
+    exec python3 "$ROOT_DIR/integrations/datahub-turboea/scripts/local.py" test
+    ;;
   *)
     cat >&2 <<'EOF'
-usage: scripts/validate-local.sh [fast|gate|infra|ws|recovery|server-isolated]
+usage: scripts/validate-local.sh [fast|gate|infra|ws|recovery|server-isolated|datahub]
 
   fast   hardening and notation parity checks only
   gate   default client + server CRDT gate
@@ -33,6 +36,7 @@ usage: scripts/validate-local.sh [fast|gate|infra|ws|recovery|server-isolated]
   ws     gate plus local Kafka/Neo4j integration and websocket E2E tests
   recovery  packaged JVM crash and fresh-database restore drill on isolated Docker infrastructure
   server-isolated  all server tests including WebSocket coverage on fresh disposable Neo4j/Kafka
+  datahub  synthetic DataHub OSS API/auth/restart probes on an isolated disposable Compose stack
 EOF
     exit 2
     ;;

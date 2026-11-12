@@ -6,7 +6,7 @@
 **Status:** Implementationsspecifikation, inte beskrivning av redan färdig integration.
 
 **Utökad omfattning 2026-11-12:** Projektet ansvarar nu även för en modulär
-DataHub OSS ↔ Turbo EA-integration. Se [federationsuppdraget](archimesh-datahub-turboea-integration-codex.md)
+DataHub OSS ↔ Turbo EA-integration. Se [federationsuppdraget](../integrations/datahub-turboea/docs/implementation.md)
 och [ADR 0002](adr/0002-three-repository-federation.md). De utökar det ursprungliga
 undantaget för DataHub nedan; befintliga M0–M6-kontrakt gäller fortsatt.
 
