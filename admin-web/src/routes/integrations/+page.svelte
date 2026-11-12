@@ -62,5 +62,5 @@
 {/if}
 <style>
   .controls { display:flex; flex-wrap:wrap; gap:1rem; align-items:end; margin:1rem 0; } label { display:block; margin:0.7rem 0; } button { margin:0.5rem 0.5rem 0.5rem 0; }
-  pre { white-space:pre-wrap; overflow-wrap:anywhere; padding:0.7rem; background:rgba(255,255,255,0.025); border-radius:0.6rem; } .table-wrap { overflow-x:auto; } table { width:100%; border-collapse:collapse; } th,td { text-align:left; vertical-align:top; padding:0.6rem; border-bottom:1px solid var(--line); }
+  pre { white-space:pre-wrap; overflow-wrap:anywhere; padding:0.7rem; background:var(--bg-alt); border-radius:0.6rem; } .table-wrap { overflow-x:auto; } table { width:100%; border-collapse:collapse; } th,td { text-align:left; vertical-align:top; padding:0.6rem; border-bottom:1px solid var(--line); }
 </style>

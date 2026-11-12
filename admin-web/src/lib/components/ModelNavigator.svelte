@@ -82,14 +82,14 @@
     text-align: left;
     padding: 0.9rem 1rem;
     border-radius: 1rem;
-    background: rgba(255, 255, 255, 0.02);
-    border-color: rgba(255,255,255,0.08);
+    background: var(--bg-alt);
+    border-color: var(--line);
   }
 
   .item:hover,
   .item.selected {
-    border-color: rgba(245, 158, 11, 0.35);
-    background: rgba(245, 158, 11, 0.08);
+    border-color: var(--accent-line);
+    background: var(--accent-soft);
   }
 
   .item-top {

@@ -137,7 +137,7 @@
     gap: 1rem;
     align-items: flex-start;
     padding-bottom: 0.45rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--line);
   }
   .cards {
     display: grid;
@@ -147,8 +147,8 @@
   .session-card {
     padding: 0.95rem;
     border-radius: 0.9rem;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--line);
+    background: var(--bg-alt);
   }
   .card-top {
     display: flex;
@@ -158,7 +158,7 @@
     margin-bottom: 0.8rem;
   }
   code {
-    color: #fbbf24;
+    color: var(--accent);
     word-break: break-all;
   }
   .empty { color: var(--text-muted); }

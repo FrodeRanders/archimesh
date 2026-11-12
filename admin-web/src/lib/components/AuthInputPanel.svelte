@@ -60,7 +60,7 @@
     gap: 0.3rem;
     padding: 0.95rem 1rem;
     border-radius: 0.9rem;
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-alt);
     color: var(--text-soft);
   }
   .message strong {

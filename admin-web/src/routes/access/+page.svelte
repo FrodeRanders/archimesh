@@ -221,7 +221,7 @@
     gap: 1rem;
     align-items: flex-start;
     padding-bottom: 0.45rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--line);
   }
   .actions {
     display: flex;

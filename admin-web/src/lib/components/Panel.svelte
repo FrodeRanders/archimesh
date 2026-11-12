@@ -20,14 +20,14 @@
   .panel {
     background: var(--panel);
     border-radius: 1.1rem;
-    border: 1px solid rgba(255,255,255,0.08);
+    border: 1px solid var(--line);
     overflow: hidden;
     box-shadow: var(--shadow-soft);
   }
   .panel-header {
     display:flex; justify-content:space-between; gap:1rem; align-items:flex-start;
-    padding: 0.95rem 1.15rem; border-bottom:1px solid rgba(255,255,255,0.06);
-    background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0));
+    padding: 0.95rem 1.15rem; border-bottom:1px solid var(--line);
+    background: var(--bg-alt);
   }
   h2 { margin:0; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.14rem; color: var(--text-muted); }
   p { margin:0.35rem 0 0; color: var(--text-soft); font-size:0.9rem; max-width: 62ch; }

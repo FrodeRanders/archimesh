@@ -29,8 +29,8 @@
     gap: 0.2rem;
     padding: 0.95rem 1rem;
     border-radius: 1rem;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--line);
+    background: var(--bg-alt);
     color: var(--text);
   }
   .banner strong {
@@ -43,19 +43,19 @@
     color: var(--text-soft);
   }
   .banner.tone-error {
-    border-color: rgba(239, 68, 68, 0.45);
-    background: rgba(127, 29, 29, 0.28);
+    border-color: var(--danger-line);
+    background: var(--danger-soft);
   }
   .banner.tone-error strong,
   .banner.tone-error span {
-    color: #fecaca;
+    color: var(--danger);
   }
   .banner.tone-working {
-    border-color: rgba(245, 158, 11, 0.35);
-    background: rgba(120, 53, 15, 0.22);
+    border-color: var(--accent-line);
+    background: var(--accent-soft);
   }
   .banner.tone-working strong,
   .banner.tone-working span {
-    color: #fde68a;
+    color: var(--accent);
   }
 </style>

@@ -255,13 +255,13 @@
   }
   .line {
     padding-bottom: 0.45rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--line);
   }
   .tag-card {
     padding: 0.9rem;
     border-radius: 0.9rem;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--line);
+    background: var(--bg-alt);
   }
   .tag-meta {
     color: var(--text-muted);

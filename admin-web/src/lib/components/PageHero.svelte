@@ -25,8 +25,8 @@
     border: 1px solid var(--line-strong);
     border-radius: 1.2rem;
     background:
-      radial-gradient(circle at top left, rgba(245, 158, 11, 0.12), transparent 40%),
-      linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(56, 189, 248, 0.05));
+      radial-gradient(circle at top left, rgba(245, 158, 11, 0.08), transparent 40%),
+      linear-gradient(135deg, var(--panel), #f4f8fc);
     box-shadow: var(--shadow-soft);
   }
 

@@ -60,14 +60,14 @@
     gap: 1rem;
     padding: 1rem 1.8rem;
     border-bottom: 1px solid var(--line);
-    background: rgba(8, 11, 20, 0.9);
+    background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(14px);
   }
   .brand { display:flex; align-items:center; gap:0.9rem; }
   .mark {
     width: 42px; height: 42px; border-radius: 12px; display:grid; place-items:center;
-    background: linear-gradient(135deg, #d97706, #f59e0b);
-    color:#140f07; font-weight:700; letter-spacing:0.08rem;
+    background: linear-gradient(135deg, #ffe4a3, #f3bd56);
+    color:#56320b; font-weight:700; letter-spacing:0.08rem;
   }
   .title { font-size: 0.92rem; text-transform: uppercase; letter-spacing: 0.16rem; color: var(--text-muted); }
   .subtitle { font-size: 0.95rem; color: var(--text); }
@@ -78,11 +78,11 @@
     padding:0.45rem 0.85rem;
     border-radius:999px;
     border:1px solid transparent;
-    background: rgba(255,255,255,0.02);
+    background: var(--bg-alt);
     transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
   }
-  .tabs a.active { color: var(--text); border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.12); }
-  .tabs a:hover { color: var(--text); border-color: rgba(255,255,255,0.08); }
+  .tabs a.active { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
+  .tabs a:hover { color: var(--text); border-color: var(--line); }
   @media (max-width: 900px) {
     .header { grid-template-columns: 1fr; }
     .tabs { justify-content:flex-start; }

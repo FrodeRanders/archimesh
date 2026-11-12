@@ -130,7 +130,7 @@
     gap: 1rem;
     align-items: flex-start;
     padding-bottom: 0.45rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--line);
   }
   .line.column {
     display: grid;
@@ -142,9 +142,9 @@
     margin-top: 0.5rem;
   }
   code {
-    color: #fbbf24;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.03);
+    color: var(--accent);
+    border: 1px solid var(--line);
+    background: var(--bg-alt);
     border-radius: 999px;
     padding: 0.2rem 0.55rem;
   }
@@ -153,8 +153,8 @@
     gap: 0.25rem;
     padding: 0.9rem;
     border-radius: 0.9rem;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--line);
+    background: var(--bg-alt);
   }
   .guide strong {
     color: var(--text);
