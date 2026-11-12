@@ -6,7 +6,7 @@ import static org.gautelis.archimesh.integration.IntegrationIdentity.*;
 
 /** Independent metadata storage. No method writes model entities or revisions. */
 public interface IntegrationStateRepository extends AutoCloseable {
-    enum DocumentKind { FIELD_AUTHORITY, CHECKPOINT, CONFLICT, CONTRIBUTION, JOB, PUBLICATION_POLICY, PUBLICATION_JOB, PUBLICATION_RESOURCE, INBOUND_POLICY, INBOUND_STATE, CENTRAL_EDIT, CENTRAL_LANE, CENTRAL_DELIVERY }
+    enum DocumentKind { FIELD_AUTHORITY, CHECKPOINT, CONFLICT, CONTRIBUTION, JOB, PUBLICATION_POLICY, PUBLICATION_JOB, PUBLICATION_RESOURCE, INBOUND_POLICY, INBOUND_STATE, CENTRAL_EDIT, CENTRAL_LANE, CENTRAL_DELIVERY, MODEL_SCOPE, OPERATIONS, RECONCILIATION }
     record PublicationIdentity(ModelElementKey model,CanonicalObject canonical,String archimateType,String mappingVersion) { }
 
     /** Opaque JSON state is typed by kind, versioned with CAS and scoped to an integration instance. */
@@ -19,6 +19,13 @@ public interface IntegrationStateRepository extends AutoCloseable {
         }
         @Override public JsonNode data() { return data.deepCopy(); }
     }
+
+    default void migrateMappings(String instance,String model,JsonNode migrations) { throw new UnsupportedOperationException(); }
+    default JsonNode statistics(String instance) { throw new UnsupportedOperationException(); }
+    default java.util.List<IntegrationArchive.Node> archive(String instance) { throw new UnsupportedOperationException(); }
+    default void restoreArchive(String instance,java.util.List<IntegrationArchive.Node> nodes) { throw new UnsupportedOperationException(); }
+    default String modelGeneration(String model) { throw new UnsupportedOperationException(); }
+    default boolean hasModelMetadata(String instance,String model) { throw new UnsupportedOperationException(); }
 
     ReservedImport reserveImport(ImportReservation request);
     Optional<ReservedImport> findBinding(ModelElementKey key);

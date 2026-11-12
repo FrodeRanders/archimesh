@@ -16,7 +16,7 @@ public class CentralProposalGrant {
     @Inject CentralEditAuthorization authorization;
     public StateDocument proof(String id,String target,String canonical,String resource) {
         var job=runtime.metadata().load(runtime.settings().instanceId(),DocumentKind.CENTRAL_EDIT,id).orElseThrow(() -> new Failure(403,"CENTRAL_PROPOSAL_PROOF_REQUIRED"));
-        var data=job.data(); var settings=runtime.settings().targets().stream().filter(t -> t.key().equals(target)).findFirst().orElseThrow();
+        var data=job.data(); runtime.requireGeneration(data.path("sourceModelId").asText(),data.path("modelGeneration").asText(null)); var settings=runtime.settings().targets().stream().filter(t -> t.key().equals(target)).findFirst().orElseThrow();
         if (!data.path("remoteVerified").asBoolean() || !data.path("targetKey").asText().equals(target) || !data.path("canonicalId").asText().equals(canonical)
                 || !data.path("resourceId").asText().equals(resource) || !data.path("scopeDigest").asText().equals(CentralEditAuthorization.digest(settings))) throw new Failure(403,"CENTRAL_PROPOSAL_SCOPE_DENIED");
         if (!CentralFields.shared(settings,data.path("type").asText(),CentralFields.keys(data.path("proposed"))).isEmpty())

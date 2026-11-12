@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "instanceId": "archimesh-development",
+  "operators": [],
   "targets": [
     {
       "key": "development",

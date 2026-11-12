@@ -22,6 +22,7 @@ import static org.gautelis.archimesh.integration.InformationAuthorityPolicy.Auth
 public class ExternalObjectCatalogService {
     public static final String CANONICAL_PROPERTY="archimesh.external.canonicalId";
     @Inject IntegrationRuntime runtime;
+    @Inject RemoteMutationCoordinator execution=new RemoteMutationCoordinator();
     @Inject ArchimeshService models;
     @Inject AuthorizationService authorization;
     @Inject ObjectMapper json;
@@ -95,72 +96,78 @@ public class ExternalObjectCatalogService {
             try { verify(binding.get(),snapshot,null); } catch (RequestFailure drift) { bindingState="DRIFT"; }
         }
         String digest=digest(json.valueToTree(Arrays.asList(modelId,ref,targetKey,cardId,archimateType,
-                target.mapping().version(),head,fields,name,description)));
+                target.mapping().version(),head,fields,name,description,runtime.requireModelActive(modelId))));
         return new Preview(targetKey,cardId,name,description,archimateType,target.mapping().version(),card.type(),head,fields,List.copyOf(compatible),
                 binding.map(b -> b.model().entityId()).orElse(null),bindingState,digest);
     }
 
     public ImportResult importObject(String modelId,AuthorizationSubject subject,ImportRequest request) {
-        if (request == null || request.mode() == null || request.requestId() == null) throw new RequestFailure(400,"INVALID_IMPORT");
-        if (!UUID.fromString(request.requestId()).toString().equalsIgnoreCase(request.requestId())) throw new RequestFailure(400,"INVALID_REQUEST_ID");
-        required(request.cardId());
-        if (request.previewDigest() == null || !request.previewDigest().matches("[a-f0-9]{64}")) throw new RequestFailure(400,"PREVIEW_REQUIRED");
-        if (request.mode() == ImportMode.LINK && (request.elementId() == null || !request.elementId().startsWith("elem:")))
-            throw new RequestFailure(400,"LINK_ELEMENT_REQUIRED");
-        var target=target(modelId,request.ref(),subject,request.targetKey(),true);
-        var state=runtime.metadata(); String instance=runtime.settings().instanceId();
-        String jobId="import-request:"+digest(json.valueToTree(List.of(modelId,request.requestId())));
-        String fingerprint=digest(json.valueToTree(List.of(subject.userId(),request)));
-        var journal=state.load(instance,DocumentKind.JOB,jobId);
-        if (journal.isPresent()) {
-            if (!fingerprint.equals(journal.get().data().path("fingerprint").asText())) throw new RequestFailure(409,"REQUEST_ID_REUSED");
-            requireType(target,journal.get().data().path("externalType").asText());
-            if (journal.get().data().has("result")) {
-                var stored=json.convertValue(journal.get().data().path("result"),ImportResult.class);
-                var binding=state.findBinding(new ModelElementKey(instance,modelId,EntityKind.ELEMENT,stored.elementId())).orElseThrow();
-                if (!binding.external().equals(external(target,request.cardId()))) throw new RequestFailure(409,"TARGET_IDENTITY_CHANGED");
-                verify(binding,models.getSnapshot(modelId,"HEAD"),null);
-                return stored;
+        execution.lock();
+        try {
+            runtime.requireRunning();
+            if (request == null || request.mode() == null || request.requestId() == null) throw new RequestFailure(400,"INVALID_IMPORT");
+            if (!UUID.fromString(request.requestId()).toString().equalsIgnoreCase(request.requestId())) throw new RequestFailure(400,"INVALID_REQUEST_ID");
+            required(request.cardId());
+            if (request.previewDigest() == null || !request.previewDigest().matches("[a-f0-9]{64}")) throw new RequestFailure(400,"PREVIEW_REQUIRED");
+            if (request.mode() == ImportMode.LINK && (request.elementId() == null || !request.elementId().startsWith("elem:")))
+                throw new RequestFailure(400,"LINK_ELEMENT_REQUIRED");
+            var target=target(modelId,request.ref(),subject,request.targetKey(),true);
+            var state=runtime.metadata(); String instance=runtime.settings().instanceId();
+            String jobId="import-request:"+digest(json.valueToTree(List.of(modelId,request.requestId())));
+            String fingerprint=digest(json.valueToTree(List.of(subject.userId(),request)));
+            var journal=state.load(instance,DocumentKind.JOB,jobId);
+            if (journal.isPresent()) {
+                runtime.requireGeneration(modelId,journal.get().data().path("modelGeneration").asText(null));
+                if (!fingerprint.equals(journal.get().data().path("fingerprint").asText())) throw new RequestFailure(409,"REQUEST_ID_REUSED");
+                requireType(target,journal.get().data().path("externalType").asText());
+                if (journal.get().data().has("result")) {
+                    var stored=json.convertValue(journal.get().data().path("result"),ImportResult.class);
+                    var binding=state.findBinding(new ModelElementKey(instance,modelId,EntityKind.ELEMENT,stored.elementId())).orElseThrow();
+                    if (!binding.external().equals(external(target,request.cardId()))) throw new RequestFailure(409,"TARGET_IDENTITY_CHANGED");
+                    verify(binding,models.getSnapshot(modelId,"HEAD"),null);
+                    return stored;
+                }
+                var pending=state.findModelBinding(instance,modelId,external(target,request.cardId()));
+                if (pending.isPresent()) {
+                    var plan=state.load(instance,DocumentKind.JOB,"import-plan:"+pending.get().opBatchId());
+                    if (plan.isPresent()) return finishImport(modelId,subject,request,pending.get(),plan.get(),
+                            plan.get().data().path("headRevision").asLong(-1),true,journal.get());
+                }
             }
-            var pending=state.findModelBinding(instance,modelId,external(target,request.cardId()));
-            if (pending.isPresent()) {
-                var plan=state.load(instance,DocumentKind.JOB,"import-plan:"+pending.get().opBatchId());
-                if (plan.isPresent()) return finishImport(modelId,subject,request,pending.get(),plan.get(),
-                        plan.get().data().path("headRevision").asLong(-1),true,journal.get());
-            }
-        }
-        var reusable=reuseExisting(modelId,subject,request,target,jobId,fingerprint);
-        if (reusable.isPresent()) return reusable.get();
-        Preview preview=preview(modelId,request.ref(),subject,request.targetKey(),request.cardId());
-        if (!preview.digest().equals(request.previewDigest())) {
-            reusable=reuseExisting(modelId,subject,request,target,jobId,fingerprint);
+            var reusable=reuseExisting(modelId,subject,request,target,jobId,fingerprint);
             if (reusable.isPresent()) return reusable.get();
-            throw new RequestFailure(409,"PREVIEW_STALE");
-        }
-        var requestData=requestData(modelId,subject,request,fingerprint,preview.externalType());
-        journal=Optional.of(ensureDocument(jobId,requestData,"fingerprint"));
-        var known=state.findModelBinding(instance,modelId,external(target,request.cardId()));
-        if (request.mode() == ImportMode.LINK && (request.elementId() == null || !request.elementId().startsWith("elem:")))
-            throw new RequestFailure(400,"LINK_ELEMENT_REQUIRED");
-        if (known.isPresent() && request.mode() == ImportMode.LINK && !known.get().model().entityId().equals(request.elementId()))
-            throw new RequestFailure(409,"ALREADY_LINKED_TO_ANOTHER_ELEMENT");
-        String entityId=known.map(b -> b.model().entityId()).orElse(request.mode() == ImportMode.LINK ? request.elementId() : "elem:"+UUID.randomUUID());
-        if (request.mode() == ImportMode.LINK && preview.compatibleElements().stream().noneMatch(e -> e.id().equals(entityId)))
-            throw new RequestFailure(409,"LINK_TYPE_OR_IDENTITY_CONFLICT");
-        String candidateBatch=UUID.randomUUID().toString();
-        var reservation=state.reserveImport(new ImportReservation(new ModelElementKey(instance,modelId,EntityKind.ELEMENT,entityId),
-                new CanonicalObject("urn:uuid:"+UUID.randomUUID(),preview.externalType()),external(target,request.cardId()),
-                preview.archimateType(),preview.mappingVersion(),candidateBatch,request.mode().name()));
-        if (request.mode() == ImportMode.LINK && !reservation.model().entityId().equals(request.elementId()))
-            throw new RequestFailure(409,"ALREADY_LINKED_TO_ANOTHER_ELEMENT");
-        var operations=operations(reservation,ImportMode.valueOf(reservation.bindingMode()),preview.fields());
-        var plan=json.createObjectNode().put("fingerprint",digest(operations)).put("mode",reservation.bindingMode())
-                .put("headRevision",preview.headRevision()).put("mappingVersion",preview.mappingVersion()).put("previewDigest",preview.digest()).put("schemaVersion",1);
-        plan.set("operations",operations);
-        var stored=reservation.state() == BindingState.ACTIVE ? new StateDocument(instance,DocumentKind.JOB,"unused",0,plan)
-                : ensureDocument("import-plan:"+reservation.opBatchId(),plan,"fingerprint");
-        return finishImport(modelId,subject,request,reservation,stored,preview.headRevision(),
-                known.isPresent() || !candidateBatch.equals(reservation.opBatchId()),journal.get());
+            Preview preview=preview(modelId,request.ref(),subject,request.targetKey(),request.cardId());
+            if (!preview.digest().equals(request.previewDigest())) {
+                reusable=reuseExisting(modelId,subject,request,target,jobId,fingerprint);
+                if (reusable.isPresent()) return reusable.get();
+                throw new RequestFailure(409,"PREVIEW_STALE");
+            }
+            var requestData=requestData(modelId,subject,request,fingerprint,preview.externalType());
+            journal=Optional.of(ensureDocument(jobId,requestData,"fingerprint"));
+            var known=state.findModelBinding(instance,modelId,external(target,request.cardId()));
+            if (request.mode() == ImportMode.LINK && (request.elementId() == null || !request.elementId().startsWith("elem:")))
+                throw new RequestFailure(400,"LINK_ELEMENT_REQUIRED");
+            if (known.isPresent() && request.mode() == ImportMode.LINK && !known.get().model().entityId().equals(request.elementId()))
+                throw new RequestFailure(409,"ALREADY_LINKED_TO_ANOTHER_ELEMENT");
+            String entityId=known.map(b -> b.model().entityId()).orElse(request.mode() == ImportMode.LINK ? request.elementId() : "elem:"+UUID.randomUUID());
+            if (request.mode() == ImportMode.LINK && preview.compatibleElements().stream().noneMatch(e -> e.id().equals(entityId)))
+                throw new RequestFailure(409,"LINK_TYPE_OR_IDENTITY_CONFLICT");
+            String candidateBatch=UUID.randomUUID().toString();
+            var reservation=state.reserveImport(new ImportReservation(new ModelElementKey(instance,modelId,EntityKind.ELEMENT,entityId),
+                    new CanonicalObject("urn:uuid:"+UUID.randomUUID(),preview.externalType()),external(target,request.cardId()),
+                    preview.archimateType(),preview.mappingVersion(),candidateBatch,request.mode().name()));
+            if (request.mode() == ImportMode.LINK && !reservation.model().entityId().equals(request.elementId()))
+                throw new RequestFailure(409,"ALREADY_LINKED_TO_ANOTHER_ELEMENT");
+            var operations=operations(reservation,ImportMode.valueOf(reservation.bindingMode()),preview.fields());
+            var plan=json.createObjectNode().put("fingerprint",digest(operations)).put("mode",reservation.bindingMode())
+                    .put("headRevision",preview.headRevision()).put("mappingVersion",preview.mappingVersion()).put("previewDigest",preview.digest()).put("schemaVersion",1);
+            plan.set("operations",operations);
+            var stored=reservation.state() == BindingState.ACTIVE ? new StateDocument(instance,DocumentKind.JOB,"unused",0,plan)
+                    : ensureDocument("import-plan:"+reservation.opBatchId(),plan,"fingerprint");
+            return finishImport(modelId,subject,request,reservation,stored,preview.headRevision(),
+                    known.isPresent() || !candidateBatch.equals(reservation.opBatchId()),journal.get());
+
+        } finally { execution.unlock(); }
     }
 
     private Optional<ImportResult> reuseExisting(String modelId,AuthorizationSubject subject,ImportRequest request,
@@ -180,6 +187,7 @@ public class ExternalObjectCatalogService {
     private ImportResult finishImport(String modelId,AuthorizationSubject subject,ImportRequest request,ReservedImport reservation,
                                       StateDocument plan,long expectedRevision,boolean reused,StateDocument journal) {
         var state=runtime.metadata(); String instance=runtime.settings().instanceId();
+        runtime.requireGeneration(modelId,journal.data().path("modelGeneration").asText(null));
         if (reservation.state()==BindingState.ORPHANED) throw new RequestFailure(409,"ORPHANED_BINDING_REQUIRES_REATTACHMENT");
         var target=target(modelId,"HEAD",subject,request.targetKey(),true);
         if (!reservation.external().equals(external(target,request.cardId()))
@@ -192,7 +200,7 @@ public class ExternalObjectCatalogService {
             if (marker != null && !marker.equals(reservation.canonical().canonicalId())) throw new RequestFailure(409,"EXISTING_PROVENANCE_CONFLICT");
             var outcome=models.submitExternalImport(new ExternalModelImport(modelId,"HEAD",subject,reservation.opBatchId(),
                     reservation.model().entityId(),reservation.archimateType(),reservation.bindingMode().equals("CREATE"),
-                    expectedRevision,plan.data().path("operations")));
+                    expectedRevision,plan.data().path("operations"),runtime.requireModelActive(modelId)));
             if (!outcome.accepted()) throw new RequestFailure(409,outcome.code());
             verify(reservation,models.getSnapshot(modelId,"HEAD"),plan.data().path("operations"));
             reservation=state.confirmImport(reservation.model(),reservation.opBatchId());
@@ -231,6 +239,7 @@ public class ExternalObjectCatalogService {
     private IntegrationConfiguration.Target target(String modelId,String ref,AuthorizationSubject subject,String key,boolean write) {
         requireModel(modelId,ref,subject,write);
         if (!runtime.enabled()) throw new RequestFailure(404,"INTEGRATION_DISABLED");
+        runtime.requireModelActive(modelId);
         var target=runtime.settings().targets().stream().filter(t -> t.key().equals(key)).findFirst()
                 .orElseThrow(() -> new RequestFailure(404,"TARGET_NOT_FOUND"));
         if (!readable(target,subject) || write && !target.catalogAccess().importers().contains(subject.userId()))
@@ -308,7 +317,7 @@ public class ExternalObjectCatalogService {
     }
     private ObjectNode requestData(String modelId,AuthorizationSubject subject,ImportRequest request,String fingerprint,String externalType) {
         var data=json.createObjectNode().put("schemaVersion",1).put("fingerprint",fingerprint).put("sourceModelId",modelId)
-                .put("externalType",externalType).put("userId",subject.userId());
+                .put("externalType",externalType).put("userId",subject.userId()).put("modelGeneration",runtime.requireModelActive(modelId));
         data.set("request",json.valueToTree(request));
         return data;
     }

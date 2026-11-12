@@ -276,3 +276,48 @@ numeric/object values through JavaScript and the Archi plugin.
 The new CENTRAL_EDIT, CENTRAL_LANE and CENTRAL_DELIVERY document kinds remain
 outside model snapshots/history/exports. Integration backup/restore and model
 identity generation fencing remain M6 work; see the M5 operations note.
+
+
+## M6 implementation — 2026-11-12
+
+A model's core registration/restore transaction now creates an incarnation token.
+It is excluded from model snapshot/checkpoint/export formats. Integration model
+scopes, approvals, jobs and internal commands bind to it. Normal restart/rebuild
+retains it; deletion/overwrite/import changes it even when integration is disabled.
+The core acceptance path rechecks generation before a new external commit or
+receipt recovery. No HTTP or integration coordination lock enters normal commits.
+
+Explicit maintenance and operations controls try the shared remote-work barrier
+without waiting under model serialization. Inbound reconciliation, import writes,
+publication, central edits and SSE checkpoint writes share that barrier. Runtime
+pause retains ownership checks and precedes quiescent archive/maintenance work.
+Named operator scopes plus global server admin authorization protect operations;
+model admin alone or a global role alone is insufficient.
+
+The versioned metadata archive captures a bounded, independent label/identity closure
+in one database read transaction. Restore requires matching instance/configuration,
+a paused empty destination scope and whitelisted properties; one write transaction
+rolls back the whole restore on conflict. Control state is not imported. Model scopes
+restore paused, policies are disabled and execution capabilities are quarantined.
+Uncertainty fences, original job intent and correlations are retained, and current identities/
+remote values must be reviewed before attachment and fresh policy/baseline approval.
+Equivalent global identities can be shared; conflicting resource mappings cannot.
+
+Compatible mapping migrations change metadata versions only after a paused review
+validates current canonical type, local ArchiMate type and remote relation direction.
+They clear old baselines and require new approval. Unknown outcomes block migration;
+semantic retyping/rewiring remains an explicitly designed steward migration. Target
+configuration digests normalize set order across restarts and invalidate old
+publication approval rather than automatically expanding its field scope.
+
+Durable paginated full scans repair missed invalidations through fresh reads and
+current approved snapshot projections, with stable publication job IDs across scan
+recovery. Completion records inspection/scheduling separately from delivery success.
+Database gauges and redacted diagnostics expose state, verification ages and retries
+without high-cardinality user/model/resource labels. Archive/model data remain
+separate from this administrative state; no generic commit/event engine was added.
+
+The verified Turbo EA API still has no conditional-write or durable SSE replay
+contract. Explicit acknowledgments, readback checks and uncertainty fences remain
+necessary. Database-native backup is the unbounded recovery option; bounded portable
+archives and explicit model attachment do not imply distributed transactionality.

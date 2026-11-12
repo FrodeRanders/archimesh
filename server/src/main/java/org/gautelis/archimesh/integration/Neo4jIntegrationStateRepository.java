@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import static org.gautelis.archimesh.integration.IntegrationIdentity.*;
 
 /** Atomic identity reservations and compare-and-set metadata, separate from the model repository. */
@@ -26,7 +27,7 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
     }
 
     public void installSchema() {
-        for (String resource : java.util.List.of("schema-v1.cypher","schema-v2.cypher")) {
+        for (String resource : java.util.List.of("schema-v1.cypher","schema-v2.cypher","schema-v3.cypher")) {
             try (var input=getClass().getResourceAsStream("/integrations/"+resource)) {
                 if (input==null) throw new IllegalStateException("Missing integration schema");
                 String schema=new String(input.readAllBytes(),StandardCharsets.UTF_8).replaceAll("(?m)^\\s*//.*$", "");
@@ -36,6 +37,66 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
             } catch (IOException error) { throw new IllegalStateException("Cannot read integration schema",error); }
         }
         schemaInstalled=true;
+    }
+
+    @Override public void migrateMappings(String instance,String model,com.fasterxml.jackson.databind.JsonNode migrations) {
+        requireSchema(); if (!migrations.isArray() || migrations.size()>500) throw new IllegalArgumentException("Invalid mapping migration");
+        try (var session=driver.session()) { session.executeWrite(tx -> {
+            for (var migration:migrations) {
+                String entity=required(migration.path("entityId").asText()),canonical=required(migration.path("canonicalId").asText()),from=required(migration.path("from").asText()),to=required(migration.path("to").asText()),target=required(migration.path("targetInstanceId").asText());
+                var p=Map.<String,Object>of("instance",required(instance),"model",required(model),"entity",entity,"canonical",canonical,"from",from,"to",to);
+                var records=tx.run("MATCH (n {instanceId:$instance,sourceModelId:$model,entityId:$entity,canonicalId:$canonical}) WHERE n:IntegrationModelBinding OR n:IntegrationPublicationIdentity RETURN n.mappingVersion AS mapping",p).list();
+                if (records.isEmpty() || records.stream().anyMatch(r -> !Set.of(from,to).contains(r.get("mapping").asString()))) throw new PublicationModel.Failure(409,"MAPPING_MIGRATION_STALE");
+                tx.run("MATCH (n {instanceId:$instance,sourceModelId:$model,entityId:$entity,canonicalId:$canonical}) WHERE n:IntegrationModelBinding OR n:IntegrationPublicationIdentity SET n.mappingVersion=$to",p).consume();
+                var centralLane=tx.run("MATCH (d:IntegrationStateDocument {instanceId:$instance,kind:'CENTRAL_LANE',id:$id}) RETURN d.dataJson AS data",Map.of("instance",instance,"id",CentralEditModel.laneId(target,canonical)));
+                try { if (centralLane.hasNext() && json.readTree(centralLane.single().get("data").asString()).has("inFlight")) throw new PublicationModel.Failure(409,"MIGRATION_UNCERTAIN_OUTCOME"); }
+                catch (java.io.IOException corrupt) { throw new PublicationModel.Failure(409,"CORRUPT_INTEGRATION_METADATA"); }
+                String id=PublicationJson.key("pub-resource:",target,canonical);
+                var resources=tx.run("MATCH (d:IntegrationStateDocument {instanceId:$instance,kind:'PUBLICATION_RESOURCE',id:$id}) SET d.fence=coalesce(d.fence,0)+1 RETURN d.dataJson AS data",Map.of("instance",instance,"id",id));
+                if (resources.hasNext()) {
+                    try {
+                        var d=(com.fasterxml.jackson.databind.node.ObjectNode)json.reader().with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).readTree(resources.single().get("data").asString());
+                        if (d.has("inFlight")) throw new PublicationModel.Failure(409,"MIGRATION_UNCERTAIN_OUTCOME");
+                        if (!Set.of(from,to).contains(d.path("mappingVersion").asText())) throw new PublicationModel.Failure(409,"MAPPING_MIGRATION_STALE");
+                        if (to.equals(d.path("mappingVersion").asText())) continue;
+                        d.put("mappingVersion",to).put("state","CONFLICT").put("code","MAPPING_BASELINE_REVIEW_REQUIRED"); d.remove("baseline");
+                        tx.run("MATCH (d:IntegrationStateDocument {instanceId:$instance,kind:'PUBLICATION_RESOURCE',id:$id}) SET d.dataJson=$data,d.version=d.version+1,d.operationState='CONFLICT',d.updatedAt=$now",Map.of("instance",instance,"id",id,"data",d.toString(),"now",System.currentTimeMillis())).consume();
+                    } catch (java.io.IOException corrupt) { throw new PublicationModel.Failure(409,"CORRUPT_INTEGRATION_METADATA"); }
+                }
+            }
+            return null;
+        }); }
+    }
+
+    @Override public com.fasterxml.jackson.databind.JsonNode statistics(String instance) {
+        try (var session=driver.session()) {
+            return session.executeRead(tx -> {
+                var result=json.createObjectNode(); var documents=result.putArray("documents"); var bindings=result.putArray("bindings");
+                tx.run("MATCH (d:IntegrationStateDocument {instanceId:$instance}) RETURN d.kind AS kind,coalesce(d.operationState,'UNRECORDED') AS state,count(*) AS count,min(CASE WHEN d.verifiedAt>0 THEN d.verifiedAt END) AS oldestVerifiedAt,min(CASE WHEN d.nextAttemptAt>0 THEN d.nextAttemptAt END) AS nextRetryAt",Map.of("instance",instance)).forEachRemaining(row -> {
+                    var item=documents.addObject().put("kind",row.get("kind").asString()).put("state",row.get("state").asString()).put("count",row.get("count").asLong());
+                    if (!row.get("oldestVerifiedAt").isNull()) item.put("oldestVerifiedAt",row.get("oldestVerifiedAt").asLong());
+                    if (!row.get("nextRetryAt").isNull()) item.put("nextRetryAt",row.get("nextRetryAt").asLong());
+                });
+                tx.run("MATCH (b:IntegrationModelBinding {instanceId:$instance}) RETURN b.state AS state,count(*) AS count",Map.of("instance",instance)).forEachRemaining(row -> bindings.addObject().put("state",row.get("state").asString()).put("count",row.get("count").asLong()));
+                return result;
+            });
+        }
+    }
+
+    @Override public java.util.List<IntegrationArchive.Node> archive(String instance) { requireSchema(); return new IntegrationArchive(driver,json).capture(instance); }
+    @Override public void restoreArchive(String instance,java.util.List<IntegrationArchive.Node> nodes) { requireSchema(); new IntegrationArchive(driver,json).restore(instance,nodes); }
+
+    @Override public String modelGeneration(String model) {
+        try (var session=driver.session()) {
+            var rows=session.run("MATCH (m:Model {modelId:$model,registered:true}) RETURN m.integrationGeneration AS generation",Map.of("model",required(model)));
+            if (!rows.hasNext() || rows.peek().get("generation").isNull()) throw new PublicationModel.Failure(409,"MODEL_GENERATION_UNAVAILABLE");
+            return rows.single().get("generation").asString();
+        }
+    }
+    @Override public boolean hasModelMetadata(String instance,String model) {
+        try (var session=driver.session()) {
+            return session.run("MATCH (n {instanceId:$instance,sourceModelId:$model}) WHERE n:IntegrationModelBinding OR n:IntegrationPublicationIdentity OR n:IntegrationIdentityClaim RETURN n LIMIT 1",Map.of("instance",required(instance),"model",required(model))).hasNext();
+        }
     }
 
     @Override public ReservedImport reserveImport(ImportReservation request) {
@@ -304,12 +365,14 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
                 for (var document:documents) {
                     var params=documentParams(document.instanceId(),document.kind(),document.id());
                     params.put("expected",document.version()); params.put("data",document.data().toString());
+                    params.put("state",document.data().path("state").asText("UNRECORDED")); params.put("verifiedAt",document.data().path("verifiedAt").asLong());
+                    params.put("nextAttemptAt",document.data().path("nextAttemptAt").asLong()); params.put("updatedAt",System.currentTimeMillis());
                     var rows=tx.run("""
                             MERGE (d:IntegrationStateDocument {instanceId:$instance,kind:$kind,id:$id})
                             ON CREATE SET d.version=0
                             SET d.fence=coalesce(d.fence,0)+1
                             WITH d WHERE d.version=$expected
-                            SET d.version=d.version+1,d.dataJson=$data
+                            SET d.version=d.version+1,d.dataJson=$data,d.operationState=$state,d.verifiedAt=$verifiedAt,d.nextAttemptAt=$nextAttemptAt,d.updatedAt=$updatedAt
                             RETURN d.version AS version
                             """,params);
                     if (!rows.hasNext()) throw new IllegalStateException("Integration state version conflict");

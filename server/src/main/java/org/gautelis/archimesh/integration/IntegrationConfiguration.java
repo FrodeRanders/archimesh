@@ -7,7 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 
 /** Non-secret target definitions loaded only when explicitly enabled. */
-public record IntegrationConfiguration(int schemaVersion, String instanceId, List<Target> targets) {
+public record IntegrationConfiguration(int schemaVersion, String instanceId, List<Target> targets, java.util.Set<String> operators) {
     /** Explicit approval that the listed types/fields form a shared catalog for these named users. */
     public record CatalogAccess(boolean approved, java.util.Set<String> readers, java.util.Set<String> importers,
                                 java.util.Set<String> cardTypes, java.util.Set<String> fields) {
@@ -114,6 +114,8 @@ public record IntegrationConfiguration(int schemaVersion, String instanceId, Lis
     public IntegrationConfiguration {
         if (schemaVersion != 1) throw new IllegalArgumentException("Unsupported integration configuration version");
         IntegrationIdentity.required(instanceId);
+        operators=operators==null ? java.util.Set.of() : java.util.Set.copyOf(operators);
+        operators.forEach(IntegrationIdentity::required);
         targets = List.copyOf(targets);
         if (targets.isEmpty() || targets.size() > 20) throw new IllegalArgumentException("Configure between one and twenty targets");
         var keys = new HashSet<String>(); var instances = new HashSet<String>();

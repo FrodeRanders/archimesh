@@ -74,7 +74,7 @@ public class CentralEditService {
         var data=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",key).put("targetInstanceId",target.instanceId())
                 .put("canonicalId",frame.binding().canonical().canonicalId()).put("resourceId",frame.binding().external().resourceId()).put("elementId",input.elementId())
                 .put("type",frame.binding().canonical().kind()).put("mappingVersion",target.mapping().version()).put("scopeDigest",CentralEditAuthorization.digest(target))
-                .put("requestedBy",subject.userId()).put("requestId",request.requestId()).put("fingerprint",fingerprint).put("policyVersion",frame.policy().version())
+                .put("modelGeneration",runtime.requireModelActive(model)).put("requestedBy",subject.userId()).put("requestId",request.requestId()).put("fingerprint",fingerprint).put("policyVersion",frame.policy().version())
                 .put("mode",reviewed.mode()).put("createdAt",now.getAsLong()).put("attempts",0).put("nextAttemptAt",0)
                 .put("state",reviewed.mode().equals("PROPOSAL") ? "WAITING_APPROVAL" : "PENDING");
         var selected=CentralFields.keys(proposed); data.set("proposed",proposed); data.set("baseRemote",CentralFields.remote(json,target,frame.card(),selected));
@@ -82,6 +82,7 @@ public class CentralEditService {
         var document=new StateDocument(instance(),DocumentKind.CENTRAL_EDIT,id,0,data);
         if (!execution.tryLock()) throw new Failure(409,"CENTRAL_EDIT_BUSY");
         try {
+            runtime.requireRunning();
             if (reviewed.mode().equals("WRITE_THROUGH")) { requireWrites(target,frame.binding().canonical().kind(),proposed); document=enqueue(document,target); }
             else document=metadata().save(document);
             audit("CentralRequested",document,subject.userId()); return view(document);
@@ -96,6 +97,7 @@ public class CentralEditService {
         if (decision==null) throw new Failure(400,"CENTRAL_DECISION_REQUIRED");
         if (!execution.tryLock()) throw new Failure(409,"CENTRAL_EDIT_BUSY");
         try {
+            runtime.requireRunning();
             var job=job(model,key,id,target);
             if (!job.data().path("state").asText().equals("WAITING_APPROVAL")) {
                 if (Objects.equals(job.data().path("decisionDigest").asText(null),decision.reviewDigest()) && job.data().path("approvedBy").asText().equals(subject.userId())
@@ -105,6 +107,7 @@ public class CentralEditService {
             if (job.version()!=decision.expectedVersion()) throw new Failure(409,"CENTRAL_DECISION_STALE");
             var frame=frame(model,key,job.data().path("elementId").asText(),subject,true); var review=review(job,frame);
             if (!review.digest().equals(decision.reviewDigest())) throw new Failure(409,"CENTRAL_REVIEW_STALE");
+            runtime.requireGeneration(model,job.data().path("modelGeneration").asText(null));
             if (decision.approve() && review.baseChanged()) throw new Failure(409,"CENTRAL_PROPOSAL_BASE_CHANGED");
             if (decision.approve() && !review.preview().driftFields().isEmpty() && !decision.resolveDrift()) throw new Failure(409,"CENTRAL_BASELINE_REVIEW_REQUIRED");
             var data=(ObjectNode)job.data(); data.put("approvedBy",subject.userId()).put("decisionDigest",decision.reviewDigest()).put("decisionApprove",decision.approve())
@@ -125,6 +128,7 @@ public class CentralEditService {
         var target=authorization.require(model,key,subject,false); delivery.requireWriterLease();
         if (!execution.tryLock()) throw new Failure(409,"CENTRAL_EDIT_BUSY");
         try {
+            runtime.requireRunning();
             var job=job(model,key,id,target);
             if (!job.data().path("requestedBy").asText().equals(subject.userId())) throw new Failure(403,"ONLY_REQUESTER_CAN_CANCEL");
             if (request==null || request.expectedVersion()!=job.version() || job.data().path("remoteVerified").asBoolean() || !Set.of("PENDING","WAITING_APPROVAL","RETRY","PAUSED").contains(job.data().path("state").asText())) throw new Failure(409,"CENTRAL_CANCEL_STALE");
@@ -137,6 +141,7 @@ public class CentralEditService {
         var target=authorization.read(model,key,subject); delivery.requireWriterLease();
         if (!execution.tryLock()) throw new Failure(409,"CENTRAL_EDIT_BUSY");
         try {
+            runtime.requireRunning();
             var job=job(model,key,id,target); var data=job.data();
             if (data.path("mode").asText().equals("PROPOSAL")) authorization.require(model,key,subject,true);
             else { authorization.require(model,key,subject,false); if (!data.path("requestedBy").asText().equals(subject.userId())) throw new Failure(403,"ONLY_REQUESTER_CAN_VERIFY"); }
@@ -151,6 +156,7 @@ public class CentralEditService {
         var target=authorization.read(model,key,subject); delivery.requireWriterLease();
         if (!execution.tryLock()) throw new Failure(409,"CENTRAL_EDIT_BUSY");
         try {
+            runtime.requireRunning();
             var job=job(model,key,id,target);
             if (request==null || request.expectedVersion()!=job.version() || !job.data().path("remoteVerified").asBoolean() || !lane(job).data().path("jobId").asText().equals(id) || !Set.of("PARTIAL","SYNCED","ERROR","CONFLICT").contains(job.data().path("state").asText())) throw new Failure(409,"CENTRAL_FANOUT_REVIEW_STALE");
             var data=(ObjectNode)job.data(); data.put("cursor","").put("state","REMOTE_VERIFIED"); data.remove("code");
@@ -161,8 +167,10 @@ public class CentralEditService {
     public void run(String id) {
         if (!execution.tryLock()) return;
         try {
+            runtime.requireRunning();
             var job=load(DocumentKind.CENTRAL_EDIT,id).orElseThrow(); var data=job.data(); String state=data.path("state").asText();
             if (!Set.of("PENDING","RETRY","IN_FLIGHT","REMOTE_VERIFIED","SYNCING").contains(state) || data.path("nextAttemptAt").asLong()>now.getAsLong()) return;
+            runtime.requireGeneration(data.path("sourceModelId").asText(),data.path("modelGeneration").asText(null));
             var target=target(data.path("targetKey").asText()); checkScope(job,target); delivery.requireWriterLease();
             if (data.path("remoteVerified").asBoolean()) { fanout(job,target); return; }
             var lane=lane(job);
@@ -196,12 +204,13 @@ public class CentralEditService {
                 return;
             } catch (RuntimeException uncertain) { save(job,"AMBIGUOUS","CENTRAL_PATCH_OUTCOME_UNCERTAIN"); return; }
             try {
+            runtime.requireRunning();
                 var after=read(target,binding.external().resourceId(),binding.canonical().kind());
                 if (!PublicationJson.equal(CentralFields.remote(json,target,after,CentralFields.keys(data.path("proposed"))),data.path("proposed"))) { save(job,"AMBIGUOUS","CENTRAL_PATCH_VERIFICATION_DIVERGED"); return; }
                 verified(job,lane);
             } catch (ConnectorException | Failure uncertain) { save(job,"AMBIGUOUS","CENTRAL_PATCH_VERIFICATION_UNAVAILABLE"); }
         } catch (ConnectorException failure) { var job=load(DocumentKind.CENTRAL_EDIT,id).orElseThrow(); retry(job,failure); }
-        catch (Failure failure) { var job=load(DocumentKind.CENTRAL_EDIT,id).orElseThrow(); save(job,failure.status()==403 || failure.status()==404 ? "PAUSED" : "CONFLICT",failure.getMessage()); }
+        catch (Failure failure) { if (failure.getMessage().equals("INTEGRATION_PAUSED")) return; var job=load(DocumentKind.CENTRAL_EDIT,id).orElseThrow(); save(job,failure.status()==403 || failure.status()==404 ? "PAUSED" : "CONFLICT",failure.getMessage()); }
         catch (jakarta.ws.rs.WebApplicationException denied) { var job=load(DocumentKind.CENTRAL_EDIT,id).orElseThrow(); save(job,"PAUSED","CENTRAL_AUTHORIZATION_REVOKED"); }
         catch (RuntimeException unavailable) {
             var job=load(DocumentKind.CENTRAL_EDIT,id).orElseThrow();
@@ -246,6 +255,7 @@ public class CentralEditService {
         var target=incoming.administrator(model,key,subject);
         if (!execution.tryLock()) throw new Failure(409,"CENTRAL_EDIT_BUSY");
         try {
+            runtime.requireRunning();
             var current=load(DocumentKind.CENTRAL_EDIT,id).orElseThrow();
             if (!Set.of("PARTIAL","SYNCED").contains(current.data().path("state").asText())) throw new Failure(409,"CENTRAL_FANOUT_NOT_COMPLETE");
             var binding=binding(model,element,target); var inspected=inbound.inspectProposal(model,key,subject,element,id);

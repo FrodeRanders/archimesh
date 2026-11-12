@@ -6,9 +6,12 @@ import org.gautelis.archimesh.integration.IntegrationIdentity;
 /** Trusted server-generated observation. No transport decodes this as a SubmitOps actor or operation. */
 public record ExternalChangeCommand(String instanceId,String targetKey,String targetInstanceId,String canonicalId,String resourceId,
                                     String modelId,String ref,String elementId,String archimateType,String mappingVersion,
-                                    long policyVersion,String opBatchId,long expectedRevision,JsonNode expectedLocal,JsonNode remote,String proposalId) {
+                                    long policyVersion,String opBatchId,long expectedRevision,JsonNode expectedLocal,JsonNode remote,String proposalId,String modelGeneration) {
     public ExternalChangeCommand(String instanceId,String targetKey,String targetInstanceId,String canonicalId,String resourceId,String modelId,String ref,String elementId,String archimateType,String mappingVersion,long policyVersion,String opBatchId,long expectedRevision,JsonNode expectedLocal,JsonNode remote) {
-        this(instanceId,targetKey,targetInstanceId,canonicalId,resourceId,modelId,ref,elementId,archimateType,mappingVersion,policyVersion,opBatchId,expectedRevision,expectedLocal,remote,null);
+        this(instanceId,targetKey,targetInstanceId,canonicalId,resourceId,modelId,ref,elementId,archimateType,mappingVersion,policyVersion,opBatchId,expectedRevision,expectedLocal,remote,null,null);
+    }
+    public ExternalChangeCommand(String instanceId,String targetKey,String targetInstanceId,String canonicalId,String resourceId,String modelId,String ref,String elementId,String archimateType,String mappingVersion,long policyVersion,String opBatchId,long expectedRevision,JsonNode expectedLocal,JsonNode remote,String proposalId) {
+        this(instanceId,targetKey,targetInstanceId,canonicalId,resourceId,modelId,ref,elementId,archimateType,mappingVersion,policyVersion,opBatchId,expectedRevision,expectedLocal,remote,proposalId,null);
     }
     public ExternalChangeCommand {
         if (proposalId!=null) IntegrationIdentity.required(proposalId);

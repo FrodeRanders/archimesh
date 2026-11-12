@@ -39,6 +39,15 @@ public class ArchimeshService {
     private static final String MODEL_EXPORT_FORMAT = "archi-model-export-v1";
     private static final String CHECKPOINT_EXPORT_FORMAT = "archi-model-export-v2";
 
+    @Inject org.gautelis.archimesh.integration.IntegrationRuntime integrationRuntime;
+    @Inject org.gautelis.archimesh.integration.RemoteMutationCoordinator integrationMutations;
+
+    private org.gautelis.archimesh.integration.RemoteMutationCoordinator.Maintenance integrationMaintenance() {
+        if (integrationRuntime==null || !integrationRuntime.enabled()) return () -> { };
+        if (!integrationMutations.tryLock()) throw new IllegalStateException("Integration mutation is running; pause integrations and retry model maintenance");
+        return integrationMutations::unlock;
+    }
+
     @Inject
     org.gautelis.archimesh.auth.AuthorizationService authorizationService;
 
@@ -357,6 +366,7 @@ public class ArchimeshService {
     public synchronized SubmissionResult submitExternalImport(ExternalModelImport command) {
         if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
         if (!HEAD_REF.equals(command.ref())) return SubmissionResult.rejected("MODEL_REFERENCE_READ_ONLY");
+        if (integrationRuntime!=null && integrationRuntime.enabled()) integrationRuntime.requireGeneration(command.modelId(),command.modelGeneration());
         authorizationService.requireSubjectAllowed(command.subject(),
                 org.gautelis.archimesh.auth.AuthorizationAction.EXTERNAL_OBJECT_IMPORT,command.modelId(),HEAD_REF);
         if (!isRegisteredModel(command.modelId())) return SubmissionResult.rejected("MODEL_NOT_FOUND");
@@ -624,29 +634,42 @@ public class ArchimeshService {
         return computeIntegrityFromSnapshot(modelId, snapshot);
     }
 
+    public synchronized void confirmIntegrationAttachment(String model,String generation,String snapshotDigest,long scopeVersion,JsonNode migrations) {
+        if (commitDeliveryService!=null) commitDeliveryService.requireWriterLease();
+        try (var maintenance=integrationMaintenance()) { integrationRuntime.attachScope(model,generation,snapshotDigest,scopeVersion,neo4jRepository.loadSnapshot(model),migrations); }
+    }
+
+    public synchronized org.gautelis.archimesh.integration.IntegrationStateRepository.StateDocument setIntegrationPause(boolean paused,long expectedVersion,String actor) {
+        if (commitDeliveryService!=null) commitDeliveryService.requireWriterLease();
+        try (var maintenance=integrationMaintenance()) { return integrationRuntime.setPause(paused,expectedVersion,actor); }
+    }
+
     /**
      * Removes a model and all associated data from the repository and in-memory caches,
      * optionally forcing deletion even when active sessions exist.
      */
     public synchronized AdminDeleteResult deleteModel(String modelId, boolean force) {
-        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
-        int activeSessions = sessionRegistry.sessionCount(modelId);
-        if (activeSessions > 0 && !force) {
-            String message = "Model has active sessions; close clients first or use force=true.";
-            recordActivity(modelId, "DeleteModelRejected", message + " activeSessions=" + activeSessions);
-            return new AdminDeleteResult(modelId, false, activeSessions, message);
-        }
+        try (var maintenance=integrationMaintenance()) {
+            if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
+            int activeSessions = sessionRegistry.sessionCount(modelId);
+            if (activeSessions > 0 && !force) {
+                String message = "Model has active sessions; close clients first or use force=true.";
+                recordActivity(modelId, "DeleteModelRejected", message + " activeSessions=" + activeSessions);
+                return new AdminDeleteResult(modelId, false, activeSessions, message);
+            }
 
-        neo4jRepository.deleteModel(modelId);
-        revisionService.clearModel(modelId);
-        idempotencyService.clearModel(modelId);
-        lockService.clearModel(modelId);
-        registeredModelCache.remove(modelId);
-        modelAccessControlCache.remove(modelId);
-        recentActivityByModel.remove(modelId);
-        styleCountersByModel.remove(modelId);
-        recordActivity(modelId, "ModelDeleted", "force=" + force + " activeSessionsAtDelete=" + activeSessions);
-        return new AdminDeleteResult(modelId, true, activeSessions, "Model deleted from server state.");
+            neo4jRepository.deleteModel(modelId);
+            revisionService.clearModel(modelId);
+            idempotencyService.clearModel(modelId);
+            lockService.clearModel(modelId);
+            registeredModelCache.remove(modelId);
+            modelAccessControlCache.remove(modelId);
+            recentActivityByModel.remove(modelId);
+            styleCountersByModel.remove(modelId);
+            recordActivity(modelId, "ModelDeleted", "force=" + force + " activeSessionsAtDelete=" + activeSessions);
+            return new AdminDeleteResult(modelId, true, activeSessions, "Model deleted from server state.");
+
+        }
     }
 
     /**
@@ -850,106 +873,109 @@ public class ArchimeshService {
      * and restoring its op-log, tags, and access control.
      */
     public synchronized AdminModelImportResult importModel(AdminModelExport exportPackage, boolean overwrite) {
-        if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
-        if (exportPackage == null) {
-            throw new IllegalArgumentException("Import payload is required.");
-        }
-        if (!MODEL_EXPORT_FORMAT.equals(exportPackage.format()) && !CHECKPOINT_EXPORT_FORMAT.equals(exportPackage.format())) {
-            throw new IllegalArgumentException("Unsupported import format: " + exportPackage.format());
-        }
-        if (exportPackage.model() == null) {
-            throw new IllegalArgumentException("Import payload must include model metadata.");
-        }
+        try (var maintenance=integrationMaintenance()) {
+            if (commitDeliveryService != null) commitDeliveryService.requireWriterLease();
+            if (exportPackage == null) {
+                throw new IllegalArgumentException("Import payload is required.");
+            }
+            if (!MODEL_EXPORT_FORMAT.equals(exportPackage.format()) && !CHECKPOINT_EXPORT_FORMAT.equals(exportPackage.format())) {
+                throw new IllegalArgumentException("Unsupported import format: " + exportPackage.format());
+            }
+            if (exportPackage.model() == null) {
+                throw new IllegalArgumentException("Import payload must include model metadata.");
+            }
 
-        String modelId = normalizeModelId(exportPackage.model().modelId());
-        validateImportPayload(exportPackage);
-        boolean exists = neo4jRepository.modelRegistered(modelId);
-        if (exists && !overwrite) {
-            throw new IllegalStateException("Model already exists; re-run import with overwrite=true to replace it.");
-        }
-        if (exists && sessionRegistry.sessionCount(modelId) > 0) {
-            throw new IllegalStateException("Model has active sessions; close clients before overwriting.");
-        }
+            String modelId = normalizeModelId(exportPackage.model().modelId());
+            validateImportPayload(exportPackage);
+            boolean exists = neo4jRepository.modelRegistered(modelId);
+            if (exists && !overwrite) {
+                throw new IllegalStateException("Model already exists; re-run import with overwrite=true to replace it.");
+            }
+            if (exists && sessionRegistry.sessionCount(modelId) > 0) {
+                throw new IllegalStateException("Model has active sessions; close clients before overwriting.");
+            }
 
-        if (CHECKPOINT_EXPORT_FORMAT.equals(exportPackage.format())) {
-            neo4jRepository.importCheckpointModel(exportPackage,overwrite);
+            if (CHECKPOINT_EXPORT_FORMAT.equals(exportPackage.format())) {
+                neo4jRepository.importCheckpointModel(exportPackage,overwrite);
+                revisionService.clearModel(modelId);
+                idempotencyService.clearModel(modelId);
+                modelAccessControlCache.remove(modelId);
+                registeredModelCache.add(modelId);
+                int batches = exportPackage.opBatches().size();
+                int tags = exportPackage.tags() == null ? 0 : exportPackage.tags().size();
+                recordActivity(modelId,"ImportModel","checkpointRevision="+exportPackage.checkpoint().revision()+" tailBatches="+batches);
+                return new AdminModelImportResult(modelId,exists,exportPackage.model().headRevision(),batches,tags,
+                        "Model restored from checkpoint and subsequent history.");
+            }
+
+            if (exists) {
+                deleteModel(modelId, true);
+            }
+            registerModel(modelId, exportPackage.model().modelName());
+            if (exportPackage.accessControl() != null) {
+                updateModelAccessControl(modelId,
+                        exportPackage.accessControl().adminUsers(),
+                        exportPackage.accessControl().writerUsers(),
+                        exportPackage.accessControl().readerUsers());
+            }
+
+            int importedOpBatchCount = 0;
+            long importedHeadRevision = 0L;
+            JsonNode opBatches = exportPackage.opBatches();
+            if (opBatches != null && opBatches.isArray()) {
+                for (JsonNode opBatch : opBatches) {
+                    String opBatchId = requireText(opBatch, "opBatchId");
+                    JsonNode assignedRange = opBatch.path("assignedRevisionRange");
+                    long from = assignedRange.path("from").asLong(Long.MIN_VALUE);
+                    long to = assignedRange.path("to").asLong(Long.MIN_VALUE);
+                    if (from <= 0L || to < from) {
+                        throw new IllegalArgumentException("Import op batch " + opBatchId + " has invalid assignedRevisionRange.");
+                    }
+                    RevisionRange range = new RevisionRange(from, to);
+                    neo4jRepository.appendOpLog(modelId, opBatchId, range, opBatch);
+                    neo4jRepository.applyToMaterializedState(modelId, opBatch);
+                    neo4jRepository.updateHeadRevision(modelId, to);
+                    idempotencyService.remember(modelId, opBatchId, range);
+                    importedHeadRevision = Math.max(importedHeadRevision, to);
+                    importedOpBatchCount++;
+                }
+            }
+
+            if (importedOpBatchCount == 0) {
+                importedHeadRevision = Math.max(0L, exportPackage.model().headRevision());
+                neo4jRepository.updateHeadRevision(modelId, importedHeadRevision);
+            }
+
+            int importedTagCount = 0;
+            if (exportPackage.tags() != null) {
+                for (ModelTagExportEntry tag : exportPackage.tags()) {
+                    if (tag == null) {
+                        continue;
+                    }
+                    neo4jRepository.restoreModelTag(
+                            modelId,
+                            normalizeTagName(tag.tagName()),
+                            tag.description(),
+                            tag.revision(),
+                            tag.createdAt(),
+                            tag.snapshot());
+                    importedTagCount++;
+                }
+            }
+
             revisionService.clearModel(modelId);
-            idempotencyService.clearModel(modelId);
-            modelAccessControlCache.remove(modelId);
             registeredModelCache.add(modelId);
-            int batches = exportPackage.opBatches().size();
-            int tags = exportPackage.tags() == null ? 0 : exportPackage.tags().size();
-            recordActivity(modelId,"ImportModel","checkpointRevision="+exportPackage.checkpoint().revision()+" tailBatches="+batches);
-            return new AdminModelImportResult(modelId,exists,exportPackage.model().headRevision(),batches,tags,
-                    "Model restored from checkpoint and subsequent history.");
-        }
+            recordActivity(modelId, "ImportModel",
+                    "overwrite=" + overwrite + " importedOpBatches=" + importedOpBatchCount + " importedTags=" + importedTagCount);
+            return new AdminModelImportResult(
+                    modelId,
+                    exists,
+                    importedHeadRevision,
+                    importedOpBatchCount,
+                    importedTagCount,
+                    exists ? "Model overwritten from import package." : "Model imported from package.");
 
-        if (exists) {
-            deleteModel(modelId, true);
         }
-        registerModel(modelId, exportPackage.model().modelName());
-        if (exportPackage.accessControl() != null) {
-            updateModelAccessControl(modelId,
-                    exportPackage.accessControl().adminUsers(),
-                    exportPackage.accessControl().writerUsers(),
-                    exportPackage.accessControl().readerUsers());
-        }
-
-        int importedOpBatchCount = 0;
-        long importedHeadRevision = 0L;
-        JsonNode opBatches = exportPackage.opBatches();
-        if (opBatches != null && opBatches.isArray()) {
-            for (JsonNode opBatch : opBatches) {
-                String opBatchId = requireText(opBatch, "opBatchId");
-                JsonNode assignedRange = opBatch.path("assignedRevisionRange");
-                long from = assignedRange.path("from").asLong(Long.MIN_VALUE);
-                long to = assignedRange.path("to").asLong(Long.MIN_VALUE);
-                if (from <= 0L || to < from) {
-                    throw new IllegalArgumentException("Import op batch " + opBatchId + " has invalid assignedRevisionRange.");
-                }
-                RevisionRange range = new RevisionRange(from, to);
-                neo4jRepository.appendOpLog(modelId, opBatchId, range, opBatch);
-                neo4jRepository.applyToMaterializedState(modelId, opBatch);
-                neo4jRepository.updateHeadRevision(modelId, to);
-                idempotencyService.remember(modelId, opBatchId, range);
-                importedHeadRevision = Math.max(importedHeadRevision, to);
-                importedOpBatchCount++;
-            }
-        }
-
-        if (importedOpBatchCount == 0) {
-            importedHeadRevision = Math.max(0L, exportPackage.model().headRevision());
-            neo4jRepository.updateHeadRevision(modelId, importedHeadRevision);
-        }
-
-        int importedTagCount = 0;
-        if (exportPackage.tags() != null) {
-            for (ModelTagExportEntry tag : exportPackage.tags()) {
-                if (tag == null) {
-                    continue;
-                }
-                neo4jRepository.restoreModelTag(
-                        modelId,
-                        normalizeTagName(tag.tagName()),
-                        tag.description(),
-                        tag.revision(),
-                        tag.createdAt(),
-                        tag.snapshot());
-                importedTagCount++;
-            }
-        }
-
-        revisionService.clearModel(modelId);
-        registeredModelCache.add(modelId);
-        recordActivity(modelId, "ImportModel",
-                "overwrite=" + overwrite + " importedOpBatches=" + importedOpBatchCount + " importedTags=" + importedTagCount);
-        return new AdminModelImportResult(
-                modelId,
-                exists,
-                importedHeadRevision,
-                importedOpBatchCount,
-                importedTagCount,
-                exists ? "Model overwritten from import package." : "Model imported from package.");
     }
 
     public synchronized CheckpointSummary createModelCheckpoint(String modelId) {

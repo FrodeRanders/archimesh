@@ -12,6 +12,7 @@ Current status:
 - `Publication` supports explicit HEAD/tag selection, policy approval, reconciliation status and remote baseline review. See [M3 configuration and safeguards](../docs/turboea/m3-publication.md).
 - `Inbound sync` supports scoped inbound approval/pause, per-binding diagnostics, reconciliation and reviewed acceptance of central values into HEAD. See [M4](../docs/turboea/m4-inbound.md).
 - `Central changes` supports explicit request previews, scoped proposal approval, read-only uncertain-outcome verification and per-model incoming conflict resolution. Remote verification and model delivery are displayed separately. See [M5](../docs/turboea/m5-central-edits.md).
+- `Integrations` supports named operator pause/resume, target/configuration inspection, gauges and paginated diagnostics, full reconciliation, reviewed model attachment/mapping migration and paused metadata archive restore. See [M6](../docs/turboea/m6-operations.md).
 - `server-window.html` is now only a redirect to `/admin-ui/`.
 
 ## Build

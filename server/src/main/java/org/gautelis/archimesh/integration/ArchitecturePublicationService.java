@@ -44,56 +44,68 @@ public class ArchitecturePublicationService {
         if (spec==null) throw new Failure(400,"PUBLICATION_POLICY_REQUIRED");
         var snapshot=spec.mode()==Mode.DISABLED ? json.createObjectNode() : models.getSnapshot(model,spec.ref());
         var plan=new ArchitectureProjection(json).build(instance(),model,target,spec,snapshot,metadata());
-        return new Preview(spec,plan,PublicationJson.digest(json.valueToTree(List.of(spec,plan))));
+        return new Preview(spec,plan,PublicationJson.digest(json.valueToTree(List.of(spec,plan,runtime.requireModelActive(model),configurationDigest(target)))));
     }
     public PolicyView policy(String model,String targetKey,AuthorizationSubject subject) {
         authorize(model,targetKey,subject); return policyView(load(DocumentKind.PUBLICATION_POLICY,policyId(model,targetKey)));
     }
     public synchronized PolicyView approve(String model,String targetKey,AuthorizationSubject subject,Approval approval) {
-        if (approval==null || approval.policy()==null || approval.expectedVersion()<0) throw new Failure(400,"INVALID_PUBLICATION_APPROVAL");
-        var reviewed=preview(model,targetKey,subject,approval.policy());
-        if (!reviewed.digest().equals(approval.previewDigest())) throw new Failure(409,"PUBLICATION_PREVIEW_STALE");
-        var data=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",targetKey)
-                .put("targetInstanceId",reviewed.plan().targetInstanceId()).put("approvedBy",subject.userId());
-        data.set("policy",json.valueToTree(approval.policy()));
-        var saved=metadata().save(new StateDocument(instance(),DocumentKind.PUBLICATION_POLICY,policyId(model,targetKey),approval.expectedVersion(),data));
-        return policyView(Optional.of(saved));
+        if (!execution.tryLock()) throw new PublicationModel.Failure(409,"INTEGRATION_BUSY");
+        try {
+            runtime.requireRunning();
+            if (approval==null || approval.policy()==null || approval.expectedVersion()<0) throw new Failure(400,"INVALID_PUBLICATION_APPROVAL");
+            var reviewed=preview(model,targetKey,subject,approval.policy());
+            if (!reviewed.digest().equals(approval.previewDigest())) throw new Failure(409,"PUBLICATION_PREVIEW_STALE");
+            var data=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",targetKey)
+                    .put("targetInstanceId",reviewed.plan().targetInstanceId()).put("approvedBy",subject.userId()).put("modelGeneration",runtime.requireModelActive(model)).put("configurationDigest",configurationDigest(authorize(model,targetKey,subject)));
+            data.set("policy",json.valueToTree(approval.policy()));
+            var saved=metadata().save(new StateDocument(instance(),DocumentKind.PUBLICATION_POLICY,policyId(model,targetKey),approval.expectedVersion(),data));
+            return policyView(Optional.of(saved));
+
+        } finally { execution.unlock(); }
     }
     public synchronized StateDocument enqueue(String model,String targetKey,AuthorizationSubject subject,RunRequest request) {
-        authorize(model,targetKey,subject); delivery.requireWriterLease();
-        if (request==null || request.requestId()==null || !UUID.fromString(request.requestId()).toString().equalsIgnoreCase(request.requestId()))
-            throw new Failure(400,"VALID_PUBLICATION_REQUEST_ID_REQUIRED");
-        String id=PublicationJson.key("pub-job:",model,targetKey,request.requestId());
-        var existing=load(DocumentKind.PUBLICATION_JOB,id);
-        if (existing.isPresent()) {
-            if (!existing.get().data().path("requestedBy").asText().equals(subject.userId())
-                    || !Objects.equals(existing.get().data().path("requestDigest").asText(null),request.previewDigest()))
-                throw new Failure(409,"PUBLICATION_REQUEST_ID_REUSED");
-            return existing.get();
-        }
-        var policy=load(DocumentKind.PUBLICATION_POLICY,policyId(model,targetKey)).orElseThrow(() -> new Failure(409,"PUBLICATION_DISABLED"));
-        if (!policy.data().path("targetInstanceId").asText().equals(runtime.settings().targets().stream().filter(t -> t.key().equals(targetKey)).findFirst().orElseThrow().instanceId()))
-            throw new Failure(409,"TARGET_MIGRATION_REQUIRES_APPROVAL");
-        var spec=json.convertValue(policy.data().path("policy"),PolicySpec.class);
-        if (spec.mode()==Mode.DISABLED) throw new Failure(409,"PUBLICATION_DISABLED");
-        // Scheduled capabilities remain tied to a currently authorized, explicitly named approver.
-        authorize(model,targetKey,new AuthorizationSubject(policy.data().path("approvedBy").asText(),Set.of()));
-        var reviewed=preview(model,targetKey,subject,spec);
-        if (request.previewDigest()!=null && !request.previewDigest().equals(reviewed.digest())) throw new Failure(409,"PUBLICATION_PREVIEW_STALE");
-        for (var resource:reviewed.plan().resources()) metadata().reservePublicationIdentity(resource.identity());
-        var job=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",targetKey)
-                .put("requestId",request.requestId()).put("requestedBy",subject.userId()).put("policyVersion",policy.version())
-                .put("state","PENDING").put("attempts",0).put("nextAttemptAt",0).put("requestDigest",request.previewDigest());
-        job.set("plan",json.valueToTree(reviewed.plan()));
-        var saved=metadata().save(new StateDocument(instance(),DocumentKind.PUBLICATION_JOB,id,0,job));
-        var pointer=load(DocumentKind.CHECKPOINT,scopeId(model,targetKey));
-        if (pointer.isPresent() && (pointer.get().data().path("policyVersion").asLong()>policy.version()
-                || pointer.get().data().path("policyVersion").asLong()==policy.version() && pointer.get().data().path("revision").asLong()>reviewed.plan().revision()))
-            return saveJob(saved,"SUPERSEDED",null);
-        var current=json.createObjectNode().put("jobId",id).put("policyVersion",policy.version()).put("revision",reviewed.plan().revision())
-                .put("planDigest",PublicationJson.digest(json.valueToTree(reviewed.plan())));
-        metadata().save(new StateDocument(instance(),DocumentKind.CHECKPOINT,scopeId(model,targetKey),pointer.map(StateDocument::version).orElse(0L),current));
-        return saved;
+        if (!execution.tryLock()) throw new PublicationModel.Failure(409,"INTEGRATION_BUSY");
+        try {
+            runtime.requireRunning();
+            authorize(model,targetKey,subject); delivery.requireWriterLease();
+            if (request==null || request.requestId()==null || !UUID.fromString(request.requestId()).toString().equalsIgnoreCase(request.requestId()))
+                throw new Failure(400,"VALID_PUBLICATION_REQUEST_ID_REQUIRED");
+            String id=PublicationJson.key("pub-job:",model,targetKey,request.requestId());
+            var existing=load(DocumentKind.PUBLICATION_JOB,id);
+            if (existing.isPresent()) {
+                if (!existing.get().data().path("requestedBy").asText().equals(subject.userId())
+                        || !Objects.equals(existing.get().data().path("requestDigest").asText(null),request.previewDigest()))
+                    throw new Failure(409,"PUBLICATION_REQUEST_ID_REUSED");
+                return existing.get();
+            }
+            var policy=load(DocumentKind.PUBLICATION_POLICY,policyId(model,targetKey)).orElseThrow(() -> new Failure(409,"PUBLICATION_DISABLED"));
+            if (!policy.data().path("targetInstanceId").asText().equals(runtime.settings().targets().stream().filter(t -> t.key().equals(targetKey)).findFirst().orElseThrow().instanceId()))
+                throw new Failure(409,"TARGET_MIGRATION_REQUIRES_APPROVAL");
+            runtime.requireGeneration(model,policy.data().path("modelGeneration").asText(null));
+            if (!configurationDigest(authorize(model,targetKey,subject)).equals(policy.data().path("configurationDigest").asText())) throw new Failure(409,"PUBLICATION_CONFIGURATION_CHANGED");
+            var spec=json.convertValue(policy.data().path("policy"),PolicySpec.class);
+            if (spec.mode()==Mode.DISABLED) throw new Failure(409,"PUBLICATION_DISABLED");
+            // Scheduled capabilities remain tied to a currently authorized, explicitly named approver.
+            authorize(model,targetKey,new AuthorizationSubject(policy.data().path("approvedBy").asText(),Set.of()));
+            var reviewed=preview(model,targetKey,subject,spec);
+            if (request.previewDigest()!=null && !request.previewDigest().equals(reviewed.digest())) throw new Failure(409,"PUBLICATION_PREVIEW_STALE");
+            for (var resource:reviewed.plan().resources()) metadata().reservePublicationIdentity(resource.identity());
+            var job=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",targetKey)
+                    .put("modelGeneration",runtime.requireModelActive(model)).put("requestId",request.requestId()).put("requestedBy",subject.userId()).put("policyVersion",policy.version())
+                    .put("state","PENDING").put("attempts",0).put("nextAttemptAt",0).put("requestDigest",request.previewDigest());
+            job.set("plan",json.valueToTree(reviewed.plan()));
+            var saved=metadata().save(new StateDocument(instance(),DocumentKind.PUBLICATION_JOB,id,0,job));
+            var pointer=load(DocumentKind.CHECKPOINT,scopeId(model,targetKey));
+            if (pointer.isPresent() && (pointer.get().data().path("policyVersion").asLong()>policy.version()
+                    || pointer.get().data().path("policyVersion").asLong()==policy.version() && pointer.get().data().path("revision").asLong()>reviewed.plan().revision()))
+                return saveJob(saved,"SUPERSEDED",null);
+            var current=json.createObjectNode().put("jobId",id).put("policyVersion",policy.version()).put("revision",reviewed.plan().revision())
+                    .put("planDigest",PublicationJson.digest(json.valueToTree(reviewed.plan())));
+            metadata().save(new StateDocument(instance(),DocumentKind.CHECKPOINT,scopeId(model,targetKey),pointer.map(StateDocument::version).orElse(0L),current));
+            return saved;
+
+        } finally { execution.unlock(); }
     }
 
     /** One globally serialized remote execution, stronger than per-model/per-canonical ordering. */
@@ -102,10 +114,12 @@ public class ArchitecturePublicationService {
         try {
             var document=load(DocumentKind.PUBLICATION_JOB,id).orElseThrow();
             if (!Set.of("PENDING","RETRY","RUNNING").contains(document.data().path("state").asText()) || document.data().path("nextAttemptAt").asLong()>now.getAsLong()) return;
+            runtime.requireGeneration(document.data().path("sourceModelId").asText(),document.data().path("modelGeneration").asText(null));
             var plan=json.convertValue(document.data().path("plan"),Plan.class);
             if (!current(document,plan)) { saveJob(document,"SUPERSEDED",null); return; }
             String approver=load(DocumentKind.PUBLICATION_POLICY,policyId(plan.modelId(),plan.targetKey())).orElseThrow().data().path("approvedBy").asText();
             var target=authorize(plan.modelId(),plan.targetKey(),new AuthorizationSubject(approver,Set.of()));
+            if (!configurationDigest(target).equals(load(DocumentKind.PUBLICATION_POLICY,policyId(plan.modelId(),plan.targetKey())).orElseThrow().data().path("configurationDigest").asText())) throw new Failure(409,"PUBLICATION_CONFIGURATION_CHANGED");
             runtime.validateTarget(plan.targetKey()); delivery.requireWriterLease();
             if (!plan.mappingVersion().equals(target.mapping().version()) || !plan.targetInstanceId().equals(target.instanceId())) throw new Failure(409,"MAPPING_OR_TARGET_MIGRATION_REQUIRED");
             document=saveJob(document,"RUNNING",null);
@@ -129,6 +143,7 @@ public class ArchitecturePublicationService {
                             (1L<<attempts)*1000+java.util.concurrent.ThreadLocalRandom.current().nextLong(1000)));
             metadata().save(new StateDocument(instance(),job.kind(),job.id(),job.version(),data));
         } catch (Failure error) {
+            if (error.getMessage().equals("INTEGRATION_PAUSED")) return;
             var job=load(DocumentKind.PUBLICATION_JOB,id).orElseThrow(); saveJob(job,error.status()==403 || error.status()==404 ? "PAUSED" : error.getMessage().contains("AMBIGUOUS") ? "AMBIGUOUS" : "CONFLICT",error.getMessage());
             var conflict=json.createObjectNode().put("sourceModelId",job.data().path("sourceModelId").asText()).put("jobId",id)
                     .put("reason",error.getMessage()).put("state","OPEN");
@@ -280,8 +295,10 @@ public class ArchitecturePublicationService {
         if (!acl.adminUsers().contains(subject.userId())) throw new Failure(403,"EXPLICIT_MODEL_ADMIN_APPROVAL_REQUIRED");
         var target=runtime.settings().targets().stream().filter(t -> t.key().equals(key)).findFirst().orElseThrow(() -> new Failure(404,"TARGET_NOT_FOUND"));
         if (!target.publicationAccess().enabled() || !target.publicationAccess().publishers().contains(subject.userId())) throw new Failure(403,"PUBLICATION_ACCESS_DENIED");
+        runtime.requireModelActive(model);
         return target;
     }
+    private String configurationDigest(IntegrationConfiguration.Target target) { return IntegrationConfigurationDigest.target(target); }
     private boolean current(StateDocument job,Plan plan) {
         var policy=load(DocumentKind.PUBLICATION_POLICY,policyId(plan.modelId(),plan.targetKey()));
         var pointer=load(DocumentKind.CHECKPOINT,scopeId(plan.modelId(),plan.targetKey()));

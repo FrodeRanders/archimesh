@@ -18,6 +18,7 @@ public class CentralEditAuthorization {
         var acl=models.findModelAccessControl(model).orElseThrow(() -> new Failure(404,"MODEL_NOT_FOUND"));
         if (!target.centralEditAccess().enabled() || !(approving ? target.centralEditAccess().approvers() : target.centralEditAccess().requesters()).contains(subject.userId())
                 || !(acl.adminUsers().contains(subject.userId()) || !approving && acl.writerUsers().contains(subject.userId()))) throw new Failure(403,"CENTRAL_EDIT_ACCESS_DENIED");
+        runtime.requireModelActive(model);
         return target;
     }
     public IntegrationConfiguration.Target read(String model,String key,AuthorizationSubject subject) {

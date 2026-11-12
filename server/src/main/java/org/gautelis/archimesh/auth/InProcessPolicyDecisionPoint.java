@@ -66,7 +66,8 @@ public class InProcessPolicyDecisionPoint implements PolicyDecisionPoint {
     }
 
     private boolean isCatalogScopedAdminAction(AuthorizationAction action) {
-        return action == AuthorizationAction.ADMIN_MODEL_CATALOG_READ
+        return action == AuthorizationAction.ADMIN_INTEGRATION_OPERATIONS
+                || action == AuthorizationAction.ADMIN_MODEL_CATALOG_READ
                 || action == AuthorizationAction.ADMIN_MODEL_CREATE
                 || action == AuthorizationAction.ADMIN_MODEL_IMPORT
                 || action == AuthorizationAction.ADMIN_OVERVIEW_READ;

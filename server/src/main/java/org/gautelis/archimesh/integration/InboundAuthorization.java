@@ -28,6 +28,7 @@ public class InboundAuthorization {
     public StateDocument capability(String model,String key) {
         var policy=runtime.metadata().load(runtime.settings().instanceId(),DocumentKind.INBOUND_POLICY,policyId(model,key)).orElseThrow(() -> new Failure(403,"INBOUND_POLICY_REQUIRED"));
         var target=administrator(model,key,new AuthorizationSubject(policy.data().path("approvedBy").asText(),Set.of()));
+        runtime.requireGeneration(model,policy.data().path("modelGeneration").asText(null));
         if (!policy.data().path("enabled").asBoolean()) throw new Failure(403,"INBOUND_PAUSED");
         if (!target.instanceId().equals(policy.data().path("targetInstanceId").asText()) || !target.mapping().version().equals(policy.data().path("mappingVersion").asText())) throw new Failure(409,"INBOUND_MAPPING_OR_TARGET_MIGRATION_REQUIRED");
         if (!ExternalChangeIngestService.configurationDigest(target).equals(policy.data().path("configurationDigest").asText())) throw new Failure(409,"INBOUND_CONFIGURATION_CHANGED");

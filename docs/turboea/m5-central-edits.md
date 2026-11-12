@@ -163,7 +163,9 @@ Use database-native backup including all integration metadata. Disable integrati
 workers/policies before model overwrite, deletion or restore, and retain uncertain
 intents/fences. Portable integration-state export/paused reattachment, model
 identity generation fences, retention/metrics and full operational restore remain
-M6 work. The existing packaged recovery drill validates core model recovery; it
+M6 work at this milestone. The [M6 operations delivery](m6-operations.md) now
+provides those operational controls and reviewed paused restore. The existing
+packaged recovery drill validates core model recovery; it
 is not a claim of portable integration-state restore.
 
 ## Validation

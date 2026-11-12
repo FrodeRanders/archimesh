@@ -23,6 +23,7 @@ public class CentralEditWorker {
     }
     void tick() {
         try {
+            runtime.requireRunning();
             var page=runtime.metadata().list(runtime.settings().instanceId(),DocumentKind.CENTRAL_EDIT,"central:",cursor,10);
             for (var job:page) { edits.run(job.id()); cursor=job.id(); }
             if (page.size()<10) cursor="";

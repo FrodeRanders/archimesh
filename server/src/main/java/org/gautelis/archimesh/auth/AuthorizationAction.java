@@ -1,6 +1,7 @@
 package org.gautelis.archimesh.auth;
 
 public enum AuthorizationAction {
+    ADMIN_INTEGRATION_OPERATIONS,
     ADMIN_MODEL_CATALOG_READ,
     ADMIN_MODEL_CREATE,
     ADMIN_MODEL_RENAME,

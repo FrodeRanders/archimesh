@@ -40,6 +40,7 @@ public class PublicationWorker {
     void tick() {
         if (stopping) return;
         try {
+            runtime.requireRunning();
             String instance=runtime.settings().instanceId(); var state=runtime.metadata();
             if (System.currentTimeMillis()>=nextScan || !dirty.isEmpty()) {
                 dirty.clear();

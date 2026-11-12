@@ -52,6 +52,7 @@ public class ExternalFieldGuard {
     public record Capability(IntegrationStateRepository.StateDocument policy,ReservedImport binding) { }
     public Capability authorize(ExternalChangeCommand command) {
         if (!runtime.enabled() || !runtime.settings().instanceId().equals(command.instanceId()) || !"HEAD".equals(command.ref())) throw new Failure(403,"EXTERNAL_CHANGE_SCOPE_DENIED");
+        runtime.requireGeneration(command.modelId(),command.modelGeneration());
         var target=access.target(command.targetKey());
         if (!target.instanceId().equals(command.targetInstanceId()) || !target.mapping().version().equals(command.mappingVersion())) throw new Failure(409,"EXTERNAL_CHANGE_MAPPING_CHANGED");
         var binding=runtime.metadata().findBinding(new ModelElementKey(command.instanceId(),command.modelId(),EntityKind.ELEMENT,command.elementId())).orElseThrow(() -> new Failure(409,"BINDING_NOT_FOUND"));

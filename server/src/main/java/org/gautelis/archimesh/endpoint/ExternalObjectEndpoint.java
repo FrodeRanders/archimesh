@@ -48,6 +48,7 @@ public class ExternalObjectEndpoint {
     }
     private Response invoke(Supplier<?> work) {
         try { return Response.ok(work.get()).header("Cache-Control","no-store").build(); }
+        catch (org.gautelis.archimesh.integration.PublicationModel.Failure error) { return failure(error.status(),error.getMessage()); }
         catch (ExternalObjectCatalogService.RequestFailure error) { return failure(error.status(),error.getMessage()); }
         catch (ConnectorException error) { return failure(error.retryable() ? 503 : 502,"EXTERNAL_"+error.kind().name()); }
         catch (org.neo4j.driver.exceptions.ClientException conflict) {

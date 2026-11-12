@@ -8,7 +8,9 @@ import static org.gautelis.archimesh.integration.PublicationModel.Failure;
 /** One server writer lease, one shared remote-write lock, plus durable uncertainty fences across restarts. */
 @ApplicationScoped
 public class RemoteMutationCoordinator {
+    public interface Maintenance extends AutoCloseable { @Override void close(); }
     private final ReentrantLock lock=new ReentrantLock();
+    public void lock() { lock.lock(); }
     public boolean tryLock() { return lock.tryLock(); }
     public void unlock() { lock.unlock(); }
     public void requirePublicationAllowed(IntegrationRuntime runtime,String target,String canonical) {

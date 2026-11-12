@@ -17,6 +17,7 @@ import static org.gautelis.archimesh.integration.IntegrationStateRepository.*;
 @ApplicationScoped
 public class InboundWorker {
     @Inject IntegrationRuntime runtime;
+    @Inject RemoteMutationCoordinator coordination;
     @Inject ExternalChangeIngestService inbound;
     @Inject ObjectMapper json;
     @ConfigProperty(name="app.integrations.inbound.worker-enabled",defaultValue="true") boolean enabled;
@@ -38,6 +39,7 @@ public class InboundWorker {
     }
     void tick() {
         if (stopping) return;
+        try { runtime.requireRunning(); } catch (RuntimeException paused) { return; }
         for (var target:runtime.settings().targets()) if (target.inboundAccess().enabled()) {
             String key=target.key();
             if (System.currentTimeMillis()<due.getOrDefault(key,0L) && !dirty.remove(key)) continue;
@@ -72,11 +74,16 @@ public class InboundWorker {
         finally { streams.remove(target.key()); }
     }
     private void signalState(IntegrationConfiguration.Target target,String status,String code) {
-        String id="in-signal:"+target.key(); var state=runtime.metadata();
-        var prior=state.load(runtime.settings().instanceId(),DocumentKind.CHECKPOINT,id);
-        var data=json.createObjectNode().put("state",status).put("targetInstanceId",target.instanceId()).put("updatedAt",System.currentTimeMillis());
-        if (code!=null) data.put("code",code);
-        state.save(new StateDocument(runtime.settings().instanceId(),DocumentKind.CHECKPOINT,id,prior.map(StateDocument::version).orElse(0L),data));
+        if (!coordination.tryLock()) return;
+        try {
+            runtime.requireRunning();
+            String id="in-signal:"+target.key(); var state=runtime.metadata();
+            var prior=state.load(runtime.settings().instanceId(),DocumentKind.CHECKPOINT,id);
+            var data=json.createObjectNode().put("state",status).put("targetInstanceId",target.instanceId()).put("updatedAt",System.currentTimeMillis());
+            if (code!=null) data.put("code",code);
+            state.save(new StateDocument(runtime.settings().instanceId(),DocumentKind.CHECKPOINT,id,prior.map(StateDocument::version).orElse(0L),data));
+        } catch (PublicationModel.Failure paused) { /* Polling and signal callbacks remain harmless while paused. */ }
+        finally { coordination.unlock(); }
     }
     @PreDestroy void stop() {
         stopping=true;

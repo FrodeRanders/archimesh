@@ -23,7 +23,7 @@ public class ExternalChangeIngestService {
     @Inject CommitDeliveryService delivery;
     @Inject ObjectMapper json;
     @Inject CentralProposalGrant proposalGrants;
-    private final ReentrantLock execution=new ReentrantLock();
+    @Inject RemoteMutationCoordinator execution=new RemoteMutationCoordinator();
     LongSupplier now=System::currentTimeMillis;
 
     public record Approval(boolean enabled,long expectedVersion,String targetInstanceId,String mappingVersion) { }
@@ -43,13 +43,18 @@ public class ExternalChangeIngestService {
         return result.stream().sorted().toList();
     }
     public synchronized Status approve(String model,String key,AuthorizationSubject subject,Approval approval) {
-        var target=access.administrator(model,key,subject); delivery.requireWriterLease();
-        if (approval==null || approval.expectedVersion()<0 || !target.instanceId().equals(approval.targetInstanceId()) || !target.mapping().version().equals(approval.mappingVersion())) throw new Failure(409,"INBOUND_APPROVAL_STALE");
-        if (approval.enabled()) runtime.validateTarget(key);
-        var data=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",key).put("targetInstanceId",target.instanceId())
-                .put("mappingVersion",target.mapping().version()).put("approvedBy",subject.userId()).put("enabled",approval.enabled()).put("configurationDigest",configurationDigest(target));
-        metadata().save(new StateDocument(instance(),DocumentKind.INBOUND_POLICY,InboundAuthorization.policyId(model,key),approval.expectedVersion(),data));
-        return status(model,key,subject,"");
+        if (!execution.tryLock()) throw new PublicationModel.Failure(409,"INTEGRATION_BUSY");
+        try {
+            runtime.requireRunning();
+            var target=access.administrator(model,key,subject); delivery.requireWriterLease();
+            if (approval==null || approval.expectedVersion()<0 || !target.instanceId().equals(approval.targetInstanceId()) || !target.mapping().version().equals(approval.mappingVersion())) throw new Failure(409,"INBOUND_APPROVAL_STALE");
+            if (approval.enabled()) runtime.validateTarget(key);
+            var data=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",key).put("targetInstanceId",target.instanceId())
+                    .put("modelGeneration",runtime.requireModelActive(model)).put("mappingVersion",target.mapping().version()).put("approvedBy",subject.userId()).put("enabled",approval.enabled()).put("configurationDigest",configurationDigest(target));
+            metadata().save(new StateDocument(instance(),DocumentKind.INBOUND_POLICY,InboundAuthorization.policyId(model,key),approval.expectedVersion(),data));
+            return status(model,key,subject,"");
+
+        } finally { execution.unlock(); }
     }
     public Status status(String model,String key,AuthorizationSubject subject,String after) {
         var target=access.administrator(model,key,subject); var policy=policy(model,key);
@@ -75,6 +80,7 @@ public class ExternalChangeIngestService {
     public void reconcile(String key,ReservedImport binding,boolean force) {
         if (!execution.tryLock()) { if (force) throw new Failure(409,"INBOUND_BUSY"); return; }
         try {
+            runtime.requireRunning();
             var target=access.target(key); var state=load(binding).orElseGet(() -> initial(binding,key));
             var data=(ObjectNode)state.data();
             if (!force && (data.path("nextAttemptAt").asLong()>now.getAsLong() || Set.of("CONFLICT","ERROR","ORPHANED","RETIRED").contains(data.path("state").asText()))) return;
@@ -132,6 +138,7 @@ public class ExternalChangeIngestService {
         if (resolution==null) throw new Failure(400,"INBOUND_RESOLUTION_REQUIRED");
         if (!execution.tryLock()) throw new Failure(409,"INBOUND_BUSY");
         try {
+            runtime.requireModelActive(model);
             var inspected=inspect(model,key,subject,resolution.elementId());
             if (!inspected.digest().equals(resolution.inspectionDigest())) throw new Failure(409,"INBOUND_INSPECTION_STALE");
             var target=access.target(key); var policy=access.capability(model,key);
@@ -179,7 +186,7 @@ public class ExternalChangeIngestService {
                 if (!permitted) throw conflict(state,base,frame.local(),frame.remote(),frame.revision(),"PROPOSAL_LOCAL_DRIFT");
             }
             if (PublicationJson.equal(frame.local(),frame.remote())) { checkpoint(state,binding,frame.remote(),frame.revision(),null); return proposalDelivery(load(binding).orElseThrow()); }
-            var command=new ExternalChangeCommand(instance(),key,target.instanceId(),binding.canonical().canonicalId(),binding.external().resourceId(),binding.model().sourceModelId(),"HEAD",binding.model().entityId(),binding.archimateType(),binding.mappingVersion(),policy.version(),UUID.randomUUID().toString(),frame.revision(),frame.local(),frame.remote(),proposal);
+            var command=new ExternalChangeCommand(instance(),key,target.instanceId(),binding.canonical().canonicalId(),binding.external().resourceId(),binding.model().sourceModelId(),"HEAD",binding.model().entityId(),binding.archimateType(),binding.mappingVersion(),policy.version(),UUID.randomUUID().toString(),frame.revision(),frame.local(),frame.remote(),proposal,runtime.requireModelActive(binding.model().sourceModelId()));
             var data=(ObjectNode)state.data(); data.remove("conflict"); data.set("pending",json.valueToTree(command)); data.put("state","PENDING").put("attempts",0).put("nextAttemptAt",0);
             state=metadata().save(new StateDocument(instance(),state.kind(),state.id(),state.version(),data)); finishPending(state,binding);
             return proposalDelivery(load(binding).orElseThrow());
@@ -252,7 +259,7 @@ public class ExternalChangeIngestService {
         org.slf4j.LoggerFactory.getLogger(getClass()).info("integration_audit action=InboundDeferred model={} canonical={} resource={} code={} decision={}",audit(binding.model().sourceModelId()),audit(binding.canonical().canonicalId()),audit(binding.external().resourceId()),audit(code),audit(status));
     }
     private ExternalChangeCommand command(ReservedImport binding,IntegrationConfiguration.Target target,long policy,JsonNode snapshot,JsonNode local,JsonNode remote) {
-        return new ExternalChangeCommand(instance(),target.key(),target.instanceId(),binding.canonical().canonicalId(),binding.external().resourceId(),binding.model().sourceModelId(),"HEAD",binding.model().entityId(),binding.archimateType(),binding.mappingVersion(),policy,UUID.randomUUID().toString(),snapshot.path("headRevision").asLong(),local,remote);
+        return new ExternalChangeCommand(instance(),target.key(),target.instanceId(),binding.canonical().canonicalId(),binding.external().resourceId(),binding.model().sourceModelId(),"HEAD",binding.model().entityId(),binding.archimateType(),binding.mappingVersion(),policy,UUID.randomUUID().toString(),snapshot.path("headRevision").asLong(),local,remote,null,runtime.requireModelActive(binding.model().sourceModelId()));
     }
     public JsonNode baseline(ReservedImport binding,IntegrationConfiguration.Target target,Set<String> fields) {
         return load(binding).filter(d -> d.data().has("baseline")).map(d -> d.data().path("baseline")).orElseGet(() -> importedBaseline(binding,target,fields));

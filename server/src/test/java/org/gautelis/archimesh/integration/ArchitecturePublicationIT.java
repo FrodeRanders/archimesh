@@ -165,7 +165,7 @@ class ArchitecturePublicationIT {
     }
     @Test void sharedCanonicalContributorsReuseResourceAndCannotStealStewardship() throws Exception {
         assertSynced(execute()); var canonical=resource("elem:a").canonicalId(); var original=model;
-        model=runtime.settings().instanceId()+"-other-"+UUID.randomUUID(); otherModels.add(model); models.registerModel(model,"Other occurrence","publisher");
+        model=runtime.settings().instanceId()+"-other-"+UUID.randomUUID(); otherModels.add(model); models.registerModel(model,"Other occurrence","publisher"); runtime.modelScope(model);
         try {
             var ops=json.createArrayNode(); ops.addObject().put("type","CreateElement").putObject("element").put("id","elem:a").put("archimateType","ApplicationComponent").put("name","A"); commit(ops);
             var key=new IntegrationIdentity.ModelElementKey(runtime.settings().instanceId(),model,IntegrationIdentity.EntityKind.ELEMENT,"elem:a");

@@ -77,3 +77,11 @@ The placeholder variables satisfy Compose configuration parsing during cleanup; 
 ## Scope
 
 This complements the client/server gate and storage fault tests. It covers process termination, broker outage/recovery, pruned history, atomic import rollback, and fresh-database transfer. It does not replace database-native backup validation, disk-full/network-partition testing, long-running load tests, or manual testing in two real Archi workbenches. Performance measurements and operational metrics remain separate work.
+
+
+For independent Turbo EA identity/job metadata, use the [M6 integration backup and
+paused restore workflow](turboea/m6-operations.md). Model packages alone do not back
+up bindings or uncertain remote-write fences. The isolated server gate includes an
+integration archive restore into a second disposable database and a two-model
+recovery/attachment test; the packaged drill here continues to exercise the shared
+model commit/delivery/recovery runtime.

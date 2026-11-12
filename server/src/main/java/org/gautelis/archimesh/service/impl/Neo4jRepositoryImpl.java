@@ -294,7 +294,8 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
             return session.executeWrite(tx -> {
                 Record record = tx.run("""
                         MERGE (m:Model {modelId: $modelId})
-                        ON CREATE SET m.headRevision = coalesce(m.headRevision, 0),
+                        ON CREATE SET m.integrationGeneration = randomUUID(),
+                                      m.headRevision = coalesce(m.headRevision, 0),
                                       m.adminUsers = coalesce(m.adminUsers, []),
                                       m.writerUsers = coalesce(m.writerUsers, []),
                                       m.readerUsers = coalesce(m.readerUsers, []),
@@ -864,7 +865,7 @@ public class Neo4jRepositoryImpl implements Neo4jRepository {
                 params.put("admins",acl == null ? List.of() : new ArrayList<>(acl.adminUsers()));
                 params.put("writers",acl == null ? List.of() : new ArrayList<>(acl.writerUsers()));
                 params.put("readers",acl == null ? List.of() : new ArrayList<>(acl.readerUsers()));
-                tx.run("CREATE (m:Model {modelId:$modelId,registered:true,headRevision:$head,prunedThroughRevision:$checkpointRevision, "
+                tx.run("CREATE (m:Model {modelId:$modelId,registered:true,integrationGeneration:randomUUID(),headRevision:$head,prunedThroughRevision:$checkpointRevision, "
                         + "adminUsers:$admins,writerUsers:$writers,readerUsers:$readers,createdAt:$now,updatedAt:$now}) "
                         + "SET m.modelName=$modelName",params).consume();
                 for (BatchReceipt receipt : exportPackage.receipts()) {

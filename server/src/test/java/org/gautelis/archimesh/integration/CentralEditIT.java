@@ -210,7 +210,7 @@ class CentralEditIT {
     }
     private ExternalChangeCommand command(Job job,JsonNode remoteValues,String resource) {
         var target=runtime.settings().targets().getFirst(); var snapshot=models.getSnapshot(model); var expected=InboundFields.local(json,snapshot,imported.elementId(),CentralFields.keys(remoteValues));
-        return new ExternalChangeCommand(runtime.settings().instanceId(),"fixture",target.instanceId(),imported.canonicalId(),resource,model,"HEAD",imported.elementId(),"ApplicationComponent",target.mapping().version(),inbound.status(model,"fixture",admin,"").policyVersion(),UUID.randomUUID().toString(),snapshot.path("headRevision").asLong(),expected,remoteValues,job.id());
+        return new ExternalChangeCommand(runtime.settings().instanceId(),"fixture",target.instanceId(),imported.canonicalId(),resource,model,"HEAD",imported.elementId(),"ApplicationComponent",target.mapping().version(),inbound.status(model,"fixture",admin,"").policyVersion(),UUID.randomUUID().toString(),snapshot.path("headRevision").asLong(),expected,remoteValues,job.id(),runtime.requireModelActive(model));
     }
     @Test void metadataTransactionRollsBackEveryDocumentWhenOneVersionIsStale() {
         var state=runtime.metadata(); var a=new StateDocument(runtime.settings().instanceId(),DocumentKind.CHECKPOINT,"atomic-a",0,json.createObjectNode().put("value",1));

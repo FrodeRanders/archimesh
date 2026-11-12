@@ -155,6 +155,8 @@ class ExternalObjectCatalogIT {
     @Test void durableAcceptanceRecoversAfterCoordinatorFailureWithoutRemoteOrDuplicateOps() throws Exception {
         var body=request(preview(model,"card-a")); var delegate=runtime.metadata(); var fail=new AtomicBoolean(true);
         IntegrationStateRepository interrupted=new IntegrationStateRepository() {
+            public String modelGeneration(String m) { return delegate.modelGeneration(m); }
+            public boolean hasModelMetadata(String i,String m) { return delegate.hasModelMetadata(i,m); }
             public ReservedImport reserveImport(ImportReservation r) { return delegate.reserveImport(r); }
             public Optional<ReservedImport> findBinding(ModelElementKey k) { return delegate.findBinding(k); }
             public Optional<CanonicalObject> findCanonical(ExternalResourceKey k) { return delegate.findCanonical(k); }
