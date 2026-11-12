@@ -1,9 +1,10 @@
 # ADR 0002: Modular DataHub, Turbo EA and ArchiMesh federation
 
 Date: 2026-11-12. Status: accepted implementation direction following the decision
-to take responsibility for DataHub–Turbo EA integration as well. The modules and
-contracts below are planned; this ADR does not enable a DataHub connector or claim
-a completed three-repository integration.
+to take responsibility for DataHub–Turbo EA integration as well. The shared core
+and canonical authority enforcement are implemented in the
+[first D1 increment](../../integrations/datahub-turboea/docs/d1-contracts.md).
+Other runtime/state boundaries below remain planned; no DataHub connector is enabled.
 
 Extends [ADR 0001](0001-external-repository-integration.md). Delivery and acceptance
 are specified in the [federation assignment](../../integrations/datahub-turboea/docs/implementation.md).
@@ -46,7 +47,7 @@ model engine. Separate runtime execution is not yet implemented.
 
 | Module / planned package | Responsibility | Dependencies |
 | --- | --- | --- |
-| Federation core / `integration.federation` | Identity references, canonical semantics, field authority, observation provenance, projection plans and repository-neutral ports | Java/value types; no HTTP, Quarkus, Neo4j, EMF or model operations |
+| Federation core / `shared/federation-core`, `org.gautelis.federation` | Implemented identity/source-authority/observation contracts and shared rule precedence; further projection/registry-write ports remain planned | Java only; no HTTP, Quarkus, Neo4j, EMF or model operations |
 | DataHub adapter / `integration.datahub` | OSS API/authentication, entities/aspects, source observations, capabilities and error classification | Core; HTTP/serialization |
 | Turbo EA adapter / existing `integration.turboea` | API/authentication, metamodel validation, card/relation read/write and readback | Core; HTTP/serialization |
 | Federation persistence / `integration.federation.store` | Atomic identity reservations, versioned state, baselines, audit, durable jobs and uncertainty fences | Core; existing integration metadata storage |

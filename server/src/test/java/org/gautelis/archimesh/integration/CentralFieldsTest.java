@@ -40,4 +40,21 @@ class CentralFieldsTest {
         var payload=CentralFields.payload(json,target,"Application",CentralFields.proposed(json,target,"Application",Map.of("property:cost",json.getNodeFactory().textNode("2.5"))),card);
         assertEquals("keep",payload.path("attributes").path("unowned").asText()); assertFalse(payload.has("external_id")); assertFalse(payload.has("status")); assertEquals(1,payload.size());
     }
+    @Test void canonicalUnmappedFieldsCannotBeProposedOrPublishedThroughCentralHelpers() throws Exception {
+        var definition=definition();
+        ((ObjectNode)definition.path("mapping")).putObject("canonicalAuthorities").putObject("urn:asset:a").put("name","UNMAPPED");
+        var target=json.treeToValue(definition,IntegrationConfiguration.Target.class);
+        assertTrue(CentralFields.mappings(target,"Application").containsKey("name"));
+        assertFalse(CentralFields.mappings(target,"Application","urn:asset:a").containsKey("name"));
+        assertFalse(InboundFields.normalMappings(target,"Application","urn:asset:a").containsKey("name"));
+        assertThrows(PublicationModel.Failure.class,() -> CentralFields.proposed(json,target,"Application",Map.of("name",json.getNodeFactory().textNode("Rejected")),"urn:asset:a"));
+        var card=new ExternalRepositoryConnector.ExternalObject("id","Application","Name",null,null,"ACTIVE",json.createObjectNode(),null);
+        assertThrows(PublicationModel.Failure.class,() -> CentralFields.payload(json,target,"Application",json.createObjectNode().put("name","Rejected"),card,"urn:asset:a"));
+    }
+    @Test void canonicalSharedAuthorityCannotUseATypeLevelWriteThroughPermission() throws Exception {
+        var definition=definition();
+        ((ObjectNode)definition.path("mapping")).putObject("canonicalAuthorities").putObject("urn:asset:a").put("property:cost","SHARED_PROPOSAL");
+        var target=json.treeToValue(definition,IntegrationConfiguration.Target.class);
+        assertThrows(PublicationModel.Failure.class,() -> CentralFields.mappings(target,"Application","urn:asset:a"));
+    }
 }

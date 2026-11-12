@@ -35,7 +35,7 @@ public final class ArchitectureProjection {
             if (bound.isEmpty() && property(snapshot,id,ExternalObjectCatalogService.CANONICAL_PROPERTY)!=null)
                 throw new Failure(409,"UNREGISTERED_PROVENANCE_REQUIRES_REATTACHMENT");
             var fields=new TreeMap<String,JsonNode>();
-            for (var entry:target.mapping().fields().getOrDefault(remote,Map.of()).entrySet()) {
+            for (var entry:target.mapping().fieldsFor(remote,identity.canonical().canonicalId()).entrySet()) {
                 var mapping=entry.getValue();
                 if (mapping.authority()!=InformationAuthorityPolicy.Authority.ARCHIMESH_MASTER
                         || !target.publicationAccess().fields().contains(mapping.remoteField())) continue;

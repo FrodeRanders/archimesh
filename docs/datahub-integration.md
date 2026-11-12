@@ -22,6 +22,8 @@ Keep the following responsibilities in the ArchiMesh integration:
 [ADR 0002](adr/0002-three-repository-federation.md) owns the shared identity and
 authority decision. The bridge subproject owns its
 [delivery plan](../integrations/datahub-turboea/docs/implementation.md).
-There is currently no DataHub connector wired into the ArchiMesh runtime. D0 tooling
-is independent; D1 must preserve compatibility with the existing Turbo EA metadata,
-archives and worker fences while introducing these shared contracts.
+There is currently no DataHub connector wired into the ArchiMesh runtime. The
+[shared core](../shared/federation-core/README.md) and canonical authority enforcement
+are implemented as the [first D1 increment](../integrations/datahub-turboea/docs/d1-contracts.md).
+D0 tooling remains independent. Durable registry/schema/archive migration and
+connector dispatch are still required before enabling the DataHub runtime.

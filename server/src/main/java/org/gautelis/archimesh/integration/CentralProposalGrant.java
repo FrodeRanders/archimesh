@@ -19,14 +19,14 @@ public class CentralProposalGrant {
         var data=job.data(); runtime.requireGeneration(data.path("sourceModelId").asText(),data.path("modelGeneration").asText(null)); var settings=runtime.settings().targets().stream().filter(t -> t.key().equals(target)).findFirst().orElseThrow();
         if (!data.path("remoteVerified").asBoolean() || !data.path("targetKey").asText().equals(target) || !data.path("canonicalId").asText().equals(canonical)
                 || !data.path("resourceId").asText().equals(resource) || !data.path("scopeDigest").asText().equals(CentralEditAuthorization.digest(settings))) throw new Failure(403,"CENTRAL_PROPOSAL_SCOPE_DENIED");
-        if (!CentralFields.shared(settings,data.path("type").asText(),CentralFields.keys(data.path("proposed"))).isEmpty())
+        if (!CentralFields.shared(settings,data.path("type").asText(),CentralFields.keys(data.path("proposed")),canonical).isEmpty())
             authorization.require(data.path("sourceModelId").asText(),target,new AuthorizationSubject(data.path("approvedBy").asText(),Set.of()),true);
         return job;
     }
     public Map<String,org.gautelis.archimesh.integration.turboea.TurboEaMapping.FieldMapping> fields(IntegrationConfiguration.Target target,String type,StateDocument job) {
-        var result=new TreeMap<>(InboundFields.normalMappings(target,type));
-        var editable=CentralFields.mappings(target,type);
-        for (String field:CentralFields.shared(target,type,CentralFields.keys(job.data().path("proposed")))) result.put(field,editable.get(field));
+        var result=new TreeMap<>(InboundFields.normalMappings(target,type,job.data().path("canonicalId").asText()));
+        var editable=CentralFields.mappings(target,type,job.data().path("canonicalId").asText());
+        for (String field:CentralFields.shared(target,type,CentralFields.keys(job.data().path("proposed")),job.data().path("canonicalId").asText())) result.put(field,editable.get(field));
         if (result.isEmpty() || result.size()>32) throw new Failure(403,"CENTRAL_PROPOSAL_FIELDS_DENIED");
         return result;
     }

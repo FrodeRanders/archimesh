@@ -90,12 +90,12 @@ public class ExternalChangeIngestService {
                 validateBinding(binding,target);
                 if (!target.mapping().version().equals(data.path("mappingVersion").asText())) throw new Failure(409,"INBOUND_BASELINE_MIGRATION_REQUIRED");
                 if (data.has("pending")) { finishPending(state,binding); return; }
-                if (InboundFields.normalMappings(target,binding.canonical().kind()).isEmpty()) return;
+                if (InboundFields.normalMappings(target,binding.canonical().kind(),binding.canonical().canonicalId()).isEmpty()) return;
                 runtime.validateTarget(key);
                 var card=runtime.connector(key).getObject(binding.external().resourceId());
                 if (!card.type().equals(binding.canonical().kind())) throw new Failure(409,"EXTERNAL_TYPE_CONFLICT");
                 if (!"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_OBJECT_RETIRED");
-                var remote=InboundFields.remote(json,target,card); var snapshot=models.getSnapshot(binding.model().sourceModelId(),"HEAD");
+                var remote=InboundFields.remote(json,target,card,binding.canonical().canonicalId()); var snapshot=models.getSnapshot(binding.model().sourceModelId(),"HEAD");
                 validateLocal(binding,snapshot);
                 var local=InboundFields.local(json,snapshot,binding.model().entityId(),keys(remote));
                 var baseline=data.has("baseline") ? data.path("baseline") : importedBaseline(binding,target,keys(remote));
@@ -125,7 +125,7 @@ public class ExternalChangeIngestService {
         var target=access.administrator(model,key,subject); var binding=binding(model,element,target); validateBinding(binding,target);
         runtime.validateTarget(key); var card=runtime.connector(key).getObject(binding.external().resourceId());
         if (!card.type().equals(binding.canonical().kind()) || !"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_TYPE_OR_LIFECYCLE_CONFLICT");
-        var remote=InboundFields.remote(json,target,card); var snapshot=models.getSnapshot(model,"HEAD"); validateLocal(binding,snapshot);
+        var remote=InboundFields.remote(json,target,card,binding.canonical().canonicalId()); var snapshot=models.getSnapshot(model,"HEAD"); validateLocal(binding,snapshot);
         var local=InboundFields.local(json,snapshot,element,keys(remote)); var policy=policy(model,key);
         long revision=snapshot.path("headRevision").asLong();
         var base=load(binding).map(d -> d.data().path("baseline")).orElse(json.nullNode());
@@ -275,7 +275,7 @@ public class ExternalChangeIngestService {
             if (op.path("type").asText().equals("SetProperty") && op.path("targetId").asText().equals(binding.model().entityId())) imported.set("property:"+op.path("key").asText(),op.path("value"));
         }
         if (!found) return baseline;
-        var mappings=InboundFields.normalMappings(target,binding.canonical().kind());
+        var mappings=InboundFields.normalMappings(target,binding.canonical().kind(),binding.canonical().canonicalId());
         for (String field:fields) if (mappings.containsKey(field) && target.catalogAccess().fields().contains(mappings.get(field).remoteField())) {
             JsonNode value=imported.get(field);
             baseline.set(field,value==null ? field.startsWith("property:") ? json.nullNode() : json.getNodeFactory().textNode("") : value);

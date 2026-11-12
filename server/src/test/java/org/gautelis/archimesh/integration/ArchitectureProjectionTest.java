@@ -51,4 +51,18 @@ class ArchitectureProjectionTest {
         assertEquals(PublicationJson.digest(json.readTree("{\"b\":2,\"a\":1.0}")),PublicationJson.digest(json.readTree("{\"a\":1,\"b\":2.0}")));
         assertThrows(IllegalArgumentException.class,() -> new PolicySpec(Mode.TAG,"HEAD",List.of("elem:a"),List.of(),Set.of()));
     }
+    @Test void canonicalOverrideControlsPublicationWithoutChangingOtherObjectsOfSameType() throws Exception {
+        var policy=new PolicySpec(Mode.HEAD,"HEAD",List.of("elem:a","elem:b"),List.of(),Set.of());
+        var projector=new ArchitectureProjection(json);
+        var original=projector.build("instance","model",target(true),policy,snapshot(),identities());
+        String canonical=original.resources().getFirst().identity().canonical().canonicalId();
+        var definition=(com.fasterxml.jackson.databind.node.ObjectNode)json.valueToTree(target(true));
+        ((com.fasterxml.jackson.databind.node.ObjectNode)definition.path("mapping")).putObject("canonicalAuthorities")
+                .putObject(canonical).put("name","TURBO_EA_MASTER").put("documentation","ARCHIMESH_MASTER");
+        var revised=projector.build("instance","model",json.treeToValue(definition,IntegrationConfiguration.Target.class),policy,snapshot(),identities());
+        assertEquals(canonical,revised.resources().getFirst().identity().canonical().canonicalId());
+        assertFalse(revised.resources().getFirst().fields().containsKey("name"));
+        assertEquals("Central-owned",revised.resources().getFirst().fields().get("description").asText());
+        assertEquals(original.resources().getLast(),revised.resources().getLast());
+    }
 }

@@ -78,7 +78,8 @@ public class ExternalObjectCatalogService {
         if (!"ACTIVE".equals(card.status())) throw new RequestFailure(409,"EXTERNAL_OBJECT_INACTIVE");
         String archimateType=target.mapping().archimateType(card.type());
         var snapshot=models.getSnapshot(modelId,ref);
-        var fields=importFields(target,card);
+        var canonical=runtime.metadata().findCanonical(external(target,cardId)).map(CanonicalObject::canonicalId).orElse(null);
+        var fields=importFields(target,card,canonical);
         var binding=runtime.metadata().findModelBinding(runtime.settings().instanceId(),modelId,external(target,cardId));
         var compatible=new ArrayList<CompatibleElement>();
         for (var element:snapshot.path("elements")) {
@@ -261,9 +262,9 @@ public class ExternalObjectCatalogService {
     private ExternalResourceKey external(IntegrationConfiguration.Target target,String cardId) {
         return new ExternalResourceKey("turboea",target.instanceId(),ResourceKind.CARD,cardId);
     }
-    private List<FieldValue> importFields(IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card) {
+    private List<FieldValue> importFields(IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card,String canonical) {
         var result=new ArrayList<FieldValue>();
-        for (var entry:new TreeMap<>(target.mapping().fields().getOrDefault(card.type(),Map.of())).entrySet()) {
+        for (var entry:new TreeMap<>(target.mapping().fieldsFor(card.type(),canonical)).entrySet()) {
             var field=entry.getValue();
             if (!target.catalogAccess().fields().contains(field.remoteField()) || field.authority() == Authority.LOCAL_MODEL_ONLY
                     || field.authority() == Authority.UNMAPPED || field.authority() == Authority.SHARED_PROPOSAL) continue;

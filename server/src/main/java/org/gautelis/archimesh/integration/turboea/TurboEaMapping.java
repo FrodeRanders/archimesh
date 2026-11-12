@@ -14,7 +14,13 @@ import java.util.Set;
 /** Explicit versioned whitelist. Unmapped/hidden/changed semantics are rejected, never guessed. */
 public record TurboEaMapping(String version, Map<String,String> cardTypes,
                              Map<String,RelationMapping> relationTypes,
-                             Map<String,Map<String,FieldMapping>> fields) {
+                             Map<String,Map<String,FieldMapping>> fields,
+                             @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY)
+                             Map<String,Map<String,Authority>> canonicalAuthorities) {
+    public TurboEaMapping(String version,Map<String,String> cardTypes,Map<String,RelationMapping> relationTypes,
+                          Map<String,Map<String,FieldMapping>> fields) {
+        this(version,cardTypes,relationTypes,fields,Map.of());
+    }
     public enum ValueType { STRING, NUMBER, BOOLEAN, OBJECT, ARRAY }
     public record FieldMapping(String remoteField, ValueType valueType, Authority authority) {
         public FieldMapping {
@@ -37,6 +43,15 @@ public record TurboEaMapping(String version, Map<String,String> cardTypes,
         var copy = new java.util.HashMap<String,Map<String,FieldMapping>>();
         fields.forEach((type, values) -> copy.put(type,Map.copyOf(values)));
         fields = Map.copyOf(copy);
+        var overrides = new java.util.HashMap<String,Map<String,Authority>>();
+        if (canonicalAuthorities != null) canonicalAuthorities.forEach((id, values) -> {
+            IntegrationIdentity.required(id);
+            if (values.isEmpty() || values.size()>32) throw new IllegalArgumentException("Invalid canonical authority fields");
+            values.forEach((field, authority) -> { IntegrationIdentity.required(field); java.util.Objects.requireNonNull(authority); });
+            overrides.put(id,Map.copyOf(values));
+        });
+        if (overrides.size()>256) throw new IllegalArgumentException("Too many canonical authority overrides");
+        canonicalAuthorities = Map.copyOf(overrides);
         if (cardTypes.isEmpty()) throw new IllegalArgumentException("At least one card mapping is required");
         cardTypes.forEach((remote,local) -> {
             IntegrationIdentity.required(remote);
@@ -98,7 +113,23 @@ public record TurboEaMapping(String version, Map<String,String> cardTypes,
         var rules = new ArrayList<InformationAuthorityPolicy.Rule>();
         fields.forEach((type, values) -> values.forEach((local,field) -> rules.add(new InformationAuthorityPolicy.Rule(
                 InformationAuthorityPolicy.Scope.TYPE,type,local,field.authority(),version))));
+        canonicalAuthorities.forEach((id, values) -> values.forEach((field,authority) -> rules.add(new InformationAuthorityPolicy.Rule(
+                InformationAuthorityPolicy.Scope.CANONICAL,id,field,authority,version))));
         return new InformationAuthorityPolicy(rules);
+    }
+
+    /** Overrides only change ownership of an already mapped local field; they cannot add a field/path. */
+    public Map<String,FieldMapping> fieldsFor(String type,String canonical) {
+        var mapped=fields.getOrDefault(type,Map.of());
+        var selected=canonical==null ? Map.<String,Authority>of() : canonicalAuthorities.getOrDefault(canonical,Map.of());
+        if (selected.isEmpty()) return mapped;
+        if (!mapped.keySet().containsAll(selected.keySet())) throw new IllegalArgumentException("Canonical authority names an unmapped field");
+        var rules=new ArrayList<InformationAuthorityPolicy.Rule>();
+        mapped.forEach((local,field) -> rules.add(new InformationAuthorityPolicy.Rule(InformationAuthorityPolicy.Scope.TYPE,type,local,field.authority(),version)));
+        selected.forEach((local,authority) -> rules.add(new InformationAuthorityPolicy.Rule(InformationAuthorityPolicy.Scope.CANONICAL,canonical,local,authority,version)));
+        var policy=new InformationAuthorityPolicy(rules); var result=new java.util.TreeMap<String,FieldMapping>();
+        mapped.forEach((local,field) -> result.put(local,new FieldMapping(field.remoteField(),field.valueType(),policy.authority(canonical,type,local))));
+        return Map.copyOf(result);
     }
 
     private static ValueType remoteFieldType(String field, JsonNode schema) {

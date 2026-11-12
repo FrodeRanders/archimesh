@@ -10,20 +10,33 @@ import static org.gautelis.archimesh.integration.PublicationModel.Failure;
 public final class CentralFields {
     private CentralFields() { }
     public static Map<String,FieldMapping> mappings(IntegrationConfiguration.Target target,String type) {
+        return mappings(target,type,null);
+    }
+    public static Map<String,FieldMapping> mappings(IntegrationConfiguration.Target target,String type,String canonical) {
         if (!target.centralEditAccess().enabled() || !target.centralEditAccess().cardTypes().contains(type)) throw new Failure(403,"CENTRAL_TYPE_NOT_APPROVED");
         var result=new TreeMap<String,FieldMapping>();
-        target.mapping().fields().getOrDefault(type,Map.of()).forEach((local,field) -> {
+        target.mapping().fieldsFor(type,canonical).forEach((local,field) -> {
+            if (field.authority()==InformationAuthorityPolicy.Authority.SHARED_PROPOSAL
+                    && target.centralEditAccess().fields().containsKey(field.remoteField())
+                    && target.centralEditAccess().fields().get(field.remoteField())!=IntegrationConfiguration.CentralEditMode.PROPOSAL)
+                throw new Failure(403,"SHARED_FIELD_REQUIRES_PROPOSAL_MODE");
             if (target.centralEditAccess().fields().containsKey(field.remoteField()) && (field.authority()==InformationAuthorityPolicy.Authority.TURBO_EA_MASTER || field.authority()==InformationAuthorityPolicy.Authority.SHARED_PROPOSAL)) result.put(local,field);
         });
         if (result.isEmpty() || result.size()>32) throw new Failure(409,"CENTRAL_FIELDS_NOT_APPROVED");
         return Map.copyOf(result);
     }
     public static Set<String> shared(IntegrationConfiguration.Target target,String type,Set<String> selected) {
-        var result=new TreeSet<String>(); mappings(target,type).forEach((local,mapping) -> { if (selected.contains(local) && mapping.authority()==InformationAuthorityPolicy.Authority.SHARED_PROPOSAL) result.add(local); }); return result;
+        return shared(target,type,selected,null);
+    }
+    public static Set<String> shared(IntegrationConfiguration.Target target,String type,Set<String> selected,String canonical) {
+        var result=new TreeSet<String>(); mappings(target,type,canonical).forEach((local,mapping) -> { if (selected.contains(local) && mapping.authority()==InformationAuthorityPolicy.Authority.SHARED_PROPOSAL) result.add(local); }); return result;
     }
     public static ObjectNode proposed(ObjectMapper json,IntegrationConfiguration.Target target,String type,Map<String,JsonNode> input) {
+        return proposed(json,target,type,input,null);
+    }
+    public static ObjectNode proposed(ObjectMapper json,IntegrationConfiguration.Target target,String type,Map<String,JsonNode> input,String canonical) {
         if (input==null || input.isEmpty() || input.size()>8) throw new Failure(400,"CHOOSE_CENTRAL_FIELDS");
-        var mappings=mappings(target,type); var result=json.createObjectNode();
+        var mappings=mappings(target,type,canonical); var result=json.createObjectNode();
         for (String local:new TreeSet<>(input.keySet())) {
             var mapping=mappings.get(local); if (mapping==null) throw new Failure(403,"CENTRAL_FIELD_NOT_APPROVED");
             JsonNode value=input.get(local);
@@ -48,7 +61,10 @@ public final class CentralFields {
         if (mapping.remoteField().equals("name") && (value.isNull() || !value.isTextual() || value.asText().isBlank() || value.asText().length()>512)) throw new Failure(400,"CENTRAL_NAME_REQUIRED");
     }
     public static ObjectNode remote(ObjectMapper json,IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card,Set<String> selected) {
-        var result=json.createObjectNode(); var mappings=mappings(target,card.type());
+        return remote(json,target,card,selected,null);
+    }
+    public static ObjectNode remote(ObjectMapper json,IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card,Set<String> selected,String canonical) {
+        var result=json.createObjectNode(); var mappings=mappings(target,card.type(),canonical);
         for (String local:new TreeSet<>(selected)) {
             var mapping=mappings.get(local); if (mapping==null) throw new Failure(403,"CENTRAL_FIELD_NOT_APPROVED");
             JsonNode value=switch(mapping.remoteField()) {
@@ -69,9 +85,13 @@ public final class CentralFields {
         }); return result;
     }
     public static ObjectNode payload(ObjectMapper json,IntegrationConfiguration.Target target,String type,JsonNode proposed,ExternalRepositoryConnector.ExternalObject card) {
-        var result=json.createObjectNode(); ObjectNode attributes=null; var mappings=mappings(target,type);
+        return payload(json,target,type,proposed,card,null);
+    }
+    public static ObjectNode payload(ObjectMapper json,IntegrationConfiguration.Target target,String type,JsonNode proposed,ExternalRepositoryConnector.ExternalObject card,String canonical) {
+        var result=json.createObjectNode(); ObjectNode attributes=null; var mappings=mappings(target,type,canonical);
         for (String local:keys(proposed)) {
-            var mapping=mappings.get(local); validate(local,mapping,proposed.path(local)); String field=mapping.remoteField();
+            var mapping=mappings.get(local); if (mapping==null) throw new Failure(403,"CENTRAL_FIELD_NOT_APPROVED");
+            validate(local,mapping,proposed.path(local)); String field=mapping.remoteField();
             if (field.startsWith("attributes.")) {
                 if (attributes==null) { attributes=card.attributes()==null ? json.createObjectNode() : (ObjectNode)card.attributes().deepCopy(); result.set("attributes",attributes); }
                 attributes.set(field.substring(11),proposed.path(local));

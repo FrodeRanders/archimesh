@@ -10,21 +10,30 @@ import static org.gautelis.archimesh.integration.PublicationModel.Failure;
 public final class InboundFields {
     private InboundFields() { }
     public static Map<String,TurboEaMapping.FieldMapping> mappings(IntegrationConfiguration.Target target,String type) {
-        var result=normalMappings(target,type);
+        return mappings(target,type,null);
+    }
+    public static Map<String,TurboEaMapping.FieldMapping> mappings(IntegrationConfiguration.Target target,String type,String canonical) {
+        var result=normalMappings(target,type,canonical);
         if (result.isEmpty()) throw new Failure(409,"INBOUND_FIELDS_NOT_APPROVED");
         return result;
     }
     public static Map<String,TurboEaMapping.FieldMapping> normalMappings(IntegrationConfiguration.Target target,String type) {
+        return normalMappings(target,type,null);
+    }
+    public static Map<String,TurboEaMapping.FieldMapping> normalMappings(IntegrationConfiguration.Target target,String type,String canonical) {
         if (!target.inboundAccess().cardTypes().contains(type)) throw new Failure(409,"INBOUND_TYPE_NOT_APPROVED");
         var result=new TreeMap<String,TurboEaMapping.FieldMapping>();
-        target.mapping().fields().getOrDefault(type,Map.of()).forEach((local,field) -> {
+        target.mapping().fieldsFor(type,canonical).forEach((local,field) -> {
             if (field.authority()==InformationAuthorityPolicy.Authority.TURBO_EA_MASTER && target.inboundAccess().fields().contains(field.remoteField())) result.put(local,field);
         });
         if (result.size()>32) throw new Failure(409,"INBOUND_FIELDS_NOT_APPROVED");
         return Collections.unmodifiableMap(result);
     }
     public static ObjectNode remote(ObjectMapper json,IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card) {
-        return remote(json,card,mappings(target,card.type()));
+        return remote(json,target,card,null);
+    }
+    public static ObjectNode remote(ObjectMapper json,IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card,String canonical) {
+        return remote(json,card,mappings(target,card.type(),canonical));
     }
     public static ObjectNode remote(ObjectMapper json,ExternalRepositoryConnector.ExternalObject card,Map<String,TurboEaMapping.FieldMapping> mappings) {
         var result=json.createObjectNode();

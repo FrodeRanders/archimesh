@@ -1,7 +1,8 @@
 # DataHub OSS ↔ Turbo EA ↔ ArchiMesh implementation assignment
 
-Date: 2026-11-12. Status: agreed modular delivery contract; the D0 Compose/API harness
-is implemented. DataHub runtime connectors and bridge execution are not implemented.
+Date: 2026-11-12. Status: D0 Compose/API harness and the
+[first D1 contract/authority increment](d1-contracts.md) are implemented. D1 state
+migration/dispatch, DataHub runtime connectors and bridge execution remain pending.
 
 This project takes responsibility for the DataHub–Turbo EA integration as well
 as integration of both repositories with Archi/ArchiMesh. It extends the
@@ -184,6 +185,7 @@ and tested, or as unimplemented; they are not implied by the word integration.
 Existing M0–M6 supplies Turbo EA integration, durable metadata and recovery building
 blocks. It does not yet supply the neutral contracts, DataHub adapter or independent
 bridge above. D0 tooling and its [contract evidence](d0-contract-evidence.md) are in
-this subproject. The next implementation task is D1. Existing native two-workbench
+this subproject. D1 has started with the [shared contracts and effective canonical
+authority](d1-contracts.md); durable state/migration and dispatch remain. Existing native two-workbench
 and live deployment recovery acceptance gaps
 remain as recorded for Turbo EA; the expanded scope does not close them.

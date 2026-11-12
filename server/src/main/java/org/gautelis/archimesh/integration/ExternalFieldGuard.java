@@ -35,7 +35,7 @@ public class ExternalFieldGuard {
                 var target=targets.get(binding.get().external().targetInstanceId());
                 if (target==null) continue;
                 var protectedKeys=new HashSet<String>(); protectedKeys.add(ExternalObjectCatalogService.CANONICAL_PROPERTY);
-                target.mapping().fields().getOrDefault(binding.get().canonical().kind(),Map.of()).forEach((local,field) -> {
+                target.mapping().fieldsFor(binding.get().canonical().kind(),binding.get().canonical().canonicalId()).forEach((local,field) -> {
                     if (field.authority()==InformationAuthorityPolicy.Authority.TURBO_EA_MASTER || field.authority()==InformationAuthorityPolicy.Authority.SHARED_PROPOSAL)
                         protectedKeys.add(local.startsWith("property:") ? local.substring(9) : local);
                 });
@@ -59,7 +59,7 @@ public class ExternalFieldGuard {
         if (binding.state()!=BindingState.ACTIVE || !binding.canonical().canonicalId().equals(command.canonicalId()) || !binding.external().resourceId().equals(command.resourceId())
                 || !binding.external().targetInstanceId().equals(command.targetInstanceId()) || !binding.archimateType().equals(command.archimateType())
                 || !binding.mappingVersion().equals(command.mappingVersion())) throw new Failure(409,"EXTERNAL_CHANGE_BINDING_DRIFT");
-        var fields=command.proposalId()==null ? InboundFields.mappings(target,binding.canonical().kind()).keySet() : grants.commandFields(command,target,binding.canonical().kind());
+        var fields=command.proposalId()==null ? InboundFields.mappings(target,binding.canonical().kind(),binding.canonical().canonicalId()).keySet() : grants.commandFields(command,target,binding.canonical().kind());
         var expected=new HashSet<String>(); command.expectedLocal().fieldNames().forEachRemaining(expected::add);
         var remote=new HashSet<String>(); command.remote().fieldNames().forEachRemaining(remote::add);
         if (!fields.equals(expected) || !fields.equals(remote)) throw new Failure(403,"EXTERNAL_CHANGE_FIELDS_DENIED");
