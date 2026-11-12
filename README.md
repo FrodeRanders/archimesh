@@ -10,6 +10,8 @@ For the tested stopping point, branch state, resume commands, and known local br
 
 The Turbo EA integration has an [M0 code/API investigation and regression baseline](docs/turboea/m0-analysis.md), an [identity, authority and recovery ADR](docs/adr/0001-external-repository-integration.md), a disabled-by-default [M1 server connector and metadata foundation](docs/turboea/m1-foundation.md), and an [M2 approved catalog and Archi import workflow](docs/turboea/m2-import.md). [M3 controlled outbound publication](docs/turboea/m3-publication.md) adds approved HEAD/tag selection, durable reconciliation and an admin workflow. [M4 inbound synchronization](docs/turboea/m4-inbound.md) brings approved central card changes into linked HEAD models with server ownership checks and offline conflict recovery. [M5 controlled central edits](docs/turboea/m5-central-edits.md) adds explicit proposals/write-through, scoped approval and verified delivery back to linked models. [M6 operations and recovery](docs/turboea/m6-operations.md) adds durable pause, named operators, metrics/full scans, incarnation fencing and reviewed integration archive restore.
 
+The next integration investigation targets self-hosted DataHub OSS with isolated Docker Compose development/tests. See the [D0 assessment and local environment plan](docs/datahub/d0-self-hosted-assessment.md); no DataHub connector has been enabled.
+
 ## Architecture at a glance
 
 ```mermaid
