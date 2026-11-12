@@ -11,6 +11,47 @@ Ready-to-open Archi files are included: [viewless source model](models/order-man
 and [model with a synthesized view](models/order-management-synthesized.archimate).
 These are snapshots of the declarative fixture, not exports from an agency repository.
 
+## Clean-checkout demo: one command
+
+Install/start Docker with Compose, allocate about 16 GB to Docker, and install
+Python 3. From a clean checkout of this repository:
+
+```bash
+./scripts/demo.sh up
+```
+
+This command downloads a SHA-256-verified Turbo EA source snapshot, builds its
+backend/database and a compact web UI, builds ArchiMesh **and its admin UI inside
+Docker**, starts DataHub OSS and dedicated model infrastructure, loads the initial
+Northstar metadata/model, then verifies API readback and web entry pages. Host Java,
+Maven, Node, a sibling Turbo EA checkout and prebuilt application images are not
+required. First use needs internet access to public source/package/image registries;
+all running services and data remain local. Subsequent builds reuse the local cache.
+
+The command prints the three web URLs and the location of private access details.
+It leaves the demo running. The Turbo EA UI includes its normal catalog/navigation;
+its separate DrawIO distribution is omitted from this compact demo image. Archi
+models and the synthesized view are supplied separately above. Archi desktop is an
+optional client, not installed by the script.
+
+```bash
+./scripts/demo.sh status
+./scripts/demo.sh verify
+./scripts/demo.sh restart   # verify persistence without reseeding
+./scripts/demo.sh down      # retain volumes
+./scripts/demo.sh start     # resume the same demo
+./scripts/demo.sh down --volumes  # explicitly remove only this run's volumes
+./scripts/demo.sh test      # fresh build/seed/restart/verification and scoped cleanup
+```
+
+Actions default to the last run created by this bootstrap; `--run <run>` selects
+another recorded containerized run. Every `up` creates fresh storage and credentials
+without deleting other runs. The previous host-JVM loader below remains available
+for development. Use `scripts/demo.sh` to manage runs created by the clean bootstrap.
+Build/cache files live under `.run/demo-build/`; runtime state, credentials pointers,
+image inventory and verification reports live under `.run/order-management/<run>/`.
+Neither directory is committed or mounted from an agency/home credential directory.
+
 ## Contents and ownership
 
 | System | Demo content | Authority represented |

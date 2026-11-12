@@ -1,0 +1,14 @@
+**
+!admin-web/
+!admin-web/**
+admin-web/node_modules/
+admin-web/.svelte-kit/
+!server/
+!server/pom.xml
+!server/src/
+!server/src/**
+server/src/main/resources/META-INF/resources/admin-ui/
+!shared/
+!shared/federation-core/
+!shared/federation-core/src/
+!shared/federation-core/src/**

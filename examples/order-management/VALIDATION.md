@@ -1,5 +1,21 @@
 # Local demo validation — 2026-11-12
 
+## Clean-checkout Docker bootstrap
+
+`scripts/demo.sh up` passed in run `7134d84adff9`. All application images were
+built from source: Turbo EA database/backend, the compact Turbo EA UI, and the
+ArchiMesh server/admin UI. The Turbo EA source archive's verified SHA-256 is
+`ae3dc880bda752b5ba11ad21fe87bce271f23aef12f3fc926decda8300347103`.
+No host Java/Maven/Node process or sibling checkout was used by this bootstrap.
+The initial 18 cards/27 relations, 91 DataHub aspects and model at revision 176
+passed readback. Both built web entry pages and the Turbo EA UI API proxy passed.
+`scripts/demo.sh restart` then passed the same checks without reseeding.
+Seven example/bootstrap tests passed, including archive link/traversal rejection,
+loopback/private-service configuration and scoped cleanup after a failed build.
+The earlier host-JVM run below was stopped with its volumes retained.
+
+## Earlier host-JVM validation
+
 Final retained run: `5e0da21951d5`, using two uniquely scoped local Compose projects:
 `northstar-demo-5e0da21951d5` and `datahub-turboea-it-5e0da21951d5`.
 Existing development deployments were not seeded. Earlier failed synthetic runs'

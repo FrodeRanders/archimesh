@@ -13,8 +13,8 @@
     },
     "kafka": {
       "image": "redpandadata/redpanda:v24.2.8",
-      "command": ["redpanda", "start", "--overprovisioned", "--smp", "1", "--memory", "512M", "--reserve-memory", "0M", "--check=false", "--kafka-addr", "PLAINTEXT://0.0.0.0:9092", "--advertise-kafka-addr", "PLAINTEXT://127.0.0.1:${DEMO_KAFKA_PORT}"],
-      "ports": ["127.0.0.1:${DEMO_KAFKA_PORT}:9092"],
+      "command": ["redpanda", "start", "--overprovisioned", "--smp", "1", "--memory", "512M", "--reserve-memory", "0M", "--check=false", "--kafka-addr", "INTERNAL://0.0.0.0:9092,EXTERNAL://0.0.0.0:19092", "--advertise-kafka-addr", "INTERNAL://kafka:9092,EXTERNAL://127.0.0.1:${DEMO_KAFKA_PORT}"],
+      "ports": ["127.0.0.1:${DEMO_KAFKA_PORT}:19092"],
       "volumes": ["model_events:/var/lib/redpanda/data"]
     },
     "turbo-db": {

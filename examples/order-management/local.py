@@ -46,7 +46,7 @@ def request_json(port, method, path, body=None, headers=None):
         connection.close()
 
 
-def initialize():
+def initialize(containerized=False):
     run = uuid.uuid4().hex[:12]
     directory = RUNS / run
     directory.mkdir(parents=True, mode=0o700)
@@ -61,6 +61,11 @@ def initialize():
              "env":{"DEMO_DB_PASSWORD":secrets.token_hex(24),"DEMO_TURBO_SECRET":secrets.token_hex(32),
                     "DEMO_BOLT_PORT":port(),"DEMO_KAFKA_PORT":port(),"DEMO_TURBO_PORT":port(),"DEMO_ARCHIMESH_PORT":port()},
              "turboEmail":"demo-admin@northstar.example.org", "turboPassword":"Demo1-" + secrets.token_hex(24)}
+    if containerized:
+        state["mode"] = "compose"
+        state["env"].update(DEMO_TURBO_UI_PORT=port(),DEMO_ARCHIMESH_IMAGE="northstar-demo-archimesh:" + run,
+            DEMO_TURBO_IMAGE="northstar-demo-turbo-backend:6d9220e",DEMO_TURBO_DB_IMAGE="northstar-demo-turbo-db:6d9220e",
+            DEMO_TURBO_UI_IMAGE="northstar-demo-turbo-ui:6d9220e")
     save(directory / "state.json", state)
     print("Demo run: " + run, flush=True)
     return state
@@ -70,8 +75,11 @@ def load(run):
     if not re.fullmatch(r"[0-9a-f]{12}", run): raise ValueError("Expected a demo run ID of 12 hex characters")
     state = json.loads((RUNS / run / "state.json").read_text())
     require(state["run"] == run and state["project"] == "northstar-demo-" + run, "local demo project scope")
-    require(set(state["env"]) == {"DEMO_DB_PASSWORD","DEMO_TURBO_SECRET","DEMO_BOLT_PORT", "DEMO_KAFKA_PORT",
-                                 "DEMO_TURBO_PORT","DEMO_ARCHIMESH_PORT"}, "local demo environment keys")
+    expected = {"DEMO_DB_PASSWORD","DEMO_TURBO_SECRET","DEMO_BOLT_PORT", "DEMO_KAFKA_PORT","DEMO_TURBO_PORT","DEMO_ARCHIMESH_PORT"}
+    if state.get("mode") == "compose":
+        expected.update({"DEMO_TURBO_UI_PORT","DEMO_ARCHIMESH_IMAGE","DEMO_TURBO_IMAGE","DEMO_TURBO_DB_IMAGE","DEMO_TURBO_UI_IMAGE"})
+    else: require("mode" not in state,"known demo runtime mode")
+    require(set(state["env"]) == expected, "local demo environment keys")
     for key, value in state["env"].items():
         if key.endswith("PORT"): require(value.isdigit() and 1024 <= int(value) <= 65535, "loopback port")
     return state
@@ -84,7 +92,10 @@ def datahub(state): return dh.load(dh.RUNS / ("it-" + state["run"]))
 def compose(state, *args, input_=None, check=True):
     env = {k:v for k,v in os.environ.items() if not k.startswith(("COMPOSE_","DEMO_"))}
     env.update(state["env"])
-    command = ["docker","compose","--project-name",state["project"],"--file",str(HERE / "compose.json"), *args]
+    command = ["docker","compose","--project-name",state["project"],"--file",str(HERE / "compose.json")]
+    if state.get("mode") == "compose":
+        command.extend(["--file",str(directory(state) / "compose.override.json")])
+    command.extend(args)
     result = subprocess.run(command, input=input_, capture_output=True, text=True, env=env, timeout=1200)
     output = result.stdout + result.stderr
     for value in (state["env"]["DEMO_DB_PASSWORD"], state["env"]["DEMO_TURBO_SECRET"], state["turboPassword"]):
@@ -104,6 +115,10 @@ def server_start(state):
         return compose(state,"exec","-T","neo4j","cypher-shell","-u","neo4j","-p",state["env"]["DEMO_DB_PASSWORD"],
                        input_="RETURN 1;",check=False).returncode
     wait_for(database_ready,lambda code:code == 0,"Neo4j before JVM startup",180)
+    if state.get("mode") == "compose":
+        compose(state,"up","-d","archimesh")
+        wait_for(lambda:archimesh(state,"GET","/admin/models"),lambda r:isinstance(r,list),"containerized ArchiMesh startup",120)
+        return
     env = {k:v for k,v in os.environ.items() if not k.startswith(("QUARKUS_","ARCHIMESH_","NEO4J_","KAFKA_","MP_","SMALLRYE_"))
            and k not in {"JAVA_TOOL_OPTIONS","JDK_JAVA_OPTIONS","_JAVA_OPTIONS"}}
     env.update(QUARKUS_HTTP_HOST="127.0.0.1",QUARKUS_HTTP_PORT=state["env"]["DEMO_ARCHIMESH_PORT"],
@@ -125,6 +140,9 @@ def server_start(state):
 
 
 def server_stop(state):
+    if state.get("mode") == "compose":
+        compose(state,"stop","archimesh")
+        return
     pidfile = directory(state) / "server.pid"
     if not pidfile.exists(): return
     pid = int(pidfile.read_text())
@@ -212,12 +230,14 @@ def verify(state, label="verification"):
 
 
 def up(state, skip_build):
-    if not skip_build:
+    if not skip_build and state.get("mode") != "compose":
         print("Building the current ArchiMesh server",flush=True)
         with (directory(state) / "build.log").open("w") as log:
             subprocess.run(["mvn","-q","-DskipTests","package"],cwd=REPO / "server",stdout=log,stderr=subprocess.STDOUT,check=True)
-    require((REPO / "server/target/quarkus-app/quarkus-run.jar").exists(),"packaged ArchiMesh server")
-    compose(state,"up","-d")
+    if state.get("mode") == "compose": compose(state,"up","-d","neo4j","kafka","turbo-db","turbo","turbo-ui")
+    else:
+        require((REPO / "server/target/quarkus-app/quarkus-run.jar").exists(),"packaged ArchiMesh server")
+        compose(state,"up","-d")
     def schema():
         return compose(state,"exec","-T","neo4j","cypher-shell","-u","neo4j","-p",state["env"]["DEMO_DB_PASSWORD"],
                        input_=(REPO / "neo4j/schema.cypher").read_text(),check=False).returncode

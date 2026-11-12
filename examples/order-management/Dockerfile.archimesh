@@ -1,0 +1,21 @@
+FROM node:24-alpine AS admin
+WORKDIR /source/admin-web
+COPY admin-web/package.json admin-web/package-lock.json ./
+RUN npm ci
+COPY admin-web/ ./
+RUN npm run build
+
+FROM maven:3.9.11-eclipse-temurin-21 AS build
+WORKDIR /source
+COPY server/pom.xml server/pom.xml
+COPY server/src/ server/src/
+COPY shared/federation-core/src/ shared/federation-core/src/
+COPY --from=admin /source/server/src/main/resources/META-INF/resources/admin-ui/ server/src/main/resources/META-INF/resources/admin-ui/
+RUN mvn -B -q -f server/pom.xml -Dmaven.test.skip=true package
+
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY --from=build /source/server/target/quarkus-app/ ./
+USER 10001:10001
+EXPOSE 8081
+ENTRYPOINT ["java", "-Xms64m", "-Xmx384m", "-jar", "/app/quarkus-run.jar"]
