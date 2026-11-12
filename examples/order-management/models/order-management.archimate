@@ -1,0 +1,264 @@
+<?xml version='1.0' encoding='utf-8'?>
+<archimate:model xmlns:archimate="http://www.archimatetool.com/archimate" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="Northstar Trade — order to cash" id="id-0e842edf93f155898fc1d8b272e3884a" version="5.0.0">
+  <folder name="Business" id="id-e6bb068ee2e158f390e863b92644a6ab" type="business" />
+  <folder name="Application" id="id-b81463b84db3535e936ab4a74c6e1e34" type="application">
+    <element xsi:type="archimate:ApplicationComponent" id="id-87e5151fb29853a2bdffabd4e3a3084c" name="Northstar Order Management">
+      <documentation>Accepts sales orders, validates prices, reserves stock and coordinates fulfilment and invoicing. Sourcing: in-house
+Demo canonical reference: urn:demo:northstar:application:oms</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationComponent" id="id-6d19cecf78cf5a3290b59b5a0bb9235d" name="Northstar Trade Portal">
+      <documentation>Business customer storefront and order-status portal. Sourcing: in-house
+Demo canonical reference: urn:demo:northstar:application:storefront</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationComponent" id="id-256dd9a321365a89bdff29d0bfe6d1f0" name="Sales CRM (SuiteCRM)">
+      <documentation>On-premises CRM: customer accounts and sales opportunities. Sourcing: COTS
+Demo canonical reference: urn:demo:northstar:application:crm</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationComponent" id="id-01de1e9065045ec38fb1ab9d949ff43e" name="Finance ERP (Odoo)">
+      <documentation>On-premises ERP: product prices, invoices and settlement records. Sourcing: COTS
+Demo canonical reference: urn:demo:northstar:application:erp</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationComponent" id="id-f86283d59d7655208535428b062b04c8" name="Warehouse Management (ERPNext)">
+      <documentation>Illustrative on-premises warehouse application: stock, picking and shipment confirmation. Sourcing: COTS
+Demo canonical reference: urn:demo:northstar:application:wms</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationComponent" id="id-22104b12ced25ed2a4df16730a0957a4" name="Sales Analytics (Apache Superset)">
+      <documentation>On-premises sales reporting over the curated analytics warehouse. Sourcing: COTS
+Demo canonical reference: urn:demo:northstar:application:analytics</documentation>
+    </element>
+    <element xsi:type="archimate:DataObject" id="id-34d2c3daa128562ca4a63564ab9a93c2" name="Customer account">
+      <documentation>Logical trading account; not equivalent to a physical dataset.
+Demo canonical reference: urn:demo:northstar:logical-data:customer</documentation>
+    </element>
+    <element xsi:type="archimate:DataObject" id="id-39ec4bf969335a6d869cb7eb303860f1" name="Product and price">
+      <documentation>Logical sellable product and agreed list price.
+Demo canonical reference: urn:demo:northstar:logical-data:product</documentation>
+    </element>
+    <element xsi:type="archimate:DataObject" id="id-b3ba68c983b05fd28e4d531bf0d2fcda" name="Sales order">
+      <documentation>Logical customer order including header and lines.
+Demo canonical reference: urn:demo:northstar:logical-data:order</documentation>
+    </element>
+    <element xsi:type="archimate:DataObject" id="id-f5cd591cdc285d79b8e37a9f9e3a65d4" name="Stock availability">
+      <documentation>Logical available inventory and reservations.
+Demo canonical reference: urn:demo:northstar:logical-data:stock</documentation>
+    </element>
+    <element xsi:type="archimate:DataObject" id="id-cbe9fa295fe85cbd8113e06dc76408da" name="Shipment">
+      <documentation>Logical outbound shipment and delivery status.
+Demo canonical reference: urn:demo:northstar:logical-data:shipment</documentation>
+    </element>
+    <element xsi:type="archimate:DataObject" id="id-530e3d3dd60f536984c9bbd323f16e8f" name="Sales invoice">
+      <documentation>Logical invoice and settlement status.
+Demo canonical reference: urn:demo:northstar:logical-data:invoice</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationFunction" id="id-ab7f25860732599d97f55c4d195b4037" name="Capture sales order">
+      <documentation>Validate customer and capture requested order lines.
+Demo canonical reference: urn:demo:northstar:function:capture</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationFunction" id="id-ecdbd7ada38f5c1ab12649eabc7186c5" name="Validate order pricing">
+      <documentation>Check agreed prices and calculate order value.
+Demo canonical reference: urn:demo:northstar:function:price</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationFunction" id="id-d699ac180dd85d72bc2ed9d5a9a8b674" name="Reserve available stock">
+      <documentation>Request reservation from the warehouse application.
+Demo canonical reference: urn:demo:northstar:function:reserve</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationFunction" id="id-88bee996429e52b3998c65a12965dbc6" name="Coordinate fulfilment">
+      <documentation>Release accepted order to the warehouse and track shipment.
+Demo canonical reference: urn:demo:northstar:function:fulfil</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationFunction" id="id-bf54dcc824895bf4b2bc45e9fe8dfa7f" name="Request sales invoice">
+      <documentation>Request invoice creation in the finance ERP after shipment.
+Demo canonical reference: urn:demo:northstar:function:invoice</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationFunction" id="id-5178680c3e675578a1937d2ae35d942c" name="Provide order status">
+      <documentation>Expose order state to the trade portal.
+Demo canonical reference: urn:demo:northstar:function:status</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationService" id="id-b05b0ffdc0a951db8bb8ad839c9517de" name="Sales order submission">
+      <documentation>Service exposed by the in-house order application.</documentation>
+    </element>
+    <element xsi:type="archimate:ApplicationService" id="id-884a61518359597a8c42d5bc25ed6690" name="Order tracking">
+      <documentation>Service exposed by the in-house order application.</documentation>
+    </element>
+  </folder>
+  <folder name="Technology &amp; Physical" id="id-c28ea78e5c2f5983a522a435c08ce725" type="technology">
+    <element xsi:type="archimate:Node" id="id-d403b51f7a615526ab436216bb554774" name="Trade application cluster">
+      <documentation>On-premises Kubernetes runtime; illustrative deployment dependency, not a discovered cluster.
+Demo canonical reference: urn:demo:northstar:infrastructure:kubernetes</documentation>
+    </element>
+    <element xsi:type="archimate:Node" id="id-0e775a67372858d08a3028b8c6ae71a2" name="Operational PostgreSQL service">
+      <documentation>On-premises database service with separate application databases.
+Demo canonical reference: urn:demo:northstar:infrastructure:postgres</documentation>
+    </element>
+    <element xsi:type="archimate:Node" id="id-87ea2445e05b5e09b76794f417cf547d" name="Packaged-application MariaDB service">
+      <documentation>Illustrative on-premises database service for the CRM and warehouse applications; catalogued using the MySQL-compatible platform.
+Demo canonical reference: urn:demo:northstar:infrastructure:mariadb</documentation>
+    </element>
+    <element xsi:type="archimate:Node" id="id-d2f886c8225956f4b7850fe5c2ab578a" name="Trade event broker">
+      <documentation>On-premises Kafka service carrying order and shipment events.
+Demo canonical reference: urn:demo:northstar:infrastructure:kafka</documentation>
+    </element>
+    <element xsi:type="archimate:Node" id="id-ba4b3b66832d5dad9fb3ce087be7860a" name="Trade analytics warehouse">
+      <documentation>On-premises PostgreSQL analytical store.
+Demo canonical reference: urn:demo:northstar:infrastructure:warehouse</documentation>
+    </element>
+    <element xsi:type="archimate:Node" id="id-609d9bc0830f5327959f37a6c2f2aaf9" name="Trade virtual machine platform">
+      <documentation>On-premises virtual machines hosting packaged business applications.
+Demo canonical reference: urn:demo:northstar:infrastructure:virtualization</documentation>
+    </element>
+  </folder>
+  <folder name="Motivation" id="id-659656c72faf5126817d04771912f8e1" type="motivation" />
+  <folder name="Strategy" id="id-09d466984eee5f839f3ddc90219ee8e0" type="strategy" />
+  <folder name="Implementation &amp; Migration" id="id-131200d8e1a6566d8167b8a00267b3cd" type="implementation_migration" />
+  <folder name="Other" id="id-c7c6f9fad307536d8b20aa89700c570c" type="other" />
+  <folder name="Relations" id="id-e35e429232fd5957a5757e93850e9e7f" type="relations">
+    <element xsi:type="archimate:AssignmentRelationship" id="id-81a0722314f451bb9fe79699968e4b74" name="" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-ab7f25860732599d97f55c4d195b4037">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssignmentRelationship" id="id-df79e87ed1e6542fb982bf9900c85212" name="" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-ecdbd7ada38f5c1ab12649eabc7186c5">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssignmentRelationship" id="id-61dae03ca52150b28e6d4070b16b1074" name="" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-d699ac180dd85d72bc2ed9d5a9a8b674">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssignmentRelationship" id="id-63d8dc4106e057a996e12a07990d632a" name="" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-88bee996429e52b3998c65a12965dbc6">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssignmentRelationship" id="id-dc02b27ff0c755338ecd79367d82cee2" name="" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-bf54dcc824895bf4b2bc45e9fe8dfa7f">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssignmentRelationship" id="id-d654b021896c5cefb8961eee20b00a46" name="" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-5178680c3e675578a1937d2ae35d942c">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:FlowRelationship" id="id-0a250879b4455bd48ec923e6d9bda84a" name="Submitted order" source="id-ab7f25860732599d97f55c4d195b4037" target="id-ecdbd7ada38f5c1ab12649eabc7186c5">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:FlowRelationship" id="id-87ed926732245fd2a6ad41e821f8d872" name="Priced order" source="id-ecdbd7ada38f5c1ab12649eabc7186c5" target="id-d699ac180dd85d72bc2ed9d5a9a8b674">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:FlowRelationship" id="id-ab5d42f02b225fe49334939f097af504" name="Reservation confirmed" source="id-d699ac180dd85d72bc2ed9d5a9a8b674" target="id-88bee996429e52b3998c65a12965dbc6">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:FlowRelationship" id="id-3002cab667b4533d8928d7d9f3569ccb" name="Shipment confirmed" source="id-88bee996429e52b3998c65a12965dbc6" target="id-bf54dcc824895bf4b2bc45e9fe8dfa7f">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-778349a22b865df584bd7a9baa2acc2d" name="Read" source="id-ab7f25860732599d97f55c4d195b4037" target="id-34d2c3daa128562ca4a63564ab9a93c2" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-0849539aa1a656fb8bdebd1b5a6862be" name="Write" source="id-ab7f25860732599d97f55c4d195b4037" target="id-b3ba68c983b05fd28e4d531bf0d2fcda" accessType="2">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-df76498a70ad5db992f4abcc906182ca" name="Read" source="id-ecdbd7ada38f5c1ab12649eabc7186c5" target="id-39ec4bf969335a6d869cb7eb303860f1" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-fd2df1a847035576824f48a69dc46cab" name="ReadWrite" source="id-ecdbd7ada38f5c1ab12649eabc7186c5" target="id-b3ba68c983b05fd28e4d531bf0d2fcda" accessType="3">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-5ce3f104ce9253f5ab6d385bd85fad4d" name="Read" source="id-d699ac180dd85d72bc2ed9d5a9a8b674" target="id-f5cd591cdc285d79b8e37a9f9e3a65d4" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-1f10935b0811524b9cfa629e509b35dd" name="Read" source="id-88bee996429e52b3998c65a12965dbc6" target="id-cbe9fa295fe85cbd8113e06dc76408da" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-7bbfa0a020ca5d2d91e25883ae0123ff" name="Read" source="id-bf54dcc824895bf4b2bc45e9fe8dfa7f" target="id-530e3d3dd60f536984c9bbd323f16e8f" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-8d352c8734e25ed09c819ade183e8a5f" name="Read" source="id-5178680c3e675578a1937d2ae35d942c" target="id-b3ba68c983b05fd28e4d531bf0d2fcda" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-ea9d73179a8453e7aa8c78c95ebf90bc" name="CRUD" source="id-256dd9a321365a89bdff29d0bfe6d1f0" target="id-34d2c3daa128562ca4a63564ab9a93c2" accessType="3">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-ec9a3925fab85d5fbc8cb7423d9befa5" name="CRUD" source="id-01de1e9065045ec38fb1ab9d949ff43e" target="id-39ec4bf969335a6d869cb7eb303860f1" accessType="3">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-462b8d3a15a3512eaaca4689bde18026" name="CRUD" source="id-01de1e9065045ec38fb1ab9d949ff43e" target="id-530e3d3dd60f536984c9bbd323f16e8f" accessType="3">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-63d3c3e1fa6653d6ba88e2c4ff6cdbdc" name="R" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-34d2c3daa128562ca4a63564ab9a93c2" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-8db7f8ba19da5aab84fa6797d47da882" name="R" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-39ec4bf969335a6d869cb7eb303860f1" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-19be046729db5974a497601faf3722f8" name="CRUD" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-b3ba68c983b05fd28e4d531bf0d2fcda" accessType="3">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-c458bb16ddfe5a61967bc4bce43f95ff" name="R" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-f5cd591cdc285d79b8e37a9f9e3a65d4" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-5a1b31bb0eb65fb7bbdea76e2efd61c1" name="R" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-cbe9fa295fe85cbd8113e06dc76408da" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-e9c07a6a38b652fcb1e83fad619b202d" name="R" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-530e3d3dd60f536984c9bbd323f16e8f" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-da9eff9135ea5694901a7d58e29aa3a7" name="R" source="id-6d19cecf78cf5a3290b59b5a0bb9235d" target="id-b3ba68c983b05fd28e4d531bf0d2fcda" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-c1f192ef0ef657e481c26b139810ec50" name="R" source="id-6d19cecf78cf5a3290b59b5a0bb9235d" target="id-39ec4bf969335a6d869cb7eb303860f1" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-d3df95777312584cb94e3f5c43d8e344" name="CRUD" source="id-f86283d59d7655208535428b062b04c8" target="id-f5cd591cdc285d79b8e37a9f9e3a65d4" accessType="3">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-4f8bd1fb3e0654828e95a0c002439e94" name="CRUD" source="id-f86283d59d7655208535428b062b04c8" target="id-cbe9fa295fe85cbd8113e06dc76408da" accessType="3">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-f0e34feb13fe5b2e85a980e6bae1c69f" name="R" source="id-f86283d59d7655208535428b062b04c8" target="id-b3ba68c983b05fd28e4d531bf0d2fcda" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AccessRelationship" id="id-2ce0a8eecdcc50029aae0a9206078555" name="R" source="id-22104b12ced25ed2a4df16730a0957a4" target="id-b3ba68c983b05fd28e4d531bf0d2fcda" accessType="1">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-9b13a2473e9a58f5b4b77d5735fbdce2" name="deployment dependency" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-d403b51f7a615526ab436216bb554774">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-36724adcec8a54b38c86adab1a31df38" name="deployment dependency" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-0e775a67372858d08a3028b8c6ae71a2">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-20d87e06e5875ae2bd9eca55e4401c9e" name="deployment dependency" source="id-87e5151fb29853a2bdffabd4e3a3084c" target="id-d2f886c8225956f4b7850fe5c2ab578a">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-bfd35f8987e459fbb2ea9194b287a154" name="deployment dependency" source="id-6d19cecf78cf5a3290b59b5a0bb9235d" target="id-d403b51f7a615526ab436216bb554774">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-3a91a61249515ceb843f1d4f7b31a148" name="deployment dependency" source="id-256dd9a321365a89bdff29d0bfe6d1f0" target="id-609d9bc0830f5327959f37a6c2f2aaf9">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-c015b04a16d85fa4859d7e7b768dce13" name="deployment dependency" source="id-256dd9a321365a89bdff29d0bfe6d1f0" target="id-87ea2445e05b5e09b76794f417cf547d">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-8870b4e399185a658f87510979d255b1" name="deployment dependency" source="id-01de1e9065045ec38fb1ab9d949ff43e" target="id-609d9bc0830f5327959f37a6c2f2aaf9">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-a50c51927b03505d805ffe5f4fddcf0e" name="deployment dependency" source="id-01de1e9065045ec38fb1ab9d949ff43e" target="id-0e775a67372858d08a3028b8c6ae71a2">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-e8d24387162f53a387f045fb330cf944" name="deployment dependency" source="id-f86283d59d7655208535428b062b04c8" target="id-609d9bc0830f5327959f37a6c2f2aaf9">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-315dd8d3cf8955c189230f741502bcca" name="deployment dependency" source="id-f86283d59d7655208535428b062b04c8" target="id-87ea2445e05b5e09b76794f417cf547d">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-3183213007b4521683d2735eb321afa8" name="deployment dependency" source="id-22104b12ced25ed2a4df16730a0957a4" target="id-d403b51f7a615526ab436216bb554774">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:AssociationRelationship" id="id-2ef5b41d1a295e759235a895410ac405" name="deployment dependency" source="id-22104b12ced25ed2a4df16730a0957a4" target="id-ba4b3b66832d5dad9fb3ce087be7860a">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:RealizationRelationship" id="id-3a1816ca468a52c881212a0d70c7a5f5" name="" source="id-ab7f25860732599d97f55c4d195b4037" target="id-b05b0ffdc0a951db8bb8ad839c9517de">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:ServingRelationship" id="id-b4889de3d46a5117a93f0d32fdf2438c" name="" source="id-b05b0ffdc0a951db8bb8ad839c9517de" target="id-6d19cecf78cf5a3290b59b5a0bb9235d">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:RealizationRelationship" id="id-c0fea44da8b55263a26687298b1abb71" name="" source="id-5178680c3e675578a1937d2ae35d942c" target="id-884a61518359597a8c42d5bc25ed6690">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+    <element xsi:type="archimate:ServingRelationship" id="id-95f53d8241d05b34b125c5cf2b3121d5" name="" source="id-884a61518359597a8c42d5bc25ed6690" target="id-6d19cecf78cf5a3290b59b5a0bb9235d">
+      <documentation>Synthetic Northstar demonstration relationship.</documentation>
+    </element>
+  </folder>
+  <folder name="Views" id="id-4217dc5792d45ae981bb9275af0f3fc0" type="diagrams" />
+</archimate:model>

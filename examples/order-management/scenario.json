@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "id": "order-management-demo-v1",
+  "name": "Northstar Trade — order to cash",
+  "description": "Entirely fictional local trade company. All systems run on premises; product names describe illustrative COTS choices, not installed software or vendor integrations.",
+  "applications": [
+    {"id":"oms","name":"Northstar Order Management","sourcing":"in-house","description":"Accepts sales orders, validates prices, reserves stock and coordinates fulfilment and invoicing.","infrastructure":["kubernetes","postgres","kafka"]},
+    {"id":"storefront","name":"Northstar Trade Portal","sourcing":"in-house","description":"Business customer storefront and order-status portal.","infrastructure":["kubernetes"]},
+    {"id":"crm","name":"Sales CRM (SuiteCRM)","sourcing":"COTS","description":"On-premises CRM: customer accounts and sales opportunities.","infrastructure":["virtualization","mariadb"]},
+    {"id":"erp","name":"Finance ERP (Odoo)","sourcing":"COTS","description":"On-premises ERP: product prices, invoices and settlement records.","infrastructure":["virtualization","postgres"]},
+    {"id":"wms","name":"Warehouse Management (ERPNext)","sourcing":"COTS","description":"Illustrative on-premises warehouse application: stock, picking and shipment confirmation.","infrastructure":["virtualization","mariadb"]},
+    {"id":"analytics","name":"Sales Analytics (Apache Superset)","sourcing":"COTS","description":"On-premises sales reporting over the curated analytics warehouse.","infrastructure":["kubernetes","warehouse"]}
+  ],
+  "infrastructure": [
+    {"id":"kubernetes","name":"Trade application cluster","description":"On-premises Kubernetes runtime; illustrative deployment dependency, not a discovered cluster."},
+    {"id":"postgres","name":"Operational PostgreSQL service","description":"On-premises database service with separate application databases."},
+    {"id":"mariadb","name":"Packaged-application MariaDB service","description":"Illustrative on-premises database service for the CRM and warehouse applications; catalogued using the MySQL-compatible platform."},
+    {"id":"kafka","name":"Trade event broker","description":"On-premises Kafka service carrying order and shipment events."},
+    {"id":"warehouse","name":"Trade analytics warehouse","description":"On-premises PostgreSQL analytical store."},
+    {"id":"virtualization","name":"Trade virtual machine platform","description":"On-premises virtual machines hosting packaged business applications."}
+  ],
+  "logicalData": [
+    {"id":"customer","name":"Customer account","description":"Logical trading account; not equivalent to a physical dataset."},
+    {"id":"product","name":"Product and price","description":"Logical sellable product and agreed list price."},
+    {"id":"order","name":"Sales order","description":"Logical customer order including header and lines."},
+    {"id":"stock","name":"Stock availability","description":"Logical available inventory and reservations."},
+    {"id":"shipment","name":"Shipment","description":"Logical outbound shipment and delivery status."},
+    {"id":"invoice","name":"Sales invoice","description":"Logical invoice and settlement status."}
+  ],
+  "datasets": [
+    {"id":"customers","name":"Customer accounts","platform":"mysql","nativeName":"northstar_demo.crm.customer_account","description":"Synthetic business accounts; no personal contact data.","logicalData":"customer","applications":["crm","oms"],"upstreams":[],"fields":[["customer_id","string"],["account_name","string"],["country_code","string"]]},
+    {"id":"products","name":"Product price list","platform":"postgres","nativeName":"northstar_demo.erp.product_price","description":"Synthetic catalogue with SEK unit prices.","logicalData":"product","applications":["erp","oms","storefront"],"upstreams":[],"fields":[["sku","string"],["product_name","string"],["unit_price_sek","decimal"]]},
+    {"id":"orders","name":"Sales order headers","platform":"postgres","nativeName":"northstar_demo.oms.sales_order","description":"Order header, business account, status and placement date.","logicalData":"order","applications":["oms","storefront"],"upstreams":[],"fields":[["order_id","string"],["customer_id","string"],["placed_at","timestamp"],["status","string"]]},
+    {"id":"order-lines","name":"Sales order lines","platform":"postgres","nativeName":"northstar_demo.oms.sales_order_line","description":"Requested products and agreed quantity and price; one row per order line.","logicalData":"order","applications":["oms"],"upstreams":[],"fields":[["order_id","string"],["line_number","int"],["sku","string"],["quantity","int"],["unit_price_sek","decimal"]]},
+    {"id":"order-events","name":"Order accepted events","platform":"kafka","nativeName":"northstar_demo.order.accepted.v1","description":"Synthetic order acceptance events; event lineage describes the publishing transformation, not all application accesses.","logicalData":"order","applications":["oms","wms"],"upstreams":["orders","order-lines"],"fields":[["event_id","string"],["order_id","string"],["occurred_at","timestamp"]]},
+    {"id":"inventory","name":"Available inventory","platform":"mysql","nativeName":"northstar_demo.wms.inventory","description":"Warehouse quantity on hand and reserved quantity.","logicalData":"stock","applications":["wms","oms"],"upstreams":[],"fields":[["sku","string"],["warehouse_id","string"],["on_hand","int"],["reserved","int"]]},
+    {"id":"shipments","name":"Shipment confirmations","platform":"mysql","nativeName":"northstar_demo.wms.shipment","description":"Shipment status for fulfilled sales orders.","logicalData":"shipment","applications":["wms","oms"],"upstreams":[],"fields":[["shipment_id","string"],["order_id","string"],["shipped_at","timestamp"],["status","string"]]},
+    {"id":"invoices","name":"Sales invoices","platform":"postgres","nativeName":"northstar_demo.erp.invoice","description":"Synthetic invoice amounts excluding tax in SEK.","logicalData":"invoice","applications":["erp","oms"],"upstreams":[],"fields":[["invoice_id","string"],["order_id","string"],["amount_sek","decimal"],["status","string"]]},
+    {"id":"sales-fact","name":"Daily booked sales","platform":"postgres","nativeName":"northstar_demo.analytics.daily_sales","description":"Daily sales by account and product, computed from order headers and lines joined to customer and product dimensions. Booked sales, not recognized revenue.","logicalData":"order","applications":["analytics"],"upstreams":["orders","order-lines","customers","products"],"fields":[["sales_date","string"],["customer_id","string"],["sku","string"],["quantity","int"],["booked_sales_sek","decimal"]]}
+  ],
+  "products": [
+    {"id":"order-book","name":"Trade Order Book","description":"Order-management team's product for order status, order lines and accepted-order events. Contract: immutable order IDs; event IDs are distinct. Demo freshness target: 5 minutes.","team":"order-team","datasets":["orders","order-lines","order-events"]},
+    {"id":"fulfilment","name":"Fulfilment Operations","description":"Warehouse team's product for availability and shipment status. Demo freshness target: 15 minutes.","team":"warehouse-team","datasets":["inventory","shipments"]},
+    {"id":"sales-insight","name":"Sales Performance","description":"Sales-data team's product for daily booked sales, dimensions and invoice reconciliation. Demo freshness target: next business day.","team":"sales-data-team","datasets":["sales-fact","customers","products","invoices"]}
+  ],
+  "accesses": [
+    ["crm","customer","CRUD"],["erp","product","CRUD"],["erp","invoice","CRUD"],
+    ["oms","customer","R"],["oms","product","R"],["oms","order","CRUD"],["oms","stock","R"],["oms","shipment","R"],["oms","invoice","R"],
+    ["storefront","order","R"],["storefront","product","R"],["wms","stock","CRUD"],["wms","shipment","CRUD"],["wms","order","R"],["analytics","order","R"]
+  ],
+  "functions": [
+    {"id":"capture","name":"Capture sales order","description":"Validate customer and capture requested order lines."},
+    {"id":"price","name":"Validate order pricing","description":"Check agreed prices and calculate order value."},
+    {"id":"reserve","name":"Reserve available stock","description":"Request reservation from the warehouse application."},
+    {"id":"fulfil","name":"Coordinate fulfilment","description":"Release accepted order to the warehouse and track shipment."},
+    {"id":"invoice","name":"Request sales invoice","description":"Request invoice creation in the finance ERP after shipment."},
+    {"id":"status","name":"Provide order status","description":"Expose order state to the trade portal."}
+  ],
+  "functionAccesses": [["capture","customer","Read"],["capture","order","Write"],["price","product","Read"],["price","order","ReadWrite"],["reserve","stock","Read"],["fulfil","shipment","Read"],["invoice","invoice","Read"],["status","order","Read"]],
+  "functionFlows": [["capture","price","Submitted order"],["price","reserve","Priced order"],["reserve","fulfil","Reservation confirmed"],["fulfil","invoice","Shipment confirmed"]]
+}

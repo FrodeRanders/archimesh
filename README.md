@@ -12,6 +12,8 @@ The Turbo EA integration has an [M0 code/API investigation and regression baseli
 
 DataHub OSS integration uses the [shared identity/authority core](shared/federation-core/README.md) and a small [ArchiMesh consumer boundary](docs/datahub-integration.md). The DataHub ↔ Turbo EA bridge is a [separate subproject](integrations/datahub-turboea/README.md); ordinary ArchiMesh builds exclude it. D0 and D1 contract/authority plus durable identity/classification increments are implemented. The required directions are DataHub-owned dataset/product projections and Turbo EA-owned application references. Connector dispatch and governed bridge execution remain planned.
 
+The [order-management demo](examples/order-management/README.md) prepares synthetic catalog metadata, enterprise applications/infrastructure and an in-house application's formal model across all three systems. It includes deterministic Archi/ArchiMesh artifacts, sample business CSVs, a generated Archi view and an optional isolated Compose seed/readback workflow.
+
 ## Architecture at a glance
 
 ```mermaid

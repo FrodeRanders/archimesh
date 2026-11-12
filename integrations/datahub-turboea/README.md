@@ -32,6 +32,12 @@ See the [implementation stages](docs/implementation.md), [D0 assessment](docs/d0
 [shared identity ADR](../../docs/adr/0002-three-repository-federation.md) and the
 [ArchiMesh consumer boundary](../../docs/datahub-integration.md).
 
+The optional [Northstar order-management demo](../../examples/order-management/README.md)
+uses this subproject's standalone `tools/datahub_local/order_demo.py` adapter to
+seed DataHub and Turbo EA. Its domain fixture and Archi/ArchiMesh artifacts live
+outside the bridge. It is separate synthetic bootstrap tooling, not a running
+production synchronization connector.
+
 ## Local commands
 
 From this directory, with Python 3 and Docker Compose available:
