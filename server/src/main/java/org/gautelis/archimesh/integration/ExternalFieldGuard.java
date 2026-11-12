@@ -14,6 +14,7 @@ public class ExternalFieldGuard {
     @Inject IntegrationRuntime runtime;
     @Inject InboundAuthorization access;
     @Inject CentralProposalGrant grants;
+    @Inject org.gautelis.archimesh.integration.federation.FederatedFieldPolicy federation;
 
     public Optional<String> rejectLocal(String model,JsonNode ops) {
         if (!runtime.enabled()) return Optional.empty();
@@ -32,7 +33,13 @@ public class ExternalFieldGuard {
                 if (!id.startsWith("elem:")) continue;
                 var binding=bindings.computeIfAbsent(id,k -> runtime.metadata().findBinding(new ModelElementKey(runtime.settings().instanceId(),model,EntityKind.ELEMENT,k)));
                 if (binding.isEmpty()) continue;
-                if (binding.get().external().resourceKind()==ResourceKind.ENTITY) return Optional.of("EXTERNAL_SOURCE_POLICY_REQUIRED");
+                if (binding.get().external().resourceKind()==ResourceKind.ENTITY) {
+                    var keys=federation.protectedKeys(binding.get());
+                    if (keys.isEmpty()) return Optional.of("EXTERNAL_SOURCE_POLICY_REQUIRED");
+                    if (type.equals("CreateElement") || type.equals("UpdateElement") && keys.get().stream().anyMatch(op.path("patch")::has)
+                            || keys.get().contains(op.path("key").asText())) return Optional.of("EXTERNAL_FIELD_OWNED");
+                    continue;
+                }
                 var target=targets.get(binding.get().external().targetInstanceId());
                 if (target==null) continue;
                 var protectedKeys=new HashSet<String>(); protectedKeys.add(ExternalObjectCatalogService.CANONICAL_PROPERTY);

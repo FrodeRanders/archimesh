@@ -14,6 +14,8 @@ DataHub OSS integration uses the [shared identity/authority core](shared/federat
 
 The [order-management demo](examples/order-management/README.md) prepares synthetic catalog metadata, enterprise applications/infrastructure and an in-house application's formal model across all three systems. It includes deterministic Archi/ArchiMesh artifacts, sample business CSVs, a generated Archi view and an optional isolated Compose seed/readback workflow.
 
+Use `./scripts/demo.sh up` for the [clean-checkout Docker bootstrap](examples/order-management/README.md#clean-checkout-demo-one-command), including all three web entry points and initial data. The optional [authenticated source/registry boundary](integrations/datahub-turboea/docs/d1-owner-boundary.md) supplies read-only DataHub dispatch and model-independent identity registration; governed bridge execution remains in progress.
+
 ## Architecture at a glance
 
 ```mermaid

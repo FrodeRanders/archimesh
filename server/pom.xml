@@ -97,7 +97,7 @@
                         <id>shared-federation-contracts</id>
                         <phase>generate-sources</phase>
                         <goals><goal>add-source</goal></goals>
-                        <configuration><sources><source>${project.basedir}/../shared/federation-core/src/main/java</source></sources></configuration>
+                            <configuration><sources><source>${project.basedir}/../shared/federation-core/src/main/java</source><source>${project.basedir}/../shared/federation-http/src/main/java</source></sources></configuration>
                     </execution>
                     <execution>
                         <id>shared-federation-contract-tests</id>

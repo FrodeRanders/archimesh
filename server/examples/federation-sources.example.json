@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "ownerInstanceId": "archimesh-development",
+  "sources": [
+    {
+      "key": "catalog",
+      "repository": {"system":"datahub", "instance":"datahub-development"},
+      "turboTargetKey": null,
+      "baseUrl": "http://127.0.0.1:18080",
+      "tokenEnvironment": "DATAHUB_TOKEN",
+      "timeoutMillis": 10000,
+      "maxResponseBytes": 2097152,
+      "approvedPlainHttp": false,
+      "types": {
+        "dataset": {
+          "semanticKind": "catalog.dataset",
+          "archimateType": "DataObject",
+          "fields": {
+            "name": {"aspect":"datasetProperties", "path":"/name"},
+            "documentation": {"aspect":"datasetProperties", "path":"/description"}
+          }
+        },
+        "dataProduct": {
+          "semanticKind": "catalog.data-product",
+          "archimateType": "BusinessObject",
+          "fields": {
+            "name": {"aspect":"dataProductProperties", "path":"/name"},
+            "documentation": {"aspect":"dataProductProperties", "path":"/description"}
+          }
+        }
+      }
+    },
+    {
+      "key": "ea",
+      "repository": {"system":"turboea", "instance":"turboea-development"},
+      "turboTargetKey": "development",
+      "baseUrl": null,
+      "tokenEnvironment": null,
+      "timeoutMillis": 10000,
+      "maxResponseBytes": 2097152,
+      "approvedPlainHttp": false,
+      "types": {
+        "Application": {
+          "semanticKind": "enterprise.application",
+          "archimateType": "ApplicationComponent",
+          "fields": {
+            "name": {"aspect":"card", "path":"/name"},
+            "documentation": {"aspect":"card", "path":"/description"}
+          }
+        }
+      }
+    }
+  ],
+  "grants": [
+    {
+      "principal": "catalog-bridge",
+      "requiredRole": "federation_bridge",
+      "operations": ["READ", "REGISTER_SOURCE"],
+      "resources": {
+        "catalog": [
+          "urn:li:dataset:(urn:li:dataPlatform:postgres,northstar_demo.oms.sales_order,DEV)",
+          "urn:li:dataProduct:northstar-demo-order-book"
+        ],
+        "ea": ["replace-with-approved-native-application-card-id"]
+      }
+    }
+  ]
+}

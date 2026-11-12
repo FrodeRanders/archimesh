@@ -31,6 +31,9 @@ public class AuthorizationRoleMapper {
     @ConfigProperty(name = "app.authz.writer-role-aliases")
     Optional<String> writerRoleAliasesRaw;
 
+    @ConfigProperty(name = "app.authz.federation-roles", defaultValue = "federation_reader,federation_bridge,federation_operator")
+    String federationRolesRaw = "federation_reader,federation_bridge,federation_operator";
+
     public Set<String> normalizeRoles(Set<String> rawRoles) {
         if (rawRoles == null || rawRoles.isEmpty()) {
             return Set.of();
@@ -39,6 +42,7 @@ public class AuthorizationRoleMapper {
         addIfPresent(normalized, rawRoles, adminRole, adminAliases());
         addIfPresent(normalized, rawRoles, readerRole, readerAliases());
         addIfPresent(normalized, rawRoles, writerRole, writerAliases());
+        federationRoles().stream().filter(rawRoles::contains).forEach(normalized::add);
         return Set.copyOf(normalized);
     }
 
@@ -50,6 +54,7 @@ public class AuthorizationRoleMapper {
         addIfGranted(normalized, securityContext, adminRole, adminAliases());
         addIfGranted(normalized, securityContext, readerRole, readerAliases());
         addIfGranted(normalized, securityContext, writerRole, writerAliases());
+        federationRoles().stream().filter(securityContext::isUserInRole).forEach(normalized::add);
         return Set.copyOf(normalized);
     }
 
@@ -63,6 +68,11 @@ public class AuthorizationRoleMapper {
 
     public Set<String> writerAliases() {
         return aliases(writerRoleAliasesRaw.orElse(""));
+    }
+
+    /** Extra roles grant no model/admin capability; preserve them only for the separate owner PEP. */
+    public Set<String> federationRoles() {
+        return aliases(federationRolesRaw);
     }
 
     private void addIfPresent(Set<String> normalized, Set<String> rawRoles, String canonicalRole, Set<String> aliases) {

@@ -10,6 +10,7 @@ WORKDIR /source
 COPY server/pom.xml server/pom.xml
 COPY server/src/ server/src/
 COPY shared/federation-core/src/ shared/federation-core/src/
+COPY shared/federation-http/src/ shared/federation-http/src/
 COPY --from=admin /source/server/src/main/resources/META-INF/resources/admin-ui/ server/src/main/resources/META-INF/resources/admin-ui/
 RUN mvn -B -q -f server/pom.xml -Dmaven.test.skip=true package
 

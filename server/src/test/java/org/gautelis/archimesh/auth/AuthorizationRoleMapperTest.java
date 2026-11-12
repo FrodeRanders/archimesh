@@ -11,6 +11,15 @@ import java.util.Set;
 class AuthorizationRoleMapperTest {
 
     @Test
+    void federationRolesArePreservedWithoutBecomingModelRoles() {
+        AuthorizationRoleMapper mapper = new AuthorizationRoleMapper();
+        mapper.adminRole = "admin"; mapper.readerRole = "model_reader"; mapper.writerRole = "model_writer";
+        mapper.adminRoleAliasesRaw = Optional.empty(); mapper.readerRoleAliasesRaw = Optional.empty(); mapper.writerRoleAliasesRaw = Optional.empty();
+        Assertions.assertEquals(Set.of("federation_bridge"),mapper.normalizeRoles(Set.of("federation_bridge","unconfigured-role")));
+        Assertions.assertEquals(Set.of("admin"),mapper.normalizeRoles(Set.of("admin")));
+    }
+
+    @Test
     void normalizesAliasRolesToCanonicalRoles() {
         AuthorizationRoleMapper mapper = new AuthorizationRoleMapper();
         mapper.adminRole = "admin";

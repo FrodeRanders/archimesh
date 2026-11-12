@@ -2,8 +2,9 @@
 
 Date: 2026-11-12. Status: D0 Compose/API harness and the
 [D1 contract/authority increment](d1-contracts.md) and [durable identity/classification
-increment](d1-registry-migration.md) are implemented. Connector dispatch,
-source-aware runtime enforcement and governed bridge execution remain pending.
+increment](d1-registry-migration.md) are implemented. The [source/owner boundary](d1-owner-boundary.md)
+adds authenticated source dispatch, model-independent registration and local field
+protection. Target intent/job capabilities and governed bridge execution remain pending.
 
 This project takes responsibility for the DataHub–Turbo EA integration as well
 as integration of both repositories with Archi/ArchiMesh. It extends the
@@ -198,10 +199,11 @@ and tested, or as unimplemented; they are not implied by the word integration.
 ## Implementation status and next action
 
 Existing M0–M6 supplies Turbo EA integration, durable metadata and recovery building
-blocks. It does not yet supply the neutral contracts, DataHub adapter or independent
-bridge above. D0 tooling and its [contract evidence](d0-contract-evidence.md) are in
+blocks. D0 tooling and its [contract evidence](d0-contract-evidence.md) are in
 this subproject. D1 has started with the [shared contracts and effective canonical
 authority](d1-contracts.md) and [durable state/classification](d1-registry-migration.md);
-dispatch and bridge job capabilities remain. Existing native two-workbench
+the [source/owner increment](d1-owner-boundary.md) now adds read dispatch, authenticated
+registration and configured source-field protection. Target intents/shared lanes,
+approval/job capabilities and source-aware inbound baseline handling remain. Existing native two-workbench
 and live deployment recovery acceptance gaps
 remain as recorded for Turbo EA; the expanded scope does not close them.

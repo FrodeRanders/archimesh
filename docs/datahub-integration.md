@@ -22,12 +22,15 @@ Keep the following responsibilities in the ArchiMesh integration:
 [ADR 0002](adr/0002-three-repository-federation.md) owns the shared identity and
 authority decision. The bridge subproject owns its
 [delivery plan](../integrations/datahub-turboea/docs/implementation.md).
-There is currently no DataHub connector wired into the ArchiMesh runtime. The
+The optional [source reader/owner boundary](../integrations/datahub-turboea/docs/d1-owner-boundary.md)
+is wired into the runtime; direct DataHub catalog/model import and refresh remain
+disabled and unimplemented. The
 [shared core](../shared/federation-core/README.md) and canonical authority enforcement
 are implemented as the [first D1 increment](../integrations/datahub-turboea/docs/d1-contracts.md).
 D0 tooling remains independent. The [durable registry and reviewed semantic
 classification](../integrations/datahub-turboea/docs/d1-registry-migration.md) are
-also implemented, preserving existing IDs and v1 recovery. Connector dispatch,
-source-aware policy and bridge execution capabilities remain required before
+also implemented, preserving existing IDs and v1 recovery. Source-read dispatch,
+authenticated registration and configured local field protection are now available.
+Target intents/shared mutation lanes, inbound baseline policy and bridge execution capabilities remain required before
 enabling DataHub flows. Application references in DataHub will use Turbo EA as
 their source; datasets/products represented in Turbo EA retain DataHub authority.

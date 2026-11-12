@@ -12,3 +12,6 @@ server/src/main/resources/META-INF/resources/admin-ui/
 !shared/federation-core/
 !shared/federation-core/src/
 !shared/federation-core/src/**
+!shared/federation-http/
+!shared/federation-http/src/
+!shared/federation-http/src/**
