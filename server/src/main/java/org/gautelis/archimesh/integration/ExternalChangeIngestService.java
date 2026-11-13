@@ -17,6 +17,7 @@ import static org.gautelis.archimesh.integration.PublicationModel.Failure;
 /** Three-way inbound reconciliation. Every model change is a durable ordinary accepted batch. */
 @ApplicationScoped
 public class ExternalChangeIngestService {
+    @Inject org.gautelis.archimesh.integration.federation.DatasetProjectionService projections;
     @Inject IntegrationRuntime runtime;
     @Inject InboundAuthorization access;
     @Inject ArchimeshService models;
@@ -93,6 +94,7 @@ public class ExternalChangeIngestService {
                 if (InboundFields.normalMappings(target,binding.remoteType(),binding.canonical().canonicalId()).isEmpty()) return;
                 runtime.validateTarget(key);
                 var card=runtime.connector(key).getObject(binding.external().resourceId());
+                if(projections!=null) projections.verifyMirror(target,card);
                 if (!card.type().equals(binding.remoteType())) throw new Failure(409,"EXTERNAL_TYPE_CONFLICT");
                 if (!"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_OBJECT_RETIRED");
                 var remote=InboundFields.remote(json,target,card,binding.canonical().canonicalId()); var snapshot=models.getSnapshot(binding.model().sourceModelId(),"HEAD");
@@ -114,6 +116,9 @@ public class ExternalChangeIngestService {
                 if (external.kind()==ConnectorException.Kind.NOT_FOUND) { metadata().orphanBinding(binding.model()); failure(binding,"ORPHANED","EXTERNAL_OBJECT_NOT_FOUND",false,0); }
                 else failure(binding,external.retryable() ? "RETRY" : "ERROR","EXTERNAL_"+external.kind(),external.retryable(),external.retryAfter().toMillis());
             } catch (Failure denied) {
+                if (denied.getMessage().equals("PROJECTION_SOURCE_REFRESH_REQUIRED")) {
+                    failure(binding,"WAITING_SOURCE",denied.getMessage(),false,0); return;
+                }
                 String status=denied.status()==403 || denied.status()==404 ? "PAUSED" : denied.getMessage().equals("EXTERNAL_OBJECT_RETIRED") ? "RETIRED" : denied.getMessage().equals("BINDING_ORPHANED") ? "ORPHANED" : "CONFLICT";
                 failure(binding,status,denied.getMessage(),false,0);
             } catch (jakarta.ws.rs.WebApplicationException denied) { failure(binding,"PAUSED","INBOUND_AUTHORIZATION_REVOKED",false,0); }
@@ -124,6 +129,7 @@ public class ExternalChangeIngestService {
     public Inspection inspect(String model,String key,AuthorizationSubject subject,String element) {
         var target=access.administrator(model,key,subject); var binding=binding(model,element,target); validateBinding(binding,target);
         runtime.validateTarget(key); var card=runtime.connector(key).getObject(binding.external().resourceId());
+        if (projections!=null) projections.verifyMirror(target,card);
         if (!card.type().equals(binding.remoteType()) || !"ACTIVE".equals(card.status())) throw new Failure(409,"EXTERNAL_TYPE_OR_LIFECYCLE_CONFLICT");
         var remote=InboundFields.remote(json,target,card,binding.canonical().canonicalId()); var snapshot=models.getSnapshot(model,"HEAD"); validateLocal(binding,snapshot);
         var local=InboundFields.local(json,snapshot,element,keys(remote)); var policy=policy(model,key);
@@ -158,6 +164,7 @@ public class ExternalChangeIngestService {
         var target=access.administrator(model,key,subject); var binding=binding(model,element,target);
         var proof=proposalGrants.proof(proposal,key,binding.canonical().canonicalId(),binding.external().resourceId());
         var card=runtime.connector(key).getObject(binding.external().resourceId()); validateBinding(binding,target);
+        if (projections!=null) projections.verifyMirror(target,card);
         var frame=proposalFrame(binding,target,proof,card);
         return new Inspection(element,baseline(binding,target,CentralFields.keys(frame.remote())),frame.local(),frame.remote(),load(binding).map(d -> d.data().path("conflict")).orElse(json.nullNode()),frame.revision(),frame.digest());
     }
@@ -172,6 +179,7 @@ public class ExternalChangeIngestService {
             var state=load(binding).orElseGet(() -> initial(binding,proof.data().path("targetKey").asText()));
             if (state.data().has("pending")) { finishPending(state,binding); state=load(binding).orElseThrow(); if (state.data().has("pending")) return proposalDelivery(state); }
             runtime.validateTarget(key); var card=runtime.connector(key).getObject(binding.external().resourceId());
+        if (projections!=null) projections.verifyMirror(target,card);
             var frame=proposalFrame(binding,target,proof,card);
             if (resolutionDigest!=null && !resolutionDigest.equals(frame.digest())) throw new Failure(409,"INBOUND_INSPECTION_STALE");
             var base=baseline(binding,target,CentralFields.keys(frame.remote())); var selected=CentralFields.keys(proof.data().path("proposed"));
@@ -215,6 +223,18 @@ public class ExternalChangeIngestService {
 
     private void finishPending(StateDocument state,ReservedImport binding) {
         var command=json.convertValue(state.data().path("pending"),ExternalChangeCommand.class);
+        var target=access.target(command.targetKey());
+        if (projections!=null && target.mapping().fieldsFor(binding.remoteType(),binding.canonical().canonicalId()).values().stream()
+                .anyMatch(field -> field.authority()==InformationAuthorityPolicy.Authority.DATAHUB_MASTER)) {
+            var card=runtime.connector(target.key()).getObject(binding.external().resourceId());
+            projections.verifyMirror(target,card);
+            var current=InboundFields.remote(json,target,card,binding.canonical().canonicalId());
+            if (!PublicationJson.equal(current,command.remote())) {
+                var data=(ObjectNode)state.data(); data.remove("pending");
+                metadata().save(new StateDocument(instance(),state.kind(),state.id(),state.version(),data));
+                throw new Failure(409,"PROJECTION_SOURCE_REFRESH_REQUIRED");
+            }
+        }
         var result=models.submitExternalChange(command);
         if (!result.accepted() && !"EXTERNAL_CHANGE_ALREADY_EQUAL".equals(result.code())) {
             if (Set.of("EXTERNAL_CHANGE_LOCAL_STALE","EXTERNAL_CHANGE_POLICY_STALE","EXTERNAL_CHANGE_PROPOSAL_STALE").contains(result.code())) {

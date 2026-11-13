@@ -33,6 +33,8 @@ also implemented, preserving existing IDs and v1 recovery. Source-read dispatch,
 authenticated registration and configured local field protection are now available.
 The [target-intent ledger](../integrations/datahub-turboea/docs/d1-target-intents.md)
 now supplies durable shared mutation lanes and verified completion. Inbound
-baseline policy and governed bridge execution capabilities remain required before
-enabling DataHub flows. Application references in DataHub will use Turbo EA as
+baseline policy and governed bridge execution are implemented for the
+[dataset projection slice](../integrations/datahub-turboea/docs/dataset-bridge.md).
+The default local demo enables that slice; broader production rollout and the
+remaining lanes require their own approvals. Application references in DataHub will use Turbo EA as
 their source; datasets/products represented in Turbo EA retain DataHub authority.

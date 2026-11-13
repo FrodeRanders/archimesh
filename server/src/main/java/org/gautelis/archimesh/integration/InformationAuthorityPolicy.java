@@ -4,7 +4,7 @@ import org.gautelis.federation.FieldRules;
 
 /** Shared rule precedence; effective mappings feed model acceptance and repository projection. */
 public final class InformationAuthorityPolicy {
-    public enum Authority { TURBO_EA_MASTER, ARCHIMESH_MASTER, LOCAL_MODEL_ONLY, SHARED_PROPOSAL, UNMAPPED }
+    public enum Authority { TURBO_EA_MASTER, DATAHUB_MASTER, ARCHIMESH_MASTER, LOCAL_MODEL_ONLY, SHARED_PROPOSAL, UNMAPPED }
     public enum Scope { TYPE, CANONICAL }
 
     public record Rule(Scope scope, String subject, String fieldKey, Authority authority, String version) {

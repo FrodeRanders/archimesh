@@ -16,6 +16,7 @@ import time
 import urllib.request
 
 import local
+import live
 from datahub_local.order_demo import save
 from datahub_local.probe import require, wait_for
 
@@ -173,7 +174,12 @@ def access(state):
     print("  Model: " + model_id + " (HEAD)",flush=True)
     print("  Server import package: " + str(model_package),flush=True)
     print("  Identity: northstar-demo-admin; bootstrap roles: admin; bearer token: leave empty",flush=True)
-    print("Turbo EA catalog in Archi: disabled in this demo; the three systems are seeded separately.",flush=True)
+    if live.enabled(state):
+        print("Turbo EA catalog in Archi: enabled — Tools -> Enterprise Repository...",flush=True)
+        print("DataHub dataset bridge: polling every 5 seconds; new datasets and source changes propagate.",flush=True)
+        print("Service sessions are renewed by ./scripts/demo.sh start (demo sessions last one day).",flush=True)
+    else:
+        print("Turbo EA catalog in Archi: disabled; enable this existing demo with ./scripts/demo.sh enable-live",flush=True)
     print("Private access details: " + str(local.directory(state) / "access.json"),flush=True)
     executable = os.environ.get("ARCHI_EXECUTABLE", "/Applications/Archi.app/Contents/MacOS/Archi" if sys.platform == "darwin" else "Archi")
     launch = ["env", "ARCHIMESH_BOOTSTRAP_USER=northstar-demo-admin", "ARCHIMESH_BOOTSTRAP_ROLES=admin",
@@ -196,7 +202,7 @@ def inventory(state):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action",nargs="?",default="up",choices=["up","test","start","status","connection","seed","verify","restart","down"])
+    parser.add_argument("action",nargs="?",default="up",choices=["up","test","start","status","connection","enable-live","live-test","seed","verify","restart","down"])
     parser.add_argument("--run",help="Run ID; defaults to the last up created by this bootstrap")
     parser.add_argument("--volumes",action="store_true",help="Explicitly remove this demo's volumes on down")
     args = parser.parse_args()
@@ -218,12 +224,20 @@ def main():
             if args.action in ("up","test"):
                 build(state)
                 local.up(state,skip_build=True,retain=args.action!="test")
+                live.enable(state)
                 inventory(state)
+                if args.action=="test": live.probe(state)
             elif args.action == "start":
                 local.compose(state,"up","-d","neo4j","kafka","turbo-db","turbo","turbo-ui")
                 local.dh.up(local.datahub(state))
                 local.server_start(state)
+                if live.enabled(state): live.enable(state,build=False)
                 local.verify(state)
+            elif args.action == "enable-live":
+                build(state)
+                live.enable(state)
+                inventory(state)
+            elif args.action == "live-test": live.probe(state)
             elif args.action == "seed":
                 local.seed(state)
                 local.verify(state)
@@ -235,10 +249,12 @@ def main():
                 access(state)
             if args.action in ("restart","test"):
                 print("Restarting without reseeding",flush=True)
+                if live.enabled(state): local.compose(state,"stop","dataset-bridge")
                 local.server_stop(state)
                 local.compose(state,"restart","neo4j","turbo","turbo-ui")
                 local.dh.compose(local.datahub(state),"restart","gms","frontend")
                 local.server_start(state)
+                if live.enabled(state): live.enable(state,build=False)
                 local.verify(state,"after-restart")
             if args.action not in ("down","status"):
                 verify_pages(state)

@@ -38,7 +38,7 @@
     if (!target) return;
     await readStatus();
     const policy = state?.policy?.policy;
-    mode = policy?.mode || 'DISABLED'; ref = policy?.ref === 'HEAD' ? '' : policy?.ref || '';
+    mode = policy?.mode === 'HEAD' ? 'TAG' : policy?.mode || 'DISABLED'; ref = policy?.ref === 'HEAD' ? '' : policy?.ref || '';
     elements = policy?.elements || []; relationships = policy?.relationships || []; stewards = policy?.stewards || [];
     await readSnapshot(); message = 'Review the source, selection and stewardship before approving a policy.';
   };
@@ -61,7 +61,7 @@
   const approve = () => work(async () => {
     if (!reviewed) return;
     await approvePublication($selectedModelId, target, { policy: reviewed.policy, expectedVersion: state?.policy?.version || 0, previewDigest: reviewed.digest });
-    reviewed = null; await readStatus(); message = 'Publication policy approved. Disabled pauses further publication; HEAD and tag policies are reconciled by the worker.';
+    reviewed = null; await readStatus(); message = 'Publication policy approved. Disabled pauses further publication; Only the approved immutable tag is reconciled by the worker.';
   });
   const run = () => work(async () => {
     pendingRun ||= { requestId: crypto.randomUUID(), previewDigest: null };
@@ -88,7 +88,7 @@
   });
 </script>
 
-<PageHero eyebrow="Publication" title="Publish an approved architecture selection to Turbo EA." description="Choose an immutable tag for managed publication, or explicitly opt into continuous HEAD publication for a pilot." />
+<PageHero eyebrow="Publication" title="Publish an approved architecture selection to Turbo EA." description="Choose an immutable tag for managed publication. Draft changes remain local until a new tag is approved." />
 <StatusBanner message={message} />
 <Panel title="Model and target" subtitle="Publication requires a named publisher who is explicitly listed as a model administrator.">
   <div class="controls">
@@ -100,7 +100,7 @@
 {#if target}
   <Panel title="Publication policy" subtitle="Stewardship grants this model the sole outbound contribution for the selected canonical resource. Other contributors may verify matching values.">
     <div class="controls">
-      <label>Mode <select bind:value={mode} disabled={busy} on:change={() => work(readSnapshot)}><option value="DISABLED">Disabled</option><option value="TAG">Approved tag</option><option value="HEAD">Continuous HEAD</option></select></label>
+      <label>Mode <select bind:value={mode} disabled={busy} on:change={() => work(readSnapshot)}><option value="DISABLED">Disabled</option><option value="TAG">Approved tag</option></select></label>
       {#if mode === 'TAG'}<label>Immutable tag <select bind:value={ref} disabled={busy} on:change={() => work(readSnapshot)}><option value="">Choose tag</option>{#each tags as tag}<option value={tag.tagName}>{tag.tagName} · revision {tag.revision}</option>{/each}</select></label>{/if}
       <span>Source revision: {snapshot?.headRevision ?? '—'}</span>
     </div>

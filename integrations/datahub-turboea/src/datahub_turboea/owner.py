@@ -51,6 +51,17 @@ class OwnerClient:
         if str(uuid.UUID(correlation)) != correlation.lower(): raise ValueError("Canonical UUID correlation required")
         return self._request("sources/reserve",{"source":source.document(),"correlation":correlation})
 
+    def prepare_projection(self, profile, native_id, correlation):
+        text(profile,128); text(native_id,8192)
+        if str(uuid.UUID(correlation)) != correlation.lower(): raise ValueError("Canonical UUID correlation required")
+        return self._request("projections/prepare",{"profile":profile,"nativeId":native_id,"correlation":correlation})
+
+    def execute_projection(self, profile, native_id, correlation, plan):
+        text(plan["intentId"],512)
+        if not isinstance(plan["version"],int) or plan["version"]<1: raise ValueError("Invalid intent version")
+        return self._request("projections/execute",{"source":{"profile":profile,"nativeId":native_id,"correlation":correlation},
+                                                   "intentId":plan["intentId"],"version":plan["version"]})
+
     def _request(self,path,payload):
         supplied = self.headers()
         allowed = {"X-Archimesh-User","X-Archimesh-Roles"} if self.bootstrap else {"Authorization"}

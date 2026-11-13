@@ -41,7 +41,11 @@ public final class TurboEaClient implements ExternalRepositoryWriter, AutoClosea
 
     public TurboEaClient(URI base, String expectedVersion, Supplier<String> token,
                          Duration timeout, int maxBytes, ObjectMapper json) {
-        validateBaseUrl(base);
+        this(base,expectedVersion,token,timeout,maxBytes,json,false);
+    }
+    public TurboEaClient(URI base,String expectedVersion,Supplier<String> token,
+                         Duration timeout,int maxBytes,ObjectMapper json,boolean approvedPlainHttp) {
+        validateBaseUrl(base,approvedPlainHttp);
         this.base = URI.create(base.toString().replaceAll("/+$", ""));
         this.expectedVersion = IntegrationIdentity.required(expectedVersion);
         this.token = java.util.Objects.requireNonNull(token);
@@ -54,11 +58,14 @@ public final class TurboEaClient implements ExternalRepositoryWriter, AutoClosea
     }
 
     public static void validateBaseUrl(URI uri) {
+        validateBaseUrl(uri,false);
+    }
+    public static void validateBaseUrl(URI uri,boolean approvedPlainHttp) {
         if (uri == null || uri.getHost() == null || uri.getRawUserInfo() != null || uri.getRawQuery() != null
                 || uri.getRawFragment() != null || !(uri.getRawPath().isEmpty() || uri.getRawPath().equals("/")))
             throw new IllegalArgumentException("Turbo EA base URL must be an origin without credentials, path, query or fragment");
         boolean loopback = List.of("localhost", "127.0.0.1", "[::1]", "::1").contains(uri.getHost());
-        if (!"https".equals(uri.getScheme()) && !("http".equals(uri.getScheme()) && loopback))
+        if (!"https".equals(uri.getScheme()) && !("http".equals(uri.getScheme()) && (loopback || approvedPlainHttp)))
             throw new IllegalArgumentException("Turbo EA requires HTTPS except on loopback");
     }
 

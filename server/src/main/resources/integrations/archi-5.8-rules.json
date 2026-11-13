@@ -28,6 +28,10 @@
       "Capability": [
         "AssociationRelationship",
         "RealizationRelationship"
+      ],
+      "DataObject": [
+        "AccessRelationship",
+        "AssociationRelationship"
       ]
     },
     "BusinessActor": {
@@ -56,6 +60,10 @@
       "Capability": [
         "AssociationRelationship",
         "RealizationRelationship"
+      ],
+      "DataObject": [
+        "AccessRelationship",
+        "AssociationRelationship"
       ]
     },
     "BusinessProcess": {
@@ -83,6 +91,10 @@
       "Capability": [
         "AssociationRelationship",
         "RealizationRelationship"
+      ],
+      "DataObject": [
+        "AccessRelationship",
+        "AssociationRelationship"
       ]
     },
     "Capability": {
@@ -103,6 +115,30 @@
         "SpecializationRelationship",
         "TriggeringRelationship",
         "ServingRelationship"
+      ],
+      "DataObject": [
+        "AssociationRelationship"
+      ]
+    },
+    "DataObject": {
+      "ApplicationComponent": [
+        "AssociationRelationship"
+      ],
+      "BusinessActor": [
+        "AssociationRelationship"
+      ],
+      "BusinessProcess": [
+        "AssociationRelationship"
+      ],
+      "Capability": [
+        "AssociationRelationship",
+        "RealizationRelationship"
+      ],
+      "DataObject": [
+        "CompositionRelationship",
+        "AggregationRelationship",
+        "AssociationRelationship",
+        "SpecializationRelationship"
       ]
     }
   },

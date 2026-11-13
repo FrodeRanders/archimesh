@@ -48,7 +48,7 @@ public class IntegrationRuntime {
                 if (System.getenv(target.tokenEnvironment()) == null || System.getenv(target.tokenEnvironment()).isBlank())
                     throw new IllegalArgumentException();
                 clients.put(target.key(), new TurboEaClient(target.baseUrl(),target.expectedApiVersion(),
-                        () -> System.getenv(target.tokenEnvironment()),Duration.ofMillis(target.timeoutMillis()),target.maxResponseBytes(),json));
+                        () -> System.getenv(target.tokenEnvironment()),Duration.ofMillis(target.timeoutMillis()),target.maxResponseBytes(),json,target.approvedPlainHttp()));
             }
         } catch (Exception invalid) {
             stop();
@@ -63,6 +63,13 @@ public class IntegrationRuntime {
         requireEnabled();
         var client = clients.get(targetKey);
         if (client == null) throw new IllegalArgumentException("Unknown integration target");
+        return client;
+    }
+    /** Trusted owner primitive; DatasetProjectionService supplies the independent projection capability. */
+    public ExternalRepositoryWriter projectionWriter(String targetKey) {
+        requireEnabled();
+        var client=clients.get(targetKey);
+        if(client==null) throw new IllegalArgumentException("Unknown projection target");
         return client;
     }
     public ExternalRepositoryWriter writer(String targetKey) {

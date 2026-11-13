@@ -280,15 +280,43 @@ and analytical transformations. DataHub application membership does not imply
 PRODUCES/CONSUMES or CRUD. Turbo EA CRUD and Archi Access are separately declared
 architectural assertions. See the [authority directions](../../integrations/datahub-turboea/docs/authority-directions.md).
 
-This is a seed-and-verify fixture. It does not implement or prove continuous
-DataHub ↔ Turbo EA synchronization, registry convergence, least-privilege connector
-permissions, fault recovery across repositories or production disclosure controls.
-ArchiMesh integration workers stay disabled in this disposable stack.
-The Turbo EA catalog in Archi's Enterprise Repository dialog is also disabled:
-the demo does not install an approved connector/registry configuration or supply
-its Turbo EA service credentials to ArchiMesh. Reaching the correct model server
-does not by itself enable this catalog. See the
-[M2 catalog configuration](../../docs/turboea/m2-import.md) for that separate setup.
+The default `./scripts/demo.sh up` now enables a polling dataset bridge and the
+Turbo EA Enterprise Repository catalog. To enable it on an existing demo without
+reseeding or replacing the model, run `./scripts/demo.sh enable-live`. If the
+existing demo is stopped, first run `./scripts/demo.sh start`.
+
+Create a dataset in this demo DataHub, then open **Tools → Enterprise Repository**
+in Archi, connected as `northstar-demo-admin`. Choose target `turboea` and type
+`DataHubDataset`, search and import. Discovery and linked-model refresh run every
+five seconds; DataHub search indexing can add delay. Import is explicit. Later
+source name/description changes reach the linked writable model through normal
+accepted operations; historical tags remain unchanged.
+
+The dedicated `DataHubDataset` metamodel type represents technical datasets and
+maps to ArchiMate DataObject. It is separate from the seeded logical `DataObject`
+assets. Its full DataHub URN and separate Turbo EA UUID bind to one canonical ID
+in the shared registry. Curated DataHub description takes precedence over the
+ingested description. DataHub owns these fields even when accessed via Turbo EA.
+Target drift, source removal or ambiguous writes block further action and require
+review; the bridge does not hard-delete assets or infer equivalence by name.
+
+`./scripts/demo.sh live-test` creates an additional probe dataset and model and
+checks post-start discovery, explicit import, update/reversion, repeated import
+and worker restart. Evidence is saved in `artifacts/live-integration-probe.json`.
+`./scripts/demo.sh test` runs this in disposable storage and removes its own stack.
+
+Approval covers all datasets in this dedicated synthetic DataHub instance. Service
+sessions are generated into the mode-600 `integration-secrets.env` inside the run
+directory. They last one day; `./scripts/demo.sh start` renews them. These demo
+accounts have broad permissions and do not establish production disclosure or
+least-privilege controls. Use `./scripts/demo.sh connection` for current addresses
+and credential file locations; ports vary by run.
+
+Continuous data-product publication and the reverse Turbo EA → DataHub application
+lane remain outstanding. The seeded applications/products are still fixture data.
+Ordinary model publication is separately disabled in this demo; when configured,
+it requires an explicitly approved immutable tag. Central field proposals retain
+their separate approval flow.
 
 ## Module boundary
 

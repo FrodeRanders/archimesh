@@ -42,6 +42,8 @@ public class ArchitecturePublicationService {
     public Preview preview(String model,String targetKey,AuthorizationSubject subject,PolicySpec spec) {
         var target=authorize(model,targetKey,subject);
         if (spec==null) throw new Failure(400,"PUBLICATION_POLICY_REQUIRED");
+        if (spec.mode()!=Mode.DISABLED && (spec.mode()!=Mode.TAG || "HEAD".equals(spec.ref())))
+            throw new Failure(403,"PUBLICATION_TAG_REQUIRED");
         var snapshot=spec.mode()==Mode.DISABLED ? json.createObjectNode() : models.getSnapshot(model,spec.ref());
         var plan=new ArchitectureProjection(json).build(instance(),model,target,spec,snapshot,metadata());
         return new Preview(spec,plan,PublicationJson.digest(json.valueToTree(List.of(spec,plan,runtime.requireModelActive(model),configurationDigest(target)))));
@@ -59,6 +61,7 @@ public class ArchitecturePublicationService {
             var data=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",targetKey)
                     .put("targetInstanceId",reviewed.plan().targetInstanceId()).put("approvedBy",subject.userId()).put("modelGeneration",runtime.requireModelActive(model)).put("configurationDigest",configurationDigest(authorize(model,targetKey,subject)));
             data.set("policy",json.valueToTree(approval.policy()));
+            data.put("approvedPlanDigest",PublicationJson.digest(json.valueToTree(reviewed.plan())));
             var saved=metadata().save(new StateDocument(instance(),DocumentKind.PUBLICATION_POLICY,policyId(model,targetKey),approval.expectedVersion(),data));
             return policyView(Optional.of(saved));
 
@@ -89,6 +92,8 @@ public class ArchitecturePublicationService {
             // Scheduled capabilities remain tied to a currently authorized, explicitly named approver.
             authorize(model,targetKey,new AuthorizationSubject(policy.data().path("approvedBy").asText(),Set.of()));
             var reviewed=preview(model,targetKey,subject,spec);
+            if (!policy.data().path("approvedPlanDigest").asText().equals(PublicationJson.digest(json.valueToTree(reviewed.plan()))))
+                throw new Failure(409,"PUBLICATION_TAG_APPROVAL_STALE");
             if (request.previewDigest()!=null && !request.previewDigest().equals(reviewed.digest())) throw new Failure(409,"PUBLICATION_PREVIEW_STALE");
             for (var resource:reviewed.plan().resources()) metadata().reservePublicationIdentity(resource.identity());
             var job=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",targetKey)
@@ -303,10 +308,11 @@ public class ArchitecturePublicationService {
     private boolean current(StateDocument job,Plan plan) {
         var policy=load(DocumentKind.PUBLICATION_POLICY,policyId(plan.modelId(),plan.targetKey()));
         var pointer=load(DocumentKind.CHECKPOINT,scopeId(plan.modelId(),plan.targetKey()));
-        if (policy.isPresent() && policy.get().data().path("policy").path("mode").asText().equals("HEAD")
-                && models.getSnapshot(plan.modelId(),"HEAD").path("headRevision").asLong()!=plan.revision()) return false;
+        if (policy.isEmpty() || !policy.get().data().path("policy").path("mode").asText().equals("TAG")
+                || "HEAD".equals(plan.ref()) || models.getSnapshot(plan.modelId(),plan.ref()).path("headRevision").asLong()!=plan.revision()) return false;
+        if (!policy.get().data().path("approvedPlanDigest").asText().equals(PublicationJson.digest(json.valueToTree(plan)))) return false;
         return policy.isPresent() && policy.get().version()==job.data().path("policyVersion").asLong()
-                && !policy.get().data().path("policy").path("mode").asText().equals("DISABLED")
+                && policy.get().data().path("policy").path("mode").asText().equals("TAG")
                 && pointer.isPresent() && pointer.get().data().path("jobId").asText().equals(job.id());
     }
     private StateDocument resourceState(Plan plan,Resource resource) {

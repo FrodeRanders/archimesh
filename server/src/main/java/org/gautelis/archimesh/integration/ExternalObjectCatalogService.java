@@ -20,6 +20,7 @@ import static org.gautelis.archimesh.integration.InformationAuthorityPolicy.Auth
 /** Single-card import coordinator. Remote I/O and metadata transactions never hold the model monitor. */
 @ApplicationScoped
 public class ExternalObjectCatalogService {
+    @Inject org.gautelis.archimesh.integration.federation.DatasetProjectionService projections;
     public static final String CANONICAL_PROPERTY="archimesh.external.canonicalId";
     @Inject IntegrationRuntime runtime;
     @Inject RemoteMutationCoordinator execution=new RemoteMutationCoordinator();
@@ -61,6 +62,7 @@ public class ExternalObjectCatalogService {
         var items=new ArrayList<CardSummary>();
         for (var card:result.items()) {
             if (!type.equals(card.type())) throw new RequestFailure(502,"CATALOG_SCOPE_MISMATCH");
+            if(projections!=null) projections.verifyMirror(target,card);
             var binding=runtime.metadata().findModelBinding(runtime.settings().instanceId(),modelId,external(target,card.id()));
             items.add(new CardSummary(card.id(),card.type(),safeText(card.name(),512),
                     target.catalogAccess().fields().contains("description") ? safeText(card.description(),16384) : null,
@@ -74,6 +76,7 @@ public class ExternalObjectCatalogService {
         var target=target(modelId,ref,subject,targetKey,false);
         runtime.validateTarget(targetKey);
         var card=runtime.connector(targetKey).getObject(required(cardId));
+        if(projections!=null) projections.verifyMirror(target,card);
         requireType(target,card.type());
         if (!"ACTIVE".equals(card.status())) throw new RequestFailure(409,"EXTERNAL_OBJECT_INACTIVE");
         String archimateType=target.mapping().archimateType(card.type());
@@ -296,7 +299,7 @@ public class ExternalObjectCatalogService {
             for (var field:fields) if (field.field().startsWith("property:"))
                 ops.addObject().put("type","SetProperty").put("targetId",id).put("key",field.field().substring(9)).put("value",field.value());
             String folder=switch(binding.archimateType()) {
-                case "ApplicationComponent" -> "folder:root-application";
+                case "ApplicationComponent","DataObject" -> "folder:root-application";
                 case "BusinessActor","BusinessProcess" -> "folder:root-business";
                 case "Capability" -> "folder:root-strategy";
                 default -> throw new RequestFailure(409,"UNSUPPORTED_MODEL_FOLDER");

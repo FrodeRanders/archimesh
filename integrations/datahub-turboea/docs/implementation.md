@@ -5,8 +5,10 @@ Date: 2026-11-12. Status: D0 Compose/API harness and the
 increment](d1-registry-migration.md) are implemented. The [source/owner boundary](d1-owner-boundary.md)
 adds authenticated source dispatch, model-independent registration and local field
 protection. The [target-intent ledger](d1-target-intents.md) adds durable dispatch
-fences and atomic verified binding. Approval/job capabilities and governed bridge
-execution remain pending.
+fences and atomic verified binding. The [dataset slice](dataset-bridge.md) adds
+standing scoped approval, polling, governed target execution and mirror-backed
+ArchiMesh import/refresh. Products, direct DataHub model import and the reverse
+application lane remain pending; this does not complete D2–D4.
 
 This project takes responsibility for the DataHub–Turbo EA integration as well
 as integration of both repositories with Archi/ArchiMesh. It extends the

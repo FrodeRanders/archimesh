@@ -13,7 +13,7 @@ when the development authorization switch is off. Global administrator roles
 alone do not grant publication. The worker rechecks the original approver's
 current access before executing each resource, alongside the writer lease.
 
-Choose `DISABLED`, continuous `HEAD`, or an explicit immutable `TAG`; select at
+Choose `DISABLED` or an explicit immutable `TAG`; select at
 most twenty semantic elements and twenty relationships, with selected endpoints.
 Choose stewardship explicitly. Preview displays the projected types, canonical
 identities and owned fields. Approval compares both the preview digest and policy
@@ -25,7 +25,13 @@ snapshot projection, mapping version and revision. The execution path checks the
 live version/metamodel before writes. It never publishes operation patches or
 Kafka payloads. LWW-losing accepted edits therefore cannot overwrite the materialized
 winner. No diagram geometry, view membership, clocks or tombstones are sent.
-A stale HEAD job is superseded; a tag job continues to use its immutable snapshot.
+Only named immutable tags can be approved or queued. HEAD publication is rejected
+with `PUBLICATION_TAG_REQUIRED`; queued legacy HEAD jobs are superseded without
+writes. Draft changes do not change an approved tag job. Create and approve a new
+tag to release later edits. Approval pins the projection digest, so deleting and
+reusing a tag name also requires new approval. Policies approved before this
+requirement must be reviewed again. Separately approved central-field proposals retain
+their existing HEAD-based workflow.
 
 ## Configuration
 

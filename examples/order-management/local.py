@@ -29,6 +29,14 @@ from datahub_local.order_demo import (turbo_seed, turbo_verify, aspects, datahub
 from datahub_local.probe import wait_for, require
 
 
+class ApiError(RuntimeError):
+    def __init__(self, method, path, status, value):
+        code=value.get("code","") if isinstance(value,dict) else ""
+        self.status=status
+        self.code=code if isinstance(code,str) and re.fullmatch(r"[A-Z_0-9]{1,100}",code) else "HTTP_ERROR"
+        super().__init__(f"{method} {path}: HTTP {status} {self.code}")
+
+
 def request_json(port, method, path, body=None, headers=None):
     connection = http.client.HTTPConnection("127.0.0.1", int(port), timeout=30)
     try:
@@ -40,7 +48,7 @@ def request_json(port, method, path, body=None, headers=None):
         value = json.loads(raw) if raw else None
         if response.status >= 300:
             # Do not expose remote bodies, credentials or tokens in exceptions/logs.
-            raise RuntimeError(f"{method} {path}: HTTP {response.status}")
+            raise ApiError(method,path,response.status,value)
         return value
     finally:
         connection.close()
@@ -98,7 +106,10 @@ def compose(state, *args, input_=None, check=True):
     command.extend(args)
     result = subprocess.run(command, input=input_, capture_output=True, text=True, env=env, timeout=1200)
     output = result.stdout + result.stderr
-    for value in (state["env"]["DEMO_DB_PASSWORD"], state["env"]["DEMO_TURBO_SECRET"], state["turboPassword"]):
+    private=directory(state)/"integration-secrets.env"
+    secrets_to_redact=[state["env"]["DEMO_DB_PASSWORD"],state["env"]["DEMO_TURBO_SECRET"],state["turboPassword"]]
+    if private.exists(): secrets_to_redact.extend(line.split("=",1)[1] for line in private.read_text().splitlines() if "=" in line)
+    for value in secrets_to_redact:
         output = output.replace(value,"<redacted>")
     with (directory(state) / "compose.log").open("a") as stream: stream.write(output)
     if check and result.returncode: raise RuntimeError("Demo Compose failed; see " + str(directory(state) / "compose.log"))
@@ -196,28 +207,33 @@ def seed(state):
 
 def verify(state, label="verification"):
     out = directory(state) / "artifacts"
+    live_enabled=(directory(state)/"live-integration.json").exists()
     fixture = json.loads((out / "metadata.json").read_text())
     journal = json.loads((directory(state) / "turbo-journal.json").read_text())
     api = turbo_api(state)
     apps = turbo_verify(api,fixture,journal)
     cards = len(fixture["applications"]) + len(fixture["logicalData"]) + len(fixture["infrastructure"])
+    expected_aspects=aspects(fixture,apps,state["project"])
+    if live_enabled:
+        # Dataset names/descriptions are now intentionally editable at the original source.
+        expected_aspects=[record for record in expected_aspects if not (record[0].startswith("urn:li:dataset:") and record[1]=="datasetProperties")]
     report = {"run":state["run"],"turbo":{"cards":cards,
-              "relations":len(journal["bindings"]) - cards}, "datahub":datahub_verify(datahub(state),aspects(fixture,apps,state["project"]))}
+              "relations":len(journal["bindings"]) - cards}, "datahub":datahub_verify(datahub(state),expected_aspects)}
     expected = json.loads((out / "archimesh-model.json").read_text())
     model = expected["model"]["modelId"]
     exported = archimesh(state,"GET","/admin/models/" + model + "/export")
     for key in ("elements","relationships"):
         actual = {e["id"]:e for e in exported["snapshot"][key]}
         wanted = expected["snapshot"][key]
-        require(len(actual) == len(wanted), "ArchiMesh " + key + " count")
+        require((len(actual)>=len(wanted) if live_enabled else len(actual)==len(wanted)), "ArchiMesh " + key + " count")
         for item in wanted:
             require(all(actual[item["id"]].get(k) == v for k,v in item.items() if k != "accessType"), "ArchiMesh " + key + " semantic readback")
-    require(exported["model"]["headRevision"] == expected["model"]["headRevision"], "full ArchiMesh revision history")
-    require(exported["opBatches"] == expected["opBatches"], "persisted operations and causal metadata")
+    require((exported["model"]["headRevision"]>=expected["model"]["headRevision"] if live_enabled else exported["model"]["headRevision"]==expected["model"]["headRevision"]), "full ArchiMesh revision history")
+    require(exported["opBatches"][:len(expected["opBatches"])] == expected["opBatches"] if live_enabled else exported["opBatches"]==expected["opBatches"], "persisted operations and causal metadata")
     wanted_properties = [op for op in expected["opBatches"][0]["ops"] if op["type"] == "SetProperty"]
     for op in wanted_properties:
         require(op in exported["snapshot"]["propertyState"], "persisted demo access annotation")
-    require(not exported["snapshot"]["views"], "viewless formal model")
+    if not live_enabled: require(not exported["snapshot"]["views"], "viewless formal model")
     integrity = archimesh(state,"GET","/admin/models/" + model + "/integrity")
     require(integrity["ok"], "ArchiMesh graph integrity")
     status = archimesh(state,"GET","/admin/models/" + model + "/status")

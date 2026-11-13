@@ -24,7 +24,7 @@ import static org.gautelis.archimesh.integration.IntegrationStateRepository.*;
 @QuarkusTestResource(value=PublicationTestResource.class,restrictToAnnotatedClass=true)
 class ArchitecturePublicationIT {
     public static class Profile implements QuarkusTestProfile {
-        @Override public Map<String,String> getConfigOverrides() { return Map.of("app.authz.enabled","true","app.identity.mode","bootstrap"); }
+        @Override public Map<String,String> getConfigOverrides() { return Map.of("app.authz.enabled","true","app.identity.mode","bootstrap","app.tags.allow-delete","true"); }
     }
     @Inject ArchitecturePublicationService publication;
     @Inject ArchimeshService models;
@@ -72,6 +72,10 @@ class ArchitecturePublicationIT {
         update.putObject("causal").put("clientId","fixture").put("lamport",lamport).put("opId",UUID.randomUUID().toString()); commit(ops);
     }
     private void approve(PolicySpec policy) {
+        if (policy.mode()==Mode.HEAD) {
+            String tag="release-"+UUID.randomUUID(); models.createModelTag(model,tag,"Reviewed test release");
+            policy=new PolicySpec(Mode.TAG,tag,policy.elements(),policy.relationships(),policy.stewards());
+        }
         var preview=publication.preview(model,"fixture",publisher,policy);
         publication.approve(model,"fixture",publisher,new Approval(policy,publication.policy(model,"fixture",publisher).version(),preview.digest())); spec=policy;
     }
@@ -93,7 +97,7 @@ class ArchitecturePublicationIT {
     @Test void projectsLwwWinnerPreservesUnownedAttributesAndIgnoresLosingPatch() throws Exception {
         assertSynced(execute()); String id=resource("elem:a").resourceId();
         control(json.createObjectNode().put("id",id).set("fields",json.createObjectNode().set("attributes",json.createObjectNode().put("central","Centrally managed"))));
-        rename("Winner",100); assertSynced(execute()); assertEquals(4,control(null).path("writes").asInt());
+        rename("Winner",100); approve(new PolicySpec(Mode.HEAD,"HEAD",spec.elements(),spec.relationships(),spec.stewards())); assertSynced(execute()); assertEquals(4,control(null).path("writes").asInt());
         assertEquals("Centrally managed",control(null).path("cards").path(id).path("attributes").path("central").asText());
         rename("Loser",99); assertSynced(execute()); assertEquals(4,control(null).path("writes").asInt());
         assertEquals("Winner",control(null).path("cards").path(id).path("name").asText());
@@ -117,14 +121,33 @@ class ArchitecturePublicationIT {
         publication.adopt(model,"fixture",publisher,new Adoption(r.canonicalId(),id,inspected.remoteDigest()));
         assertSynced(execute()); assertEquals(3,control(null).path("writes").asInt());
     }
-    @Test void tagIsImmutableAndStaleHeadJobsAreSuperseded() throws Exception {
+    @Test void tagIsImmutableAndHeadPublicationIsDenied() throws Exception {
+        var head=new PolicySpec(Mode.HEAD,"HEAD",spec.elements(),spec.relationships(),spec.stewards());
+        assertEquals("PUBLICATION_TAG_REQUIRED",assertThrows(Failure.class,() -> publication.preview(model,"fixture",publisher,head)).getMessage());
         var pending=enqueue(); rename("Later HEAD",100); publication.runJob(pending.id());
-        assertEquals("SUPERSEDED",runtime.metadata().load(runtime.settings().instanceId(),DocumentKind.PUBLICATION_JOB,pending.id()).orElseThrow().data().path("state").asText());
-        assertEquals(0,control(null).path("writes").asInt());
+        assertEquals("SYNCED",runtime.metadata().load(runtime.settings().instanceId(),DocumentKind.PUBLICATION_JOB,pending.id()).orElseThrow().data().path("state").asText());
+        assertEquals("A",control(null).path("cards").path(resource("elem:a").resourceId()).path("name").asText());
         models.createModelTag(model,"approved","Reviewed architecture");
         approve(new PolicySpec(Mode.TAG,"approved",spec.elements(),spec.relationships(),spec.stewards()));
         var tag=models.getSnapshot(model,"approved"); rename("Unapproved",101); assertSynced(execute());
         assertEquals("Later HEAD",control(null).path("cards").path(resource("elem:a").resourceId()).path("name").asText()); assertEquals(tag,models.getSnapshot(model,"approved"));
+    }
+    @Test void queuedLegacyHeadPolicyCannotDispatch() throws Exception {
+        var job=enqueue();
+        var policy=runtime.metadata().list(runtime.settings().instanceId(),DocumentKind.PUBLICATION_POLICY,"","",100).stream()
+            .filter(d -> d.data().path("sourceModelId").asText().equals(model)).findFirst().orElseThrow();
+        var data=policy.data().deepCopy(); ((ObjectNode)data.path("policy")).put("mode","HEAD").put("ref","HEAD");
+        runtime.metadata().save(new StateDocument(runtime.settings().instanceId(),policy.kind(),policy.id(),policy.version(),data));
+        publication.runJob(job.id());
+        assertEquals("SUPERSEDED",runtime.metadata().load(runtime.settings().instanceId(),DocumentKind.PUBLICATION_JOB,job.id()).orElseThrow().data().path("state").asText());
+        assertEquals(0,control(null).path("writes").asInt());
+    }
+    @Test void reusingDeletedTagNameRequiresNewApproval() throws Exception {
+        var approved=spec; models.deleteModelTag(model,approved.ref()); rename("Unreviewed replacement",100);
+        models.createModelTag(model,approved.ref(),"Reused label");
+        assertEquals("PUBLICATION_TAG_APPROVAL_STALE",assertThrows(Failure.class,this::enqueue).getMessage());
+        assertEquals(0,control(null).path("writes").asInt());
+        approve(approved); assertSynced(execute());
     }
     @Test void withdrawingSelectionRetainsExternalResourcesAndOrphansAreNotRecreated() throws Exception {
         assertSynced(execute()); String id=resource("elem:a").resourceId();

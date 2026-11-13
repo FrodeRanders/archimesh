@@ -117,7 +117,8 @@ class IntegrationOperationsIT {
     }
     @Test void compatibleMappingMigrationIsReviewedPausedAndRequiresNewPublicationApproval() throws Exception {
         property(model,"owner","Unowned remote"); var selected=List.of(owned.get(model).elementId());
-        var spec=new PublicationModel.PolicySpec(PublicationModel.Mode.HEAD,"HEAD",selected,List.of(),Set.copyOf(selected));
+        models.createModelTag(model,"publication-release","Reviewed release");
+        var spec=new PublicationModel.PolicySpec(PublicationModel.Mode.TAG,"publication-release",selected,List.of(),Set.copyOf(selected));
         var service=(IntegrationOperationsService)io.quarkus.arc.ClientProxy.unwrap(operations); var publication=service.publication;
         var initial=publication.preview(model,"fixture",publisher,spec); publication.approve(model,"fixture",publisher,new PublicationModel.Approval(spec,0,initial.digest()));
         var oldJob=publication.enqueue(model,"fixture",publisher,new PublicationModel.RunRequest(UUID.randomUUID().toString(),null)); publication.runJob(oldJob.id());
@@ -176,7 +177,8 @@ class IntegrationOperationsIT {
         assertEquals(1,fixture(null).path("writes").asInt());
         property(model,"owner","Unowned remote");
         var publication=((IntegrationOperationsService)io.quarkus.arc.ClientProxy.unwrap(operations)).publication;
-        var spec=new PublicationModel.PolicySpec(PublicationModel.Mode.HEAD,"HEAD",List.of(element),List.of(),Set.of(element));
+        models.createModelTag(model,"publication-release","Reviewed release");
+        var spec=new PublicationModel.PolicySpec(PublicationModel.Mode.TAG,"publication-release",List.of(element),List.of(),Set.of(element));
         var publishing=publication.preview(model,"fixture",publisher,spec);
         assertEquals("enterprise.application",publishing.plan().resources().getFirst().identity().canonical().kind());
         assertEquals("Application",publishing.plan().resources().getFirst().remoteType());

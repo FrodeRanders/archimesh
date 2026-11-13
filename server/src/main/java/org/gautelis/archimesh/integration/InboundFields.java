@@ -24,7 +24,8 @@ public final class InboundFields {
         if (!target.inboundAccess().cardTypes().contains(type)) throw new Failure(409,"INBOUND_TYPE_NOT_APPROVED");
         var result=new TreeMap<String,TurboEaMapping.FieldMapping>();
         target.mapping().fieldsFor(type,canonical).forEach((local,field) -> {
-            if (field.authority()==InformationAuthorityPolicy.Authority.TURBO_EA_MASTER && target.inboundAccess().fields().contains(field.remoteField())) result.put(local,field);
+            if ((field.authority()==InformationAuthorityPolicy.Authority.TURBO_EA_MASTER || field.authority()==InformationAuthorityPolicy.Authority.DATAHUB_MASTER)
+                    && target.inboundAccess().fields().contains(field.remoteField())) result.put(local,field);
         });
         if (result.size()>32) throw new Failure(409,"INBOUND_FIELDS_NOT_APPROVED");
         return Collections.unmodifiableMap(result);

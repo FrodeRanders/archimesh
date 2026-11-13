@@ -173,7 +173,7 @@ integrations:
         importEnabled: true
         publicationEnabled: true
     publication:
-      defaultMode: disabled    # disabled | head | tag
+      defaultMode: disabled    # disabled | tag
     reconciliation:
       pollIntervalSeconds: 300
     mappings:
@@ -238,7 +238,7 @@ Anpassa URL-struktur till befintlig REST-/WebSocket-design. Använd typade DTO:e
 Per ArchiMesh-modell:
 
 - `disabled`: ingenting publiceras.
-- `head`: fortlöpande publicering från skrivbart HEAD (främst utveckling/pilot).
+- `head`: inte tillåtet för modellpublicering; skapa och godkänn en oföränderlig tagg.
 - `tag`: publicera från explicit vald, oföränderlig och godkänd tagg (rekommenderat vid förvaltad arkitektur).
 
 Att en operation accepterats av ArchiMesh är **inte** liktydigt med att den beslutats som fastställd myndighetsarkitektur. Gör publiceringsurval och godkännande synligt i administrationen.
@@ -452,7 +452,7 @@ Lägg till:
 - Konfiguration av målmiljöer och integrationsfunktionernas av/på-läge.
 - Metamodelmappning, validering och versionsstatus.
 - Policy för fältägarskap och relationer.
-- Modellpublicering: `disabled`, `head`, `tag`.
+- Modellpublicering: `disabled`, `tag`. Centrala ändringsförslag har separat godkännande.
 - Status per modell, kanoniskt objekt, binding, riktning och synkroniseringsjobb.
 - Dry-run av import/publicering/avstämning.
 - Manuell avstämning, retry, paus/återuppta och konfliktlösning.

@@ -26,13 +26,20 @@ public record IntegrationConfiguration(int schemaVersion, String instanceId, Lis
     }
     public record Target(String key, String instanceId, URI baseUrl, String tokenEnvironment,
                          String expectedApiVersion, int timeoutMillis, int maxResponseBytes, TurboEaMapping mapping,
-                         CatalogAccess catalogAccess, PublicationAccess publicationAccess, InboundAccess inboundAccess, CentralEditAccess centralEditAccess) {
+                         CatalogAccess catalogAccess, PublicationAccess publicationAccess, InboundAccess inboundAccess, CentralEditAccess centralEditAccess,
+                         boolean approvedPlainHttp) {
+        public Target(String key,String instanceId,URI baseUrl,String tokenEnvironment,String expectedApiVersion,
+                      int timeoutMillis,int maxResponseBytes,TurboEaMapping mapping,CatalogAccess catalogAccess,
+                      PublicationAccess publicationAccess,InboundAccess inboundAccess,CentralEditAccess centralEditAccess) {
+            this(key,instanceId,baseUrl,tokenEnvironment,expectedApiVersion,timeoutMillis,maxResponseBytes,mapping,
+                 catalogAccess,publicationAccess,inboundAccess,centralEditAccess,false);
+        }
         public Target {
             IntegrationIdentity.required(key); IntegrationIdentity.required(instanceId);
             IntegrationIdentity.required(expectedApiVersion);
             if (tokenEnvironment == null || !tokenEnvironment.matches("[A-Z][A-Z0-9_]{0,127}"))
                 throw new IllegalArgumentException("Target tokenEnvironment must name an environment variable");
-            TurboEaClient.validateBaseUrl(baseUrl);
+            TurboEaClient.validateBaseUrl(baseUrl,approvedPlainHttp);
             if (mapping == null || timeoutMillis < 1 || timeoutMillis > 120_000
                     || maxResponseBytes < 1024 || maxResponseBytes > 16 * 1024 * 1024)
                 throw new IllegalArgumentException("Target mapping and bounded HTTP limits are required");

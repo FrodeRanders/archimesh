@@ -85,8 +85,8 @@ belong to M3; this client cannot POST/PATCH/DELETE.
 The example's proposed pilot types are `Application → ApplicationComponent`,
 `BusinessProcess → BusinessProcess`, `Organization → BusinessActor` and
 `BusinessCapability → Capability`. They still need deployment/governance review.
-Only those four ArchiMate element types are supported by this initial rule set.
-`Interface`, `DataObject` and `ITComponent` remain unmapped.
+The rule set also supports `DataObject`, added for the explicitly configured
+dataset representation. `Interface` and `ITComponent` remain unmapped.
 
 `fields` is keyed by remote card type and local model field (`name`,
 `documentation`, or `property:<key>`). Each entry has an explicit remote field,
@@ -106,7 +106,7 @@ and valid; there is no automatic Association fallback. Hierarchy `parent_id`
 does not become a relation automatically.
 
 [`archi-5.8-rules.json`](../../server/src/main/resources/integrations/archi-5.8-rules.json)
-contains the four-type subset derived from the local Archi model 5.8.0 source at
+contains the five-type subset (including DataObject) derived from the local Archi model 5.8.0 source at
 commit `b02aab8042665f46cd95efd22e172b2693aaf287`. It records the complete source
 matrix's SHA-256 and the allowed ordered pairs. The source uses
 `ArchimateModelUtils.isValidRelationship`/`RelationshipsMatrix` and

@@ -7,7 +7,26 @@ import org.gautelis.federation.Identity.Repository;
 import org.gautelis.federation.http.SourceReader.Field;
 
 /** Separate, explicit source-read/identity scopes. No bridge scheduler or projection jobs. */
-public record FederationConfiguration(int schemaVersion,String ownerInstanceId,List<Source> sources,List<Grant> grants) {
+public record FederationConfiguration(int schemaVersion,String ownerInstanceId,List<Source> sources,List<Grant> grants,
+                                      List<Projection> projections) {
+    public FederationConfiguration(int schemaVersion,String owner,List<Source> sources,List<Grant> grants) {
+        this(schemaVersion,owner,sources,grants,List.of());
+    }
+    /** Reviewed standing approval for a bounded source type/audience and its owned target fields. */
+    public record Projection(String key,String sourceKey,String externalType,String targetKey,String targetType,
+                             Set<String> principals,Set<String> nativePrefixes,List<String> descriptionFields,
+                             boolean approved,boolean acceptUnconditionalWriteRisk,String approvalVersion) {
+        public Projection {
+            for(String value:List.of(key,sourceKey,externalType,targetKey,targetType,approvalVersion)) Identity.text(value,128);
+            principals=Set.copyOf(principals); nativePrefixes=Set.copyOf(nativePrefixes);
+            descriptionFields=descriptionFields==null ? List.of("documentation") : List.copyOf(descriptionFields);
+            if(!externalType.equals("dataset") || principals.isEmpty() || principals.size()>32
+                    || nativePrefixes.isEmpty() || nativePrefixes.size()>32 || descriptionFields.isEmpty() || descriptionFields.size()>4)
+                throw new IllegalArgumentException("Explicit bounded dataset projection scope required");
+            principals.forEach(p -> Identity.text(p,256));
+            nativePrefixes.forEach(p -> { Identity.text(p,2048); if(!p.startsWith("urn:li:dataset:(")) throw new IllegalArgumentException("Dataset URN prefix required"); });
+        }
+    }
     public enum Operation { READ, REGISTER_SOURCE }
     public record Type(String semanticKind,String archimateType,Map<String,Field> fields) {
         public Type {
@@ -43,10 +62,19 @@ public record FederationConfiguration(int schemaVersion,String ownerInstanceId,L
     }
     public FederationConfiguration {
         Identity.text(ownerInstanceId,512); sources=List.copyOf(sources); grants=List.copyOf(grants);
+        projections=projections==null ? List.of() : List.copyOf(projections);
         if (schemaVersion!=1 || sources.isEmpty() || sources.size()>20 || grants.isEmpty() || grants.size()>256) throw new IllegalArgumentException("Invalid federation configuration");
         var keys=new HashSet<String>(); var repositories=new HashSet<Repository>();
         sources.forEach(source -> { if (!keys.add(source.key()) || !repositories.add(source.repository())) throw new IllegalArgumentException("Duplicate source"); });
         var principals=new HashSet<String>();
         grants.forEach(grant -> { if (!principals.add(grant.principal()) || !keys.containsAll(grant.resources().keySet())) throw new IllegalArgumentException("Duplicate or unknown grant scope"); });
+        var profiles=new HashSet<String>();
+        for(var projection:projections) {
+            if(!profiles.add(projection.key()) || !keys.contains(projection.sourceKey())) throw new IllegalArgumentException("Unknown or duplicate projection");
+            var source=sources.stream().filter(s -> s.key().equals(projection.sourceKey())).findFirst().orElseThrow();
+            var type=source.types().get(projection.externalType());
+            if(!source.repository().system().equals("datahub") || type==null || !type.fields().keySet().containsAll(projection.descriptionFields()))
+                throw new IllegalArgumentException("Projection must use configured DataHub dataset fields");
+        }
     }
 }

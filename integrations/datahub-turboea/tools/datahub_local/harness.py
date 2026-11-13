@@ -109,12 +109,13 @@ def compose(state, *args, check=True, capture=False):
     return code, "".join(output)
 
 
-def session_token(state, actor):
+def session_token(state, actor, *, lifetime_seconds=3600):
     """Synthetic SESSION bootstrap only; never use the agency token signing key here."""
     def encode(value):
         return base64.urlsafe_b64encode(json.dumps(value, separators=(",", ":")).encode()).rstrip(b"=")
+    if not isinstance(lifetime_seconds,int) or not 1<=lifetime_seconds<=86400: raise ValueError("Invalid synthetic session lifetime")
     payload = {"sub": actor, "actorId": actor, "actorType": "USER", "type": "SESSION",
-               "version": "1", "exp": int(time.time()) + 3600, "jti": str(uuid.uuid4())}
+               "version": "1", "exp": int(time.time()) + lifetime_seconds, "jti": str(uuid.uuid4())}
     body = encode({"alg": "HS256", "typ": "JWT"}) + b"." + encode(payload)
     signature = hmac.new(state["env"]["DATAHUB_TOKEN_SERVICE_SIGNING_KEY"].encode(), body, hashlib.sha256).digest()
     return (body + b"." + base64.urlsafe_b64encode(signature).rstrip(b"=")).decode()

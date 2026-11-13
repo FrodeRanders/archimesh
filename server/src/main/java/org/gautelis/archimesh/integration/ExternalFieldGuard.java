@@ -44,7 +44,7 @@ public class ExternalFieldGuard {
                 if (target==null) continue;
                 var protectedKeys=new HashSet<String>(); protectedKeys.add(ExternalObjectCatalogService.CANONICAL_PROPERTY);
                 target.mapping().fieldsFor(binding.get().remoteType(),binding.get().canonical().canonicalId()).forEach((local,field) -> {
-                    if (field.authority()==InformationAuthorityPolicy.Authority.TURBO_EA_MASTER || field.authority()==InformationAuthorityPolicy.Authority.SHARED_PROPOSAL)
+                    if (field.authority()==InformationAuthorityPolicy.Authority.TURBO_EA_MASTER || field.authority()==InformationAuthorityPolicy.Authority.DATAHUB_MASTER || field.authority()==InformationAuthorityPolicy.Authority.SHARED_PROPOSAL)
                         protectedKeys.add(local.startsWith("property:") ? local.substring(9) : local);
                 });
                 if (type.equals("CreateElement") || type.equals("UpdateElement") && (op.path("patch").has("archimateType")

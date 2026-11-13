@@ -1,0 +1,6 @@
+FROM python:3.13-slim
+WORKDIR /bridge
+COPY src/ src/
+COPY scripts/run_bridge.py scripts/run_bridge.py
+USER 10001:10001
+ENTRYPOINT ["python", "scripts/run_bridge.py", "--config", "/configuration/bridge.json"]

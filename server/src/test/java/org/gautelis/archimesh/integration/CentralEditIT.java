@@ -91,7 +91,8 @@ class CentralEditIT {
         property(model,imported.elementId(),"owner","Keep this unowned value"); var job=request("name","Approved new name");
         assertEquals("WAITING_APPROVAL",job.state()); edits.run(job.id()); assertEquals(0,writes()); assertEquals("Initial name",local(model,imported.elementId(),"name"));
         job=drain(approve(job,false)); assertEquals("SYNCED",job.state(),job.toString()); assertEquals("Approved new name",local(model,imported.elementId(),"name"));
-        var spec=new PublicationModel.PolicySpec(PublicationModel.Mode.HEAD,"HEAD",List.of(imported.elementId()),List.of(),Set.of(imported.elementId()));
+        models.createModelTag(model,"publication-release","Reviewed release");
+        var spec=new PublicationModel.PolicySpec(PublicationModel.Mode.TAG,"publication-release",List.of(imported.elementId()),List.of(),Set.of(imported.elementId()));
         var preview=publication.preview(model,"fixture",admin,spec); assertFalse(preview.plan().resources().getFirst().fields().containsKey("name"));
         publication.approve(model,"fixture",admin,new PublicationModel.Approval(spec,0,preview.digest())); var outgoing=publication.enqueue(model,"fixture",admin,new PublicationModel.RunRequest(UUID.randomUUID().toString(),null)); publication.runJob(outgoing.id()); assertEquals(1,writes());
     }
