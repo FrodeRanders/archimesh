@@ -43,6 +43,8 @@ public interface IntegrationStateRepository extends AutoCloseable {
     Optional<ReservedImport> findModelBinding(String instanceId, String sourceModelId, ExternalResourceKey key);
     default Optional<PublicationIdentity> findPublicationIdentity(ModelElementKey key) { throw new UnsupportedOperationException(); }
     default PublicationIdentity reservePublicationIdentity(PublicationIdentity identity) { throw new UnsupportedOperationException(); }
+    /** Trusted registry evidence only: exact DataHub dataset/product references, excluding Application mirrors. */
+    default boolean catalogOwned(String canonicalId) { throw new UnsupportedOperationException(); }
     default Optional<ExternalResourceKey> findExternal(String canonicalId,String system,String target,ResourceKind kind) { throw new UnsupportedOperationException(); }
     default void recordPublishedIdentity(PublicationIdentity identity,ExternalResourceKey external,long revision,String jobId) { throw new UnsupportedOperationException(); }
     default java.util.List<StateDocument> list(String instanceId,DocumentKind kind,String prefix,String after,int limit) { throw new UnsupportedOperationException(); }

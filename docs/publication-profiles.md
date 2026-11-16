@@ -135,6 +135,45 @@ distinct stable operation scopes. The four new P3 integration scenarios and all
 legacy publication/M6 cases passed in the combined P3/P4 run below.
 
 `ARCHIMESH_SERVER_GATE_TESTS='ProfilePublicationIT,CatalogProfilePublicationIT,DatasetProjectionIT,ApplicationProjectionIT,ArchitecturePublicationIT,IntegrationOperationsIT,PublicationProfileTest,ProfileDerivationTest,ArchitectureProjectionTest,TurboEaClientTest' ./scripts/validate-local.sh server-isolated`
-passed. Evidence: `/tmp/archimesh-profiles-p4-integration.log` and isolated run
+passed: **78 passed**, zero failures/errors/skips. Evidence: `/tmp/archimesh-profiles-p4-integration.log` and isolated run
 `5270421d-696e-4789-be2b-0ed71d8c271a`. The optional test filter changes no default
 gate coverage; an unset filter still runs every `*Test,*IT` case.
+
+
+## P4 — DataHub coexistence
+
+The shared registry's exact DataHub dataset/product native identifiers and
+external types establish catalog ownership, including older canonical objects
+whose semantic kind is still unclassified. A DataHub Application mirror alone
+does not make an enterprise application a catalog-owned data product. No names,
+model properties or matching labels establish equivalence.
+
+Catalog-owned cards are reference-only in profiles. Creation, field selection
+and stewardship cannot override that guard, even when a permissive canonical
+field mapping claims ArchiMesh authority. The worker independently enforces the
+catalog field fence. Before using an existing product/dataset reference it calls
+the existing projection service's source-freshness, scope, authority, verified
+ledger and exact-readback checks. Rename requires catalog mirror refresh, source
+removal blocks publication, and a new URN remains a new native identity; it never
+retargets an old architecture edge by name. Catalog references without verifiable
+source policy/receipts stop for review.
+
+An explicit approved architecture relation to a resolved catalog card is
+supported through ordinary M3 mappings. This does not create a logical Access,
+consumer/producer or lineage assertion. The existing DataHub bridge still owns
+only its implemented catalog name/description projections and Application
+association preservation; it has no producer/consumer/lineage relationship writer.
+The typed assertion predicates keep future catalog claims separate. Unknown or
+already-bound target relation identities retain the explicit-link conflict fence.
+
+The combined P3/P4 disposable integration command above passed, including the
+new end-to-end catalog connection, rename, URN change and source removal case.
+`python3 -m unittest discover -s tests -v` in `integrations/datahub-turboea`:
+**23 passed**, zero failures/errors/skips. Local HTTP fixture tests required the
+normal sandbox escalation for loopback sockets. Evidence:
+`/tmp/archimesh-profiles-p4-bridge-unit.log`.
+
+The additional P4 authority unit run, `mvn -q -f server/pom.xml
+'-Dtest=PublicationProfileTest,ProfileDerivationTest,FederationCoreTest' test`, passed
+**15 cases**, including a registry-backed product disguised by a legacy kind and
+an ArchiMesh-owned name mapping. Evidence: `/tmp/archimesh-profiles-p4-unit.log`.

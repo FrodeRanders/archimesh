@@ -253,6 +253,12 @@ public final class Neo4jIntegrationStateRepository implements IntegrationStateRe
             });
         }
     }
+    @Override public boolean catalogOwned(String canonicalId) {
+        required(canonicalId);
+        try(var session=driver.session()) {
+            return session.executeRead(tx -> tx.run("MATCH (e:IntegrationExternalBinding {canonicalId:$canonical,system:'datahub'}) WHERE e.externalType IN ['dataset','dataProduct'] OR coalesce(e.nativeId,e.resourceId) STARTS WITH 'urn:li:dataset:' OR coalesce(e.nativeId,e.resourceId) STARTS WITH 'urn:li:dataProduct:' RETURN e LIMIT 1",Map.of("canonical",canonicalId)).hasNext());
+        }
+    }
     @Override public void recordPublishedIdentity(PublicationIdentity identity,ExternalResourceKey external,long revision,String jobId) {
         requireSchema(); if (revision<1) throw new IllegalArgumentException("Publication requires accepted state");
         var params=modelParams(identity.model()); params.putAll(externalParams(external));

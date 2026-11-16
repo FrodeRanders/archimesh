@@ -195,8 +195,11 @@ public class DatasetProjectionService {
     }
 
     /** Verify original-source freshness before disclosing/importing/updating a mirror-owned field. */
-    public void verifyMirror(IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card) {
-        boolean datahub=target.mapping().fieldsFor(card.type(),null).values().stream().anyMatch(f -> f.authority()==InformationAuthorityPolicy.Authority.DATAHUB_MASTER);
+    public void verifyMirror(IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card) { verifyMirror(target,card,false); }
+    /** A registry-backed catalog reference cannot escape source freshness checks through field overrides. */
+    public void verifyCatalogReference(IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card) { verifyMirror(target,card,true); }
+    private void verifyMirror(IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card,boolean catalogReference) {
+        boolean datahub=catalogReference ||target.mapping().fieldsFor(card.type(),null).values().stream().anyMatch(f -> f.authority()==InformationAuthorityPolicy.Authority.DATAHUB_MASTER);
         if(!datahub) return;
         var canonical=integration.metadata().findCanonical(new IntegrationIdentity.ExternalResourceKey("turboea",target.instanceId(),IntegrationIdentity.ResourceKind.CARD,card.id())).orElseThrow(() -> new Failure(409,"PROJECTION_IDENTITY_PROOF_REQUIRED"));
         var profiles=federation.settings().projections().stream().filter(p -> p.approved() && p.targetKey().equals(target.key()) && p.targetType().equals(card.type()))

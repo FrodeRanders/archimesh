@@ -23,6 +23,7 @@ public class ArchitecturePublicationService {
     @Inject CommitDeliveryService delivery;
     @Inject ObjectMapper json;
     @Inject PublicationProfiles profiles;
+    @Inject org.gautelis.archimesh.integration.federation.DatasetProjectionService catalogProjections;
     @Inject RemoteMutationCoordinator execution=new RemoteMutationCoordinator();
     LongSupplier now=System::currentTimeMillis;
     @org.eclipse.microprofile.config.inject.ConfigProperty(name="app.integrations.publication.interval-seconds",defaultValue="300") long reconciliationInterval=300;
@@ -196,6 +197,7 @@ public class ArchitecturePublicationService {
 
     private String publishCard(StateDocument job,Plan plan,Resource resource,IntegrationConfiguration.Target target,ExternalRepositoryWriter writer) {
         execution.requirePublicationAllowed(runtime,target.instanceId(),resource.identity().canonical().canonicalId());
+        if(metadata().catalogOwned(resource.identity().canonical().canonicalId()) && !resource.fields().isEmpty()) throw new Failure(409,"DATAHUB_CATALOG_FIELD_AUTHORITY_CONFLICT");
         var state=resourceState(plan,resource); var data=(ObjectNode)state.data();
         ensureNoUnknownMutation(data);
         var binding=metadata().findExternal(resource.identity().canonical().canonicalId(),"turboea",target.instanceId(),ResourceKind.CARD);
@@ -375,6 +377,10 @@ public class ArchitecturePublicationService {
             .orElseThrow(() -> new Failure(409,"REFERENCE_TARGET_BINDING_REQUIRED")).resourceId();
         var card=readCard(writer,id);
         if(!card.type().equals(resource.remoteType()) || !card.status().equals("ACTIVE")) throw new Failure(409,"REFERENCE_TYPE_OR_LIFECYCLE_CONFLICT");
+        if(metadata().catalogOwned(resource.identity().canonical().canonicalId())) {
+            if(catalogProjections==null) throw new Failure(409,"CATALOG_SOURCE_VERIFICATION_REQUIRED");
+            catalogProjections.verifyCatalogReference(target,card);
+        }
         recordIdentity(plan,resource,id); return id;
     }
     private void validateDerivedMetamodel(Plan plan,IntegrationConfiguration.Target target,ExternalRepositoryWriter writer) {

@@ -13,6 +13,7 @@ import static org.gautelis.archimesh.integration.PublicationModel.*;
 class ProfileDerivationTest {
     final ObjectMapper json=new ObjectMapper();
     String dataKind="LogicalData";
+    boolean catalogOwned;
     IntegrationConfiguration.Target target() throws Exception {
         return json.readValue("""
           {"key":"ea","instanceId":"ea-instance","baseUrl":"http://localhost","tokenEnvironment":"TOKEN","expectedApiVersion":"2.194.0","timeoutMillis":1000,"maxResponseBytes":65536,
@@ -43,6 +44,7 @@ class ProfileDerivationTest {
     }
     IntegrationStateRepository metadata() {
         return (IntegrationStateRepository)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{IntegrationStateRepository.class},(proxy,method,args) -> {
+            if(method.getName().equals("catalogOwned")) return catalogOwned && args[0].equals("canonical-data");
             if(method.getName().equals("findPublicationIdentity")) {
                 var key=(ModelElementKey)args[0]; boolean app=key.entityId().equals("elem:a");
                 if(!app && !key.entityId().equals("elem:d")) return Optional.empty();
@@ -116,8 +118,19 @@ class ProfileDerivationTest {
         assertEquals(Set.of(ArchitectureAssertion.Access.READ),remaining.provenance().evidence().access());
     }
     @Test void catalogProductIdentityCannotBeInferredAsLogicalDataUsage() throws Exception {
-        dataKind="catalog.data-product"; var result=plan(snapshot(),definition(),"a");
+        dataKind="catalog.data-product"; var definition=definition(); var selector=(ObjectNode)definition.path("elements").get(1); selector.put("referenceOnly",true).put("allowCreate",false); selector.putArray("fields"); var result=plan(snapshot(),definition,"a");
         assertEquals(2,result.resources().size()); assertTrue(result.diagnostics().stream().anyMatch(d -> d.code().equals("LOGICAL_DATA_REQUIRED_NOT_CATALOG_ASSET")));
+    }
+    @Test void registryCatalogAuthorityWinsOverLegacyKindAndBroadArchitectureFieldMapping() throws Exception {
+        catalogOwned=true;
+        var blocked=plan(snapshot(),definition(),"a");
+        assertEquals(1,blocked.resources().size());
+        assertTrue(blocked.diagnostics().stream().anyMatch(d -> d.code().equals("CATALOG_AUTHORITY_REQUIRES_REFERENCE_ONLY")));
+        var definition=definition(); var selector=(ObjectNode)definition.path("elements").get(1);
+        selector.put("referenceOnly",true).put("allowCreate",false); selector.putArray("fields");
+        var reference=plan(snapshot(),definition,"a"); assertEquals(2,reference.resources().size());
+        assertTrue(reference.resources().stream().allMatch(r -> r.fields().isEmpty()));
+        assertTrue(reference.diagnostics().stream().anyMatch(d -> d.code().equals("LOGICAL_DATA_REQUIRED_NOT_CATALOG_ASSET")));
     }
     @Test void derivationsRequireExplicitEnablementAndStayWithinBounds() throws Exception {
         var definition=definition().put("derivationsEnabled",false);

@@ -14,7 +14,7 @@ final class ProfileDerivation {
     private final ObjectMapper json;
     ProfileDerivation(ObjectMapper json) { this.json=json; }
     List<Resource> derive(String instance,String model,IntegrationConfiguration.Target target,PolicySpec policy,Plan direct,
-                          ProfileGraph graph,Definition profile,List<Diagnostic> diagnostics) {
+                          ProfileGraph graph,Definition profile,List<Diagnostic> diagnostics,IntegrationStateRepository metadata) {
         var result=new TreeMap<String,Resource>();
         var selected=new TreeMap<String,Resource>(); direct.resources().stream().filter(r -> r.identity().model().entityKind()==EntityKind.ELEMENT)
             .forEach(r -> selected.put(r.identity().model().entityId(),r));
@@ -45,7 +45,7 @@ final class ProfileDerivation {
                 for(var assignment:assigned) {
                     var app=selected.get(assignment.source()); var data=selected.get(edge.target());
                     if(app==null || data==null) { diagnostics.add(new Diagnostic(Severity.SKIP,edge.id(),"DERIVED_ENDPOINT_NOT_SELECTED",rule.ruleId())); continue; }
-                    if(data.identity().canonical().kind().startsWith("catalog.")) {
+                    if(data.identity().canonical().kind().startsWith("catalog.") || metadata.catalogOwned(data.identity().canonical().canonicalId())) {
                         diagnostics.add(new Diagnostic(Severity.SKIP,edge.id(),"LOGICAL_DATA_REQUIRED_NOT_CATALOG_ASSET",rule.ruleId())); continue;
                     }
                     if(!mapping.sourceType().equals((mapping.reversed() ? data : app).remoteType()) || !mapping.targetType().equals((mapping.reversed() ? app : data).remoteType())) {

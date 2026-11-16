@@ -35,6 +35,11 @@ public final class ProfileProjection {
             if(bound.isPresent() && !bound.get().remoteType().equals(selector.mappingRef())) {
                 diagnostics.add(new Diagnostic(Severity.CONFLICT,id,"PROFILE_BOUND_TYPE_CONFLICT",null)); continue;
             }
+            boolean catalogMapping=target.mapping().fieldsFor(selector.mappingRef(),bound.map(b -> b.canonical().canonicalId()).orElse(null)).values().stream().anyMatch(f -> f.remoteField().equals("name") && f.authority()==InformationAuthorityPolicy.Authority.DATAHUB_MASTER);
+            boolean catalog=catalogMapping || bound.isPresent() && (bound.get().canonical().kind().startsWith("catalog.") || metadata.catalogOwned(bound.get().canonical().canonicalId()));
+            if(catalog && (!selector.referenceOnly() || selector.allowCreate() || !selector.fields().isEmpty())) {
+                diagnostics.add(new Diagnostic(Severity.CONFLICT,id,"CATALOG_AUTHORITY_REQUIRES_REFERENCE_ONLY",null)); continue;
+            }
             if(!selector.allowCreate() && (bound.isEmpty() || metadata.findExternal(bound.get().canonical().canonicalId(),"turboea",target.instanceId(),ResourceKind.CARD).isEmpty())) {
                 diagnostics.add(new Diagnostic(Severity.CONFLICT,id,"PROFILE_EXISTING_BINDING_REQUIRED",null)); continue;
             }
@@ -77,7 +82,7 @@ public final class ProfileProjection {
                 org.gautelis.federation.ArchitectureAssertion.Authority.ARCHIMESH_ARCHITECTURE,List.of(resource.identity().model().entityId()),List.of());
             resources.add(new Resource(resource.identity(),resource.remoteType(),fields,resource.sourceEntityId(),resource.targetEntityId(),resource.steward(),new Provenance(null,evidence,selector.referenceOnly())));
         }
-        if(profile.derivationsEnabled()) resources.addAll(new ProfileDerivation(json).derive(instance,model,target,policy,base,graph,profile,diagnostics));
+        if(profile.derivationsEnabled()) resources.addAll(new ProfileDerivation(json).derive(instance,model,target,policy,base,graph,profile,diagnostics,metadata));
         long derived=resources.stream().filter(r -> r.provenance()!=null && r.provenance().assertion()!=null).count();
         if(derived>profile.limits().maxDerivedRelations() || derived+rels.size()>20) throw new Failure(413,"PROFILE_DERIVED_LIMIT_EXCEEDED");
         diagnostics.sort(Comparator.comparing(Diagnostic::entityId).thenComparing(Diagnostic::code));
