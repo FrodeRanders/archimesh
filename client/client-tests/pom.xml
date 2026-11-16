@@ -41,6 +41,13 @@
       <scope>test</scope>
     </dependency>
     <dependency>
+      <groupId>com.archimatetool</groupId>
+      <artifactId>com.archimatetool.editor</artifactId>
+      <version>5.8.0-SNAPSHOT</version>
+      <scope>system</scope>
+      <systemPath>${project.basedir}/../target-platform/plugins/com.archimatetool.editor.jar</systemPath>
+    </dependency>
+    <dependency>
       <groupId>p2.osgi.bundle</groupId>
       <artifactId>org.eclipse.emf.ecore</artifactId>
       <version>2.36.0.v20240203-0859</version>
