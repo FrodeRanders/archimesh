@@ -16,6 +16,12 @@ or depend on the bridge subproject. A separately packaged consumer can use the J
 
 ## Contracts
 
+`ArchitectureAssertion` adds provider-neutral typed claim identities and bounded,
+normalized source/path evidence. Logical architecture access, catalog consumption
+and technical lineage are different predicates, even with identical endpoints.
+READ and WRITE are separate evidenced values. Claims reuse existing canonical
+objects and repository identities; this contract owns no storage or transport.
+
 | Type | Contract |
 | --- | --- |
 | `Identity.Repository` / `Resource` | Exact system + logical instance + object/relationship kind + native ID; a hostname is not an identity |

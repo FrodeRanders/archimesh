@@ -61,6 +61,7 @@ public class ArchitecturePublicationService {
             if (approval==null || approval.policy()==null || approval.expectedVersion()<0) throw new Failure(400,"INVALID_PUBLICATION_APPROVAL");
             var reviewed=preview(model,targetKey,subject,approval.policy());
             if(reviewed.plan().diagnostics().stream().anyMatch(d -> d.severity()==PublicationProfile.Severity.CONFLICT)) throw new Failure(409,"PUBLICATION_PROFILE_CONFLICTS");
+            if(reviewed.plan().resources().stream().anyMatch(r -> r.provenance()!=null && r.provenance().assertion()!=null)) throw new Failure(409,"PUBLICATION_DERIVED_EXECUTION_NOT_READY");
             if (!reviewed.digest().equals(approval.previewDigest())) throw new Failure(409,"PUBLICATION_PREVIEW_STALE");
             var data=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",targetKey)
                     .put("targetInstanceId",reviewed.plan().targetInstanceId()).put("approvedBy",subject.userId()).put("modelGeneration",runtime.requireModelActive(model)).put("configurationDigest",configurationDigest(authorize(model,targetKey,subject)));

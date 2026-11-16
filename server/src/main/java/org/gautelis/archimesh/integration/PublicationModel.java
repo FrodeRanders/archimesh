@@ -28,9 +28,13 @@ public final class PublicationModel {
         }
     }
     public record Resource(PublicationIdentity identity,String remoteType,SortedMap<String,JsonNode> fields,
-                           String sourceEntityId,String targetEntityId,boolean steward) {
+                           String sourceEntityId,String targetEntityId,boolean steward,
+                           @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) Provenance provenance) {
+        public Resource(PublicationIdentity identity,String remoteType,SortedMap<String,JsonNode> fields,String source,String target,boolean steward) { this(identity,remoteType,fields,source,target,steward,null); }
         public Resource { fields=Collections.unmodifiableSortedMap(new TreeMap<>(fields)); }
     }
+    public record Provenance(org.gautelis.federation.ArchitectureAssertion.Key assertion,
+                             org.gautelis.federation.ArchitectureAssertion.Evidence evidence,boolean referenceOnly) { }
     public record Plan(String modelId,String targetKey,String targetInstanceId,String ref,long revision,
                        String mappingVersion,List<Resource> resources,
                        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) PublicationProfile.Pin profile,

@@ -93,5 +93,6 @@ public final class ContractChecks {
         var forgedOwner=new Observation(new SourceField(appReference,"applicationProperties","name"),appReference,"datahub-edit",newer,null);
         check(evaluate(application,appAuthority,forgedOwner,1,appBaseline,appRegistry,(c,o) -> true)==Decision.WRONG_SOURCE);
         TargetMutationChecks.run();
+        ArchitectureAssertionChecks.run();
     }
 }

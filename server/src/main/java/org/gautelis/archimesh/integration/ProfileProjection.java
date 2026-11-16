@@ -13,8 +13,9 @@ public final class ProfileProjection {
     public Plan build(String instance,String model,IntegrationConfiguration.Target target,PolicySpec policy,JsonNode snapshot,
                       IntegrationStateRepository metadata,Definition profile) {
         if(policy.mode()==Mode.DISABLED) return new Plan(model,target.key(),target.instanceId(),policy.ref(),0,target.mapping().version(),List.of(),policy.profile(),List.of());
+        if(!profile.pin(json).equals(policy.profile())) throw new Failure(409,"PUBLICATION_PROFILE_CONTENT_CHANGED");
         if(!profile.enabled() || !profile.sourceModes().contains(policy.mode())) throw new Failure(403,"PROFILE_SOURCE_NOT_ELIGIBLE");
-        if(profile.derivationsEnabled() && !profile.derivations().isEmpty()) throw new Failure(409,"PROFILE_DERIVATIONS_NOT_IMPLEMENTED");
+        var graph=new ProfileGraph(snapshot,profile.limits());
         if(policy.elements().size()>profile.limits().maxSelectedElements() || policy.relationships().size()>profile.limits().maxSelectedRelationships()
                 || snapshot.path("elements").size()>profile.limits().maxGraphElements() || snapshot.path("relationships").size()>profile.limits().maxGraphRelationships())
             throw new Failure(413,"PROFILE_SCOPE_LIMIT_EXCEEDED");
@@ -65,13 +66,24 @@ public final class ProfileProjection {
         var resources=new ArrayList<Resource>();
         for(var resource:base.resources()) {
             var selector=chosen.get(resource.identity().model().entityId());
-            if(selector==null) { resources.add(resource); continue; }
+            if(selector==null) {
+                var evidence=new org.gautelis.federation.ArchitectureAssertion.Evidence("archimesh",instance,model,policy.ref(),base.revision(),profile.profileId(),profile.version(),policy.profile().digest(),"direct",
+                    org.gautelis.federation.ArchitectureAssertion.Authority.ARCHIMESH_ARCHITECTURE,List.of(resource.identity().model().entityId(),resource.sourceEntityId(),resource.targetEntityId()),List.of());
+                resources.add(new Resource(resource.identity(),resource.remoteType(),resource.fields(),resource.sourceEntityId(),resource.targetEntityId(),resource.steward(),new Provenance(null,evidence,false))); continue;
+            }
             var fields=new TreeMap<>(resource.fields()); fields.keySet().retainAll(selector.fields());
             if(selector.referenceOnly()) fields.clear();
-            resources.add(new Resource(resource.identity(),resource.remoteType(),fields,resource.sourceEntityId(),resource.targetEntityId(),resource.steward()));
+            var evidence=new org.gautelis.federation.ArchitectureAssertion.Evidence("archimesh",instance,model,policy.ref(),base.revision(),profile.profileId(),profile.version(),policy.profile().digest(),"direct",
+                org.gautelis.federation.ArchitectureAssertion.Authority.ARCHIMESH_ARCHITECTURE,List.of(resource.identity().model().entityId()),List.of());
+            resources.add(new Resource(resource.identity(),resource.remoteType(),fields,resource.sourceEntityId(),resource.targetEntityId(),resource.steward(),new Provenance(null,evidence,selector.referenceOnly())));
         }
+        if(profile.derivationsEnabled()) resources.addAll(new ProfileDerivation(json).derive(instance,model,target,policy,base,graph,profile,diagnostics));
+        long derived=resources.stream().filter(r -> r.provenance()!=null && r.provenance().assertion()!=null).count();
+        if(derived>profile.limits().maxDerivedRelations() || derived+rels.size()>20) throw new Failure(413,"PROFILE_DERIVED_LIMIT_EXCEEDED");
         diagnostics.sort(Comparator.comparing(Diagnostic::entityId).thenComparing(Diagnostic::code));
-        return new Plan(base.modelId(),base.targetKey(),base.targetInstanceId(),base.ref(),base.revision(),base.mappingVersion(),resources,policy.profile(),diagnostics);
+        var plan=new Plan(base.modelId(),base.targetKey(),base.targetInstanceId(),base.ref(),base.revision(),base.mappingVersion(),resources,policy.profile(),diagnostics);
+        if(json.valueToTree(plan).toString().length()>180000) throw new Failure(413,"PUBLICATION_PLAN_TOO_LARGE");
+        return plan;
     }
     static Map<String,JsonNode> index(JsonNode values) {
         var result=new TreeMap<String,JsonNode>();

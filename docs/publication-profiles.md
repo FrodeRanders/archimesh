@@ -56,3 +56,36 @@ test` in `server`: **19 passed**, zero failures/errors/skips. The example also
 passed the draft-2020-12 JSON Schema validator. Evidence:
 `/tmp/archimesh-profiles-p1-tests.log`. Derived rules and durable reference/claim
 execution are added in P2/P3, rather than silently ignored when enabled.
+
+## P2 — semantic graph and evidenced logical access
+
+`ProfileGraph` indexes accepted semantic elements, directed relationships and
+materialized property values, with explicit graph/property limits. The first rule
+matches only ApplicationComponent → AssignmentRelationship → ApplicationFunction
+→ AccessRelationship → DataObject. Functions are evidence, not automatically
+published cards. Configure the source Access property explicitly; the example
+uses `archimesh.publication.accessMode`. Supported values are READ/Read,
+WRITE/Write and READ_WRITE/ReadWrite. Unknown values, missing assignments,
+incorrect direction, cycles outside the pattern, missing endpoints and catalog
+assets are diagnosed and never fabricated into a relationship.
+
+The shared dependency-free `ArchitectureAssertion` contract preserves predicate,
+canonical endpoints, target/profile/rule/mapping scope, exact source IDs, ref,
+revision, profile digest and each contributing assignment/function/Access path.
+Parallel evidence consolidates to one deterministic READ/WRITE set. Removing a
+path removes only its evidence; multiple models share assertion identity but have
+different source occurrences and evidence digests. No CRUD CREATE/DELETE,
+DataHub product producer/consumer, ownership or lineage fact is inferred.
+
+The sum of direct and derived output relationships stays within M3's existing
+20-relation ceiling. Evidence is bounded to 128 paths per assertion and the plan
+retains the existing 180k limit. Profiles must explicitly enable derivation;
+P2 previews are available through M3, but derived approval is deliberately fenced
+until the P3 durable writer is installed.
+
+P2 checks: `mvn -q
+'-Dtest=PublicationProfileTest,ProfileDerivationTest,ArchitectureProjectionTest,FederationCoreTest'
+test` in `server`: **19 passed**, zero failures/errors/skips.
+`python3 shared/federation-core/test.py` also passed, including provider-neutral
+predicate separation and evidence normalization. Evidence:
+`/tmp/archimesh-profiles-p2-tests.log`.
