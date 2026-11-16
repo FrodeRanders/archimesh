@@ -170,6 +170,14 @@ public final class TurboEaClient implements ExternalRepositoryWriter, AutoClosea
         if (!type.equals(result.type()) || !sourceId.equals(result.sourceId()) || !targetId.equals(result.targetId())) throw invalid();
         return result;
     }
+    @Override public ExternalRelation patchRelation(String resourceId,com.fasterxml.jackson.databind.node.ObjectNode payload) {
+        validatePayload(payload,java.util.Set.of("attributes"));
+        if (!payload.path("attributes").isObject()) throw new IllegalArgumentException("Relation attributes required");
+        var row=exchange("PATCH","/api/v1/relations/"+resourceSegment(resourceId),true,payload,200);
+        var result=new ExternalRelation(text(row,"id"),text(row,"type"),text(row,"source_id"),text(row,"target_id"),optionalText(row,"description"),objectOrNull(row,"attributes"));
+        if (!resourceId.equals(result.id())) throw invalid();
+        return result;
+    }
     private static void validatePayload(com.fasterxml.jackson.databind.node.ObjectNode payload,java.util.Set<String> allowed) {
         if (payload==null || payload.toString().length()>131072) throw new IllegalArgumentException("Invalid publication payload size");
         payload.fieldNames().forEachRemaining(key -> { if (!allowed.contains(key)) throw new IllegalArgumentException("Unsupported publication field"); });

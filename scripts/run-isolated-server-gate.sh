@@ -63,4 +63,4 @@ unset RUN_RECOVERY_DRILL
 cd "$ROOT_DIR/server"
 echo "[isolated-server-gate] Running server unit, infrastructure and WebSocket tests"
 TESTS_STARTED=true
-mvn -q '-Dtest=*Test,*IT' -Dquarkus.http.test-port=0 test 2>&1 | tee "$RUN_DIR/tests.log"
+mvn -q "-Dtest=${ARCHIMESH_SERVER_GATE_TESTS:-*Test,*IT}" -Dquarkus.http.test-port=0 test 2>&1 | tee "$RUN_DIR/tests.log"

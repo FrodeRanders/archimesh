@@ -6,7 +6,7 @@ import static org.gautelis.archimesh.integration.IntegrationIdentity.*;
 
 /** Independent metadata storage. No method writes model entities or revisions. */
 public interface IntegrationStateRepository extends AutoCloseable {
-    enum DocumentKind { FIELD_AUTHORITY, CHECKPOINT, CONFLICT, CONTRIBUTION, JOB, PUBLICATION_POLICY, PUBLICATION_JOB, PUBLICATION_RESOURCE, INBOUND_POLICY, INBOUND_STATE, CENTRAL_EDIT, CENTRAL_LANE, CENTRAL_DELIVERY, MODEL_SCOPE, OPERATIONS, RECONCILIATION, IDENTITY_PROOF, FEDERATION_INTENT, FEDERATION_LANE }
+    enum DocumentKind { FIELD_AUTHORITY, CHECKPOINT, CONFLICT, CONTRIBUTION, JOB, PUBLICATION_POLICY, PUBLICATION_JOB, PUBLICATION_RESOURCE, PUBLICATION_PROFILE, ASSERTION_CLAIM, ASSERTION_SCOPE, INBOUND_POLICY, INBOUND_STATE, CENTRAL_EDIT, CENTRAL_LANE, CENTRAL_DELIVERY, MODEL_SCOPE, OPERATIONS, RECONCILIATION, IDENTITY_PROOF, FEDERATION_INTENT, FEDERATION_LANE }
     record PublicationIdentity(ModelElementKey model,CanonicalObject canonical,String archimateType,String mappingVersion,
                                @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) String externalType) {
         public PublicationIdentity(ModelElementKey model,CanonicalObject canonical,String archimateType,String mappingVersion) {

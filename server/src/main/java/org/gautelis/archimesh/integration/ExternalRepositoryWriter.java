@@ -7,4 +7,5 @@ public interface ExternalRepositoryWriter extends ExternalRepositoryConnector {
     ExternalObject createObject(ObjectNode payload);
     ExternalObject patchObject(String resourceId,ObjectNode payload);
     ExternalRelation createRelation(String type,String sourceId,String targetId);
+    default ExternalRelation patchRelation(String resourceId,ObjectNode payload) { throw new UnsupportedOperationException("Relation attribute publication unavailable"); }
 }

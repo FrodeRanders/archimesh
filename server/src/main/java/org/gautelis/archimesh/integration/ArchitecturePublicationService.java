@@ -61,13 +61,14 @@ public class ArchitecturePublicationService {
             if (approval==null || approval.policy()==null || approval.expectedVersion()<0) throw new Failure(400,"INVALID_PUBLICATION_APPROVAL");
             var reviewed=preview(model,targetKey,subject,approval.policy());
             if(reviewed.plan().diagnostics().stream().anyMatch(d -> d.severity()==PublicationProfile.Severity.CONFLICT)) throw new Failure(409,"PUBLICATION_PROFILE_CONFLICTS");
-            if(reviewed.plan().resources().stream().anyMatch(r -> r.provenance()!=null && r.provenance().assertion()!=null)) throw new Failure(409,"PUBLICATION_DERIVED_EXECUTION_NOT_READY");
             if (!reviewed.digest().equals(approval.previewDigest())) throw new Failure(409,"PUBLICATION_PREVIEW_STALE");
             var data=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",targetKey)
                     .put("targetInstanceId",reviewed.plan().targetInstanceId()).put("approvedBy",subject.userId()).put("modelGeneration",runtime.requireModelActive(model)).put("configurationDigest",configurationDigest(authorize(model,targetKey,subject)));
             data.set("policy",json.valueToTree(approval.policy()));
             data.put("approvedPlanDigest",PublicationJson.digest(json.valueToTree(reviewed.plan())));
+            if(reviewed.plan().profile()!=null) claims().retain(resolveProfile(reviewed.plan().profile()));
             var saved=metadata().save(new StateDocument(instance(),DocumentKind.PUBLICATION_POLICY,policyId(model,targetKey),approval.expectedVersion(),data));
+            if(approval.policy().mode()==Mode.DISABLED) claims().stage(reviewed.plan(),saved);
             return policyView(Optional.of(saved));
 
         } finally { execution.unlock(); }
@@ -100,7 +101,10 @@ public class ArchitecturePublicationService {
             if (!policy.data().path("approvedPlanDigest").asText().equals(PublicationJson.digest(json.valueToTree(reviewed.plan()))))
                 throw new Failure(409,"PUBLICATION_TAG_APPROVAL_STALE");
             if (request.previewDigest()!=null && !request.previewDigest().equals(reviewed.digest())) throw new Failure(409,"PUBLICATION_PREVIEW_STALE");
-            for (var resource:reviewed.plan().resources()) metadata().reservePublicationIdentity(resource.identity());
+            for (var resource:reviewed.plan().resources()) {
+                if(PublicationClaims.derived(resource)) reserveAssertion(resource);
+                else metadata().reservePublicationIdentity(resource.identity());
+            }
             var job=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",targetKey)
                     .put("modelGeneration",runtime.requireModelActive(model)).put("requestId",request.requestId()).put("requestedBy",subject.userId()).put("policyVersion",policy.version())
                     .put("state","PENDING").put("attempts",0).put("nextAttemptAt",0).put("requestDigest",request.previewDigest());
@@ -131,19 +135,39 @@ public class ArchitecturePublicationService {
             var target=authorize(plan.modelId(),plan.targetKey(),new AuthorizationSubject(approver,Set.of()));
             if (!configurationDigest(target).equals(load(DocumentKind.PUBLICATION_POLICY,policyId(plan.modelId(),plan.targetKey())).orElseThrow().data().path("configurationDigest").asText())) throw new Failure(409,"PUBLICATION_CONFIGURATION_CHANGED");
             runtime.validateTarget(plan.targetKey()); delivery.requireWriterLease();
-            resolveProfile(plan.profile());
+            var profile=resolveProfile(plan.profile());
             if (!plan.mappingVersion().equals(target.mapping().version()) || !plan.targetInstanceId().equals(target.instanceId())) throw new Failure(409,"MAPPING_OR_TARGET_MIGRATION_REQUIRED");
             document=saveJob(document,"RUNNING",null);
             var writer=runtime.writer(plan.targetKey()); var endpoints=new HashMap<String,String>();
+            validateDerivedMetamodel(plan,target,writer);
+            var withdrawn=claims().stage(plan,document);
             for (var resource:plan.resources()) {
                 if (!current(document,plan)) { saveJob(document,"SUPERSEDED",null); return; }
                 delivery.requireWriterLease(); authorize(plan.modelId(),plan.targetKey(),new AuthorizationSubject(approver,Set.of()));
-                String remote=resource.identity().model().entityKind()==EntityKind.ELEMENT
+                String remote;
+                if(PublicationClaims.derived(resource)) {
+                    var aggregate=claims().aggregate(resource,profile,this::requireCurrentClaim);
+                    remote=publishAssertion(plan,aggregate,target,writer);
+                } else if(resource.provenance()!=null && resource.provenance().referenceOnly()) remote=reference(plan,resource,target,writer);
+                else remote=resource.identity().model().entityKind()==EntityKind.ELEMENT
                         ? publishCard(document,plan,resource,target,writer) : publishRelation(document,plan,resource,target,writer,endpoints);
                 endpoints.put(resource.identity().model().entityId(),remote);
                 contribution(plan,resource,"ACTIVE");
             }
             if (!current(document,plan)) { saveJob(document,"SUPERSEDED",null); return; }
+            for(var removed:withdrawn) {
+                var state=load(DocumentKind.PUBLICATION_RESOURCE,resourceId(plan,removed));
+                if(state.isEmpty()) continue;
+                if(profile==null || !plan.profile().equals(new PublicationProfile.Pin(removed.provenance().evidence().profileId(),removed.provenance().evidence().profileVersion(),removed.provenance().evidence().profileDigest()))) {
+                    retirement(state.get(),"PROFILE_WITHDRAWAL_REVIEW_REQUIRED"); continue;
+                }
+                var aggregate=claims().aggregate(removed,profile,this::requireCurrentClaim);
+                if(aggregate==null) retirement(state.get(),"FINAL_CONTRIBUTION_WITHDRAWN_REVIEW_REQUIRED");
+                else {
+                    validateDerivedMetamodel(new Plan(plan.modelId(),plan.targetKey(),plan.targetInstanceId(),plan.ref(),plan.revision(),plan.mappingVersion(),List.of(aggregate),plan.profile(),List.of()),target,writer);
+                    publishAssertion(plan,aggregate,target,writer);
+                }
+            }
             withdrawMissing(plan); saveJob(document,"SYNCED",null);
         } catch (ConnectorException error) {
             var job=load(DocumentKind.PUBLICATION_JOB,id).orElseThrow();
@@ -275,7 +299,8 @@ public class ArchitecturePublicationService {
             String selectedId=remoteId;
             if (writer.relations(source).stream().noneMatch(r -> r.id().equals(selectedId) && r.type().equals(resource.remoteType()) && r.sourceId().equals(source) && r.targetId().equals(destination)))
                 throw new Failure(409,"RELATION_IDENTITY_CONFLICT");
-            remote=relationFields(resource,source,destination);
+            var relation=readRelation(writer,selectedId,resource,source,destination);
+            remote=PublicationClaims.derived(resource) ? assertionFields(resource,source,destination,relation) : relationFields(resource,source,destination);
         }
         return new Inspection(canonical,remoteId,json.valueToTree(resource.fields()),remote,PublicationJson.digest(remote),state.data().path("state").asText());
     }
@@ -311,6 +336,126 @@ public class ArchitecturePublicationService {
         return target;
     }
     private String configurationDigest(IntegrationConfiguration.Target target) { return IntegrationConfigurationDigest.target(target); }
+    private PublicationClaims claims() { return new PublicationClaims(metadata(),json,instance()); }
+    private void requireCurrentClaim(StateDocument claim) {
+        String model=claim.data().path("sourceModelId").asText(),targetKey=claim.data().path("targetKey").asText();
+        runtime.requireGeneration(model,claim.data().path("modelGeneration").asText(null));
+        var policy=load(DocumentKind.PUBLICATION_POLICY,policyId(model,targetKey)).orElseThrow(() -> new Failure(409,"ASSERTION_APPROVAL_MISSING"));
+        if(policy.version()!=claim.data().path("policyVersion").asLong() || !policy.data().path("approvedPlanDigest").asText().equals(claim.data().path("approvedPlanDigest").asText()))
+            throw new Failure(409,"ASSERTION_APPROVAL_CHANGED_REQUIRES_RECONCILIATION");
+        var target=authorize(model,targetKey,new AuthorizationSubject(policy.data().path("approvedBy").asText(),Set.of()));
+        if(!configurationDigest(target).equals(policy.data().path("configurationDigest").asText())) throw new Failure(409,"ASSERTION_CONFIGURATION_CHANGED");
+        var job=load(DocumentKind.PUBLICATION_JOB,claim.data().path("jobId").asText()).orElseThrow(() -> new Failure(409,"ASSERTION_JOB_MISSING"));
+        var plan=json.convertValue(job.data().path("plan"),Plan.class);
+        if(!current(job,plan) || !plan.targetInstanceId().equals(target.instanceId())) throw new Failure(409,"ASSERTION_SOURCE_CHANGED");
+        resolveProfile(plan.profile());
+        if(plan.resources().stream().noneMatch(r -> PublicationJson.equal(json.valueToTree(r),claim.data().path("resource")))) throw new Failure(409,"ASSERTION_EVIDENCE_CHANGED");
+    }
+    private void requireCurrentClaimFor(Plan plan,Resource resource) {
+        var claim=claims().claims(resource).stream().filter(c -> c.data().path("sourceModelId").asText().equals(plan.modelId()) && !c.data().path("status").asText().equals("WITHDRAWN"))
+            .findFirst().orElseThrow(() -> new Failure(409,"ASSERTION_CURRENT_CONTRIBUTION_REQUIRED"));
+        requireCurrentClaim(claim);
+    }
+    private org.gautelis.federation.Identity.Canonical assertionCanonical(Resource resource) {
+        return new org.gautelis.federation.Identity.Canonical(resource.identity().canonical().canonicalId(),"architecture.logical-data-access");
+    }
+    private org.gautelis.federation.IdentityRegistry.Evidence assertionProof(Resource resource,String action,String nativeId) {
+        return new org.gautelis.federation.IdentityRegistry.Evidence(PublicationJson.key("assertion-proof:",action,resource.identity().canonical().canonicalId(),nativeId),"archimesh-publication",PublicationJson.digest(json.valueToTree(resource.provenance().assertion())));
+    }
+    private void reserveAssertion(Resource resource) {
+        var canonical=assertionCanonical(resource);
+        var result=metadata().identities(instance()).reserveSource(new org.gautelis.federation.Identity.Representation(
+            new org.gautelis.federation.Identity.Resource(new org.gautelis.federation.Identity.Repository("archimesh",instance()),org.gautelis.federation.Identity.ResourceKind.OBJECT,canonical.id()),"architecture.assertion"),canonical,assertionProof(resource,"RESERVE",canonical.id()));
+        if(!result.canonical().equals(canonical)) throw new Failure(409,"ASSERTION_IDENTITY_CONFLICT");
+    }
+    private String reference(Plan plan,Resource resource,IntegrationConfiguration.Target target,ExternalRepositoryWriter writer) {
+        execution.requirePublicationAllowed(runtime,target.instanceId(),resource.identity().canonical().canonicalId());
+        if(!resource.fields().isEmpty()) throw new Failure(409,"REFERENCE_ONLY_FIELDS_FORBIDDEN");
+        String id=metadata().findExternal(resource.identity().canonical().canonicalId(),"turboea",target.instanceId(),ResourceKind.CARD)
+            .orElseThrow(() -> new Failure(409,"REFERENCE_TARGET_BINDING_REQUIRED")).resourceId();
+        var card=readCard(writer,id);
+        if(!card.type().equals(resource.remoteType()) || !card.status().equals("ACTIVE")) throw new Failure(409,"REFERENCE_TYPE_OR_LIFECYCLE_CONFLICT");
+        recordIdentity(plan,resource,id); return id;
+    }
+    private void validateDerivedMetamodel(Plan plan,IntegrationConfiguration.Target target,ExternalRepositoryWriter writer) {
+        if(plan.resources().stream().noneMatch(PublicationClaims::derived)) return;
+        var metamodel=writer.metamodel(); var profile=resolveProfile(plan.profile());
+        for(var resource:plan.resources()) if(PublicationClaims.derived(resource)) {
+            var type=metamodel.relationTypes().get(resource.remoteType()); var mapping=target.mapping().relationTypes().get(resource.remoteType());
+            if(type==null || type.hidden() || mapping==null || !mapping.sourceType().equals(type.sourceType()) || !mapping.targetType().equals(type.targetType()) || !mapping.cardinality().equals(type.cardinality())
+                    || !target.publicationAccess().relationTypes().contains(resource.remoteType()) || !target.publicationAccess().completeAttributeReadsApproved() || !target.publicationAccess().acceptUnconditionalWriteRisk())
+                throw new Failure(409,"DERIVED_TARGET_CAPABILITY_NOT_APPROVED");
+            var rule=profile.derivations().stream().filter(r -> r.ruleId().equals(resource.provenance().assertion().ruleId())).findFirst().orElseThrow();
+            String key=rule.accessAttribute().substring("attributes.".length()); JsonNode attribute=null;
+            if(type.attributesSchema()!=null && type.attributesSchema().isArray()) for(var field:type.attributesSchema()) if(field.path("key").asText().equals(key)) {
+                if(attribute!=null) throw new Failure(409,"DERIVED_ATTRIBUTE_SCHEMA_AMBIGUOUS"); attribute=field;
+            }
+            if(attribute==null || !attribute.path("type").asText().equals("multiselect") || attribute.path("is_hidden").asBoolean() || attribute.path("hidden").asBoolean() || !attribute.path("options").isArray()
+                    || !target.publicationAccess().fields().contains(rule.accessAttribute())) throw new Failure(409,"DERIVED_ACCESS_ATTRIBUTE_UNSUPPORTED");
+            var values=new HashSet<String>();
+            for(var option:attribute.path("options")) {
+                String value=option.isTextual() ? option.asText() : option.path("key").asText();
+                if(value.isBlank() || !values.add(value)) throw new Failure(409,"DERIVED_ACCESS_OPTIONS_UNSUPPORTED");
+            }
+            if(!values.containsAll(rule.accessValues().values())) throw new Failure(409,"DERIVED_ACCESS_VALUES_UNSUPPORTED");
+        }
+    }
+    private ExternalRepositoryConnector.ExternalRelation readRelation(ExternalRepositoryWriter writer,String id,Resource resource,String source,String destination) {
+        return writer.relations(source).stream().filter(r -> r.id().equals(id) && r.type().equals(resource.remoteType()) && r.sourceId().equals(source) && r.targetId().equals(destination))
+            .findFirst().orElseThrow(() -> new Failure(409,"RELATION_IDENTITY_CONFLICT"));
+    }
+    private ObjectNode assertionFields(Resource resource,String source,String destination,ExternalRepositoryConnector.ExternalRelation remote) {
+        var result=relationFields(resource,source,destination);
+        for(var key:resource.fields().keySet()) result.set(key,PublicationJson.field(remote==null ? resource.fields().get(key) : remote.attributes()==null ? null : remote.attributes().get(key.substring("attributes.".length()))));
+        return result;
+    }
+    private void retirement(StateDocument state,String code) {
+        ensureNoUnknownMutation(state.data()); var data=(ObjectNode)state.data(); data.put("state","WITHDRAWN_REVIEW_REQUIRED").put("code",code);
+        metadata().save(new StateDocument(instance(),state.kind(),state.id(),state.version(),data));
+    }
+    /** Shared assertion identity + union of authorized claims; remote relation never belongs to a single model. */
+    private String publishAssertion(Plan plan,Resource resource,IntegrationConfiguration.Target target,ExternalRepositoryWriter writer) {
+        execution.requirePublicationAllowed(runtime,target.instanceId(),resource.identity().canonical().canonicalId(),org.gautelis.federation.Identity.ResourceKind.RELATIONSHIP);
+        var state=resourceState(plan,resource); var data=(ObjectNode)state.data(); ensureNoUnknownMutation(data);
+        var key=resource.provenance().assertion(); var mapping=target.mapping().relationTypes().get(resource.remoteType());
+        String app=metadata().findExternal(key.subjectCanonicalId(),"turboea",target.instanceId(),ResourceKind.CARD).orElseThrow(() -> new Failure(409,"PUBLISH_ENDPOINTS_FIRST")).resourceId();
+        String logical=metadata().findExternal(key.objectCanonicalId(),"turboea",target.instanceId(),ResourceKind.CARD).orElseThrow(() -> new Failure(409,"PUBLISH_ENDPOINTS_FIRST")).resourceId();
+        String source=mapping.reversed() ? logical : app,destination=mapping.reversed() ? app : logical;
+        var desired=assertionFields(resource,source,destination,null);
+        var binding=metadata().findExternal(resource.identity().canonical().canonicalId(),"turboea",target.instanceId(),ResourceKind.RELATION);
+        String id; ExternalRepositoryConnector.ExternalRelation remote;
+        if(binding.isEmpty()) {
+            if(writer.relations(source).stream().anyMatch(r -> r.type().equals(resource.remoteType()) && r.sourceId().equals(source) && r.targetId().equals(destination)))
+                throw resourceConflict(state,null,"EXISTING_RELATION_REQUIRES_EXPLICIT_LINK");
+            state=inFlight(state,"CREATE",new TreeMap<>(json.convertValue(desired,new com.fasterxml.jackson.core.type.TypeReference<Map<String,JsonNode>>(){})));
+            try { id=writer.createRelation(resource.remoteType(),source,destination).id(); }
+            catch(ConnectorException error) { mutationFailed(state,error); throw error; }
+            remote=readRelation(writer,id,resource,source,destination);
+            // POST is an upstream upsert. A discovered manual payload cannot be claimed automatically.
+            if(remote.attributes()!=null && !remote.attributes().isEmpty() || remote.description()!=null && !remote.description().isBlank()) throw new Failure(409,"AMBIGUOUS_RELATION_CREATE_OWNERSHIP");
+        } else {
+            id=binding.get().resourceId(); remote=readRelation(writer,id,resource,source,destination);
+            var actual=assertionFields(resource,source,destination,remote);
+            if(!data.has("baseline")) throw resourceConflict(state,id,"BASELINE_APPROVAL_REQUIRED");
+            if(!PublicationJson.equal(actual,data.path("baseline"))) throw resourceConflict(state,id,"REMOTE_DRIFT");
+            if(PublicationJson.equal(actual,desired)) { verified(state,resource,id,actual); return id; }
+            remote=readRelation(writer,id,resource,source,destination);
+            if(!PublicationJson.equal(assertionFields(resource,source,destination,remote),data.path("baseline"))) throw resourceConflict(state,id,"REMOTE_DRIFT");
+            state=inFlight(state,"PATCH",new TreeMap<>(json.convertValue(desired,new com.fasterxml.jackson.core.type.TypeReference<Map<String,JsonNode>>(){})));
+        }
+        var attributes=remote.attributes()==null ? json.createObjectNode() : (ObjectNode)remote.attributes().deepCopy();
+        for(var field:resource.fields().entrySet()) attributes.set(field.getKey().substring("attributes.".length()),field.getValue());
+        try { writer.patchRelation(id,json.createObjectNode().set("attributes",attributes)); }
+        catch(ConnectorException error) {
+            // A failed PATCH after successful POST is still an uncertain CREATE, even for a definite 4xx.
+            if(state.data().path("inFlight").path("action").asText().equals("CREATE")) throw new Failure(409,"AMBIGUOUS_RELATION_CREATE_REQUIRES_REVIEW");
+            mutationFailed(state,error); throw error;
+        }
+        var after=assertionFields(resource,source,destination,readRelation(writer,id,resource,source,destination));
+        if(!PublicationJson.equal(after,desired)) throw new Failure(409,"AMBIGUOUS_RELATION_PATCH_VERIFICATION");
+        recordIdentity(plan,resource,id); verified(state,resource,id,after); return id;
+    }
+
     private PublicationProfile.Definition resolveProfile(PublicationProfile.Pin pin) {
         if(pin==null) return null;
         if(profiles==null) throw new Failure(403,"PUBLICATION_PROFILES_DISABLED");
@@ -330,15 +475,21 @@ public class ArchitecturePublicationService {
         String id=resourceId(plan,resource); var existing=load(DocumentKind.PUBLICATION_RESOURCE,id);
         if (existing.isPresent()) {
             if (!existing.get().data().path("mappingVersion").asText().equals(plan.mappingVersion())) throw new Failure(409,"RESOURCE_MAPPING_MIGRATION_REQUIRED");
-            if (resource.steward() && !plan.modelId().equals(existing.get().data().path("ownerModel").asText())) throw new Failure(409,"CANONICAL_STEWARD_CONFLICT");
+            if(PublicationClaims.derived(resource) != existing.get().data().path("ownership").asText().equals("APPROVED_ASSERTION_CONTRIBUTIONS")) throw new Failure(409,"RESOURCE_OWNERSHIP_CONFLICT");
+            if (!PublicationClaims.derived(resource) && resource.steward() && !plan.modelId().equals(existing.get().data().path("ownerModel").asText())) throw new Failure(409,"CANONICAL_STEWARD_CONFLICT");
             return existing.get();
         }
         if (!resource.steward()) throw new Failure(409,"EXPLICIT_STEWARD_REQUIRED");
         var data=json.createObjectNode().put("schemaVersion",1).put("ownerModel",plan.modelId()).put("canonicalId",resource.identity().canonical().canonicalId())
                 .put("targetInstanceId",plan.targetInstanceId()).put("mappingVersion",plan.mappingVersion()).put("state","PENDING");
+        if(PublicationClaims.derived(resource)) { data.remove("ownerModel"); data.put("ownership","APPROVED_ASSERTION_CONTRIBUTIONS"); data.set("profile",json.valueToTree(plan.profile())); }
         return metadata().save(new StateDocument(instance(),DocumentKind.PUBLICATION_RESOURCE,id,0,data));
     }
     private void requireSteward(Plan plan,Resource resource,JsonNode data) {
+        if(PublicationClaims.derived(resource)) {
+            if(!data.path("ownership").asText().equals("APPROVED_ASSERTION_CONTRIBUTIONS")) throw new Failure(409,"CANONICAL_CONTRIBUTION_CONFLICT");
+            requireCurrentClaimFor(plan,resource); return;
+        }
         if (!resource.steward() || !plan.modelId().equals(data.path("ownerModel").asText())) throw new Failure(409,"CANONICAL_CONTRIBUTION_CONFLICT");
     }
     private void ensureNoUnknownMutation(JsonNode data) { if (data.has("inFlight")) throw new Failure(409,"AMBIGUOUS_REMOTE_MUTATION_REQUIRES_REVIEW"); }
@@ -364,9 +515,14 @@ public class ArchitecturePublicationService {
     private void verified(StateDocument state,Resource resource,String id,JsonNode baseline) {
         var data=(ObjectNode)state.data(); data.remove(List.of("inFlight","code")); data.put("state","SYNCED").put("resourceId",id)
                 .put("verifiedAt",now.getAsLong()).put("digest",PublicationJson.digest(baseline)); data.set("baseline",PublicationJson.canonical(baseline));
+        if(resource.provenance()!=null) { var evidence=resource.provenance().evidence(); data.set("profile",json.valueToTree(new PublicationProfile.Pin(evidence.profileId(),evidence.profileVersion(),evidence.profileDigest()))); }
         metadata().save(new StateDocument(instance(),state.kind(),state.id(),state.version(),data));
     }
     private void recordIdentity(Plan plan,Resource resource,String id) {
+        if(PublicationClaims.derived(resource)) {
+            metadata().identities(instance()).bindRepresentation(assertionCanonical(resource),new org.gautelis.federation.Identity.Representation(new org.gautelis.federation.Identity.Resource(new org.gautelis.federation.Identity.Repository("turboea",plan.targetInstanceId()),org.gautelis.federation.Identity.ResourceKind.RELATIONSHIP,id),resource.remoteType()),assertionProof(resource,"BIND",id));
+            return;
+        }
         metadata().recordPublishedIdentity(resource.identity(),new ExternalResourceKey("turboea",plan.targetInstanceId(),
                 resource.identity().model().entityKind()==EntityKind.ELEMENT ? ResourceKind.CARD : ResourceKind.RELATION,id),plan.revision(),
                 PublicationJson.key("publication:",plan.modelId(),resource.identity().model().entityId()));
@@ -403,11 +559,13 @@ public class ArchitecturePublicationService {
                 .orElseThrow(() -> new Failure(409,"PUBLISH_ENDPOINTS_FIRST")).resourceId();
     }
     private void contribution(Plan plan,Resource resource,String status) {
+        if(PublicationClaims.derived(resource)) { claims().active(plan,resource); return; }
         String id=contributionPrefix(plan)+PublicationJson.key("",resource.identity().model().entityId());
         var prior=load(DocumentKind.CONTRIBUTION,id);
         var data=json.createObjectNode().put("sourceModelId",plan.modelId()).put("entityId",resource.identity().model().entityId())
                 .put("canonicalId",resource.identity().canonical().canonicalId()).put("targetInstanceId",plan.targetInstanceId()).put("ref",plan.ref())
                 .put("revision",plan.revision()).put("mappingVersion",plan.mappingVersion()).put("status",status).put("digest",PublicationJson.digest(json.valueToTree(resource)));
+        if(plan.profile()!=null) { data.set("profile",json.valueToTree(plan.profile())); data.set("provenance",json.valueToTree(resource.provenance())); }
         metadata().save(new StateDocument(instance(),DocumentKind.CONTRIBUTION,id,prior.map(StateDocument::version).orElse(0L),data));
     }
     private void withdrawMissing(Plan plan) {

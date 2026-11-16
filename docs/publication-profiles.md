@@ -80,8 +80,8 @@ DataHub product producer/consumer, ownership or lineage fact is inferred.
 The sum of direct and derived output relationships stays within M3's existing
 20-relation ceiling. Evidence is bounded to 128 paths per assertion and the plan
 retains the existing 180k limit. Profiles must explicitly enable derivation;
-P2 previews are available through M3, but derived approval is deliberately fenced
-until the P3 durable writer is installed.
+P2 previews are available through M3; P3 adds the durable writer before
+enabling approval of derived assertions.
 
 P2 checks: `mvn -q
 '-Dtest=PublicationProfileTest,ProfileDerivationTest,ArchitectureProjectionTest,FederationCoreTest'
@@ -89,3 +89,52 @@ test` in `server`: **19 passed**, zero failures/errors/skips.
 `python3 shared/federation-core/test.py` also passed, including provider-neutral
 predicate separation and evidence normalization. Evidence:
 `/tmp/archimesh-profiles-p2-tests.log`.
+
+
+## P3 — durable shared assertions
+
+The existing M3 policy, queue, writer lease, target validation, polling repair,
+remote mutation coordinator, baselines and ambiguity fences execute profile
+plans. Approval retains the immutable definition in `PUBLICATION_PROFILE`; jobs
+and contributions carry the exact pin. Legacy policies remain unpinned.
+
+`ASSERTION_CLAIM` records are distinct per source model and assertion. An
+`ASSERTION_SCOPE` index replaces only one model's contribution set atomically.
+Every aggregate validates all participating models' current generation, explicit
+publisher/model-admin approval, tag revision, configuration and pinned profile.
+Stale or competing profile versions block reconciliation for review. This is
+not a last-writer-wins ownership decision. At most 256 source claims are read
+per assertion; larger sets require an explicit scalability change.
+
+Derived identities use the existing provider-neutral registry and proofs. They
+never create synthetic formal model relationships or model bindings. Ordinary
+card stewardship is unchanged. Reference-only resources verify an existing exact
+card binding/type/lifecycle without acquiring sole stewardship or patching fields.
+
+The derived relation writer verifies an explicitly approved multiselect attribute
+and its READ/WRITE option values against the live Turbo EA metamodel. No built-in
+CRUD field is assumed. Creation uses the existing bare relation POST, independently
+reads back the exact identity, then patches only approved attributes while keeping
+one durable CREATE fence throughout. Existing attributes and descriptions are
+preserved. An unknown matching relation requires explicit inspected adoption.
+Lost POST/PATCH replies never trigger blind mutation retries. Final withdrawal
+retains the relation and records `WITHDRAWN_REVIEW_REQUIRED`; remaining authorized
+claims are recomputed instead of being erased.
+
+Turbo EA offers no conditional relation PATCH. The existing explicit unconditional
+write-risk acknowledgment remains mandatory, with immediate pre-write read and
+post-write verification; this does not provide target-side atomic compare-and-set.
+
+P3 validation used the disposable server gate. The initial full run discovered
+380 cases: 372 passed, four explicit opt-in skips and four errors in the new
+fixture setup (duplicate seed batch ID). Subsequent focused runs exposed a
+missing fixture model scope, a real JSON numeric-node comparison issue and a
+registry proof request scope collision. Both implementation defects are fixed:
+evidence uses canonical JSON equality, and source/target identity proofs have
+distinct stable operation scopes. The four new P3 integration scenarios and all
+legacy publication/M6 cases passed in the combined P3/P4 run below.
+
+`ARCHIMESH_SERVER_GATE_TESTS='ProfilePublicationIT,CatalogProfilePublicationIT,DatasetProjectionIT,ApplicationProjectionIT,ArchitecturePublicationIT,IntegrationOperationsIT,PublicationProfileTest,ProfileDerivationTest,ArchitectureProjectionTest,TurboEaClientTest' ./scripts/validate-local.sh server-isolated`
+passed. Evidence: `/tmp/archimesh-profiles-p4-integration.log` and isolated run
+`5270421d-696e-4789-be2b-0ed71d8c271a`. The optional test filter changes no default
+gate coverage; an unset filter still runs every `*Test,*IT` case.
