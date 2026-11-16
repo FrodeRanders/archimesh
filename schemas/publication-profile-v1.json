@@ -1,0 +1,325 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:archimesh:publication-profile-catalog:v1",
+  "title": "ArchiMesh immutable Publication Profile catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/profile"
+      },
+      "maxItems": 32,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "profiles"
+  ],
+  "$defs": {
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "profileId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "sourceModes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "HEAD",
+              "TAG"
+            ]
+          },
+          "maxItems": 2,
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "elements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/element"
+          },
+          "maxItems": 20,
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/relationship"
+          },
+          "maxItems": 20,
+          "uniqueItems": true
+        },
+        "derivationsEnabled": {
+          "type": "boolean"
+        },
+        "derivations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/derivation"
+          },
+          "maxItems": 4,
+          "uniqueItems": true
+        },
+        "limits": {
+          "$ref": "#/$defs/limits"
+        },
+        "conflictStrategy": {
+          "const": "REPORT_AND_STOP"
+        },
+        "identityStrategy": {
+          "const": "REGISTRY_OR_STABLE_OCCURRENCE"
+        },
+        "ownershipRule": {
+          "const": "SOURCE_AUTHORITY_AND_APPROVED_STEWARD"
+        },
+        "targetSystem": {
+          "const": "TURBO_EA"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "profileId",
+        "version",
+        "name",
+        "description",
+        "enabled",
+        "sourceModes",
+        "elements",
+        "relationships",
+        "derivationsEnabled",
+        "derivations",
+        "limits",
+        "conflictStrategy",
+        "identityStrategy",
+        "ownershipRule",
+        "targetSystem"
+      ]
+    },
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "archimateType": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+        },
+        "mappingRef": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(name|description|lifecycle|attributes\\.[a-zA-Z0-9_.-]{1,128})$"
+          },
+          "maxItems": 32,
+          "uniqueItems": true
+        },
+        "sourceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^elem:",
+            "maxLength": 512
+          },
+          "maxItems": 20,
+          "uniqueItems": true
+        },
+        "propertiesEquals": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "maxLength": 256,
+            "pattern": "^(?!archimesh\\.external\\.)[a-zA-Z0-9_.:-]+$"
+          },
+          "maxProperties": 8,
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "requiresExplicitPublication": {
+          "type": "boolean"
+        },
+        "allowCreate": {
+          "type": "boolean"
+        },
+        "referenceOnly": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "archimateType",
+        "mappingRef"
+      ]
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "archimateType": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+        },
+        "mappingRef": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+        },
+        "sourceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^rel:",
+            "maxLength": 512
+          },
+          "maxItems": 20,
+          "uniqueItems": true
+        },
+        "requiresApprovedEndpoints": {
+          "const": true
+        }
+      },
+      "required": [
+        "archimateType",
+        "mappingRef",
+        "requiresApprovedEndpoints"
+      ]
+    },
+    "derivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ruleId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+        },
+        "kind": {
+          "const": "APPLICATION_DATA_ACCESS_AGGREGATE"
+        },
+        "targetMappingRef": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+        },
+        "accessModeProperty": {
+          "type": "string",
+          "maxLength": 256,
+          "pattern": "^(?!archimesh\\.external\\.)[a-zA-Z0-9_.:-]+$"
+        },
+        "accessAttribute": {
+          "type": "string",
+          "pattern": "^attributes\\.[a-zA-Z0-9_.-]{1,128}$"
+        },
+        "accessValues": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "READ": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+            },
+            "WRITE": {
+              "type": "string",
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$"
+            }
+          }
+        },
+        "allowedAccessModes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "READ",
+              "WRITE"
+            ]
+          },
+          "maxItems": 2,
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "retainProvenance": {
+          "const": true
+        }
+      },
+      "required": [
+        "ruleId",
+        "kind",
+        "targetMappingRef",
+        "accessModeProperty",
+        "accessAttribute",
+        "accessValues",
+        "allowedAccessModes",
+        "retainProvenance"
+      ]
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxSelectedElements": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "maxSelectedRelationships": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "maxDerivedRelations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "maxGraphElements": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "maxGraphRelationships": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20000
+        }
+      },
+      "required": [
+        "maxSelectedElements",
+        "maxSelectedRelationships",
+        "maxDerivedRelations",
+        "maxGraphElements",
+        "maxGraphRelationships"
+      ]
+    }
+  }
+}

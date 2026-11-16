@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "profiles": [{
+    "schemaVersion": 1,
+    "profileId": "application-information-landscape",
+    "version": "1.0.0",
+    "name": "Application and logical information landscape",
+    "description": "Explicitly selected applications and logical information; optional evidenced logical READ/WRITE usage.",
+    "enabled": true,
+    "sourceModes": ["TAG"],
+    "identityStrategy": "REGISTRY_OR_STABLE_OCCURRENCE",
+    "ownershipRule": "SOURCE_AUTHORITY_AND_APPROVED_STEWARD",
+    "targetSystem": "TURBO_EA",
+    "conflictStrategy": "REPORT_AND_STOP",
+    "elements": [
+      {"archimateType":"ApplicationComponent", "mappingRef":"Application", "fields":[], "sourceIds":[], "propertiesEquals":{}, "requiresExplicitPublication":true, "allowCreate":false, "referenceOnly":true},
+      {"archimateType":"DataObject", "mappingRef":"LogicalData", "fields":["name"], "sourceIds":[], "propertiesEquals":{"archimesh.publication.eligible":"true"}, "requiresExplicitPublication":true, "allowCreate":true, "referenceOnly":false}
+    ],
+    "relationships": [],
+    "derivationsEnabled": false,
+    "derivations": [{
+      "ruleId":"application-data-access",
+      "kind":"APPLICATION_DATA_ACCESS_AGGREGATE",
+      "targetMappingRef":"ApplicationDataAccess",
+      "accessModeProperty":"archimesh.publication.accessMode",
+      "accessAttribute":"attributes.operations",
+      "accessValues":{"READ":"READ", "WRITE":"WRITE"},
+      "allowedAccessModes":["READ", "WRITE"],
+      "retainProvenance":true
+    }],
+    "limits":{"maxSelectedElements":20, "maxSelectedRelationships":20, "maxDerivedRelations":20, "maxGraphElements":10000, "maxGraphRelationships":20000}
+  }]
+}

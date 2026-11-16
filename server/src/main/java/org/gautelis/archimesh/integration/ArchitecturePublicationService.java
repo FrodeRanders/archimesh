@@ -22,6 +22,7 @@ public class ArchitecturePublicationService {
     @Inject AuthorizationService authorization;
     @Inject CommitDeliveryService delivery;
     @Inject ObjectMapper json;
+    @Inject PublicationProfiles profiles;
     @Inject RemoteMutationCoordinator execution=new RemoteMutationCoordinator();
     LongSupplier now=System::currentTimeMillis;
     @org.eclipse.microprofile.config.inject.ConfigProperty(name="app.integrations.publication.interval-seconds",defaultValue="300") long reconciliationInterval=300;
@@ -45,7 +46,9 @@ public class ArchitecturePublicationService {
         if (spec.mode()!=Mode.DISABLED && (spec.mode()!=Mode.TAG || "HEAD".equals(spec.ref())))
             throw new Failure(403,"PUBLICATION_TAG_REQUIRED");
         var snapshot=spec.mode()==Mode.DISABLED ? json.createObjectNode() : models.getSnapshot(model,spec.ref());
-        var plan=new ArchitectureProjection(json).build(instance(),model,target,spec,snapshot,metadata());
+        var profile=resolveProfile(spec.profile());
+        var plan=profile==null ? new ArchitectureProjection(json).build(instance(),model,target,spec,snapshot,metadata())
+            : new ProfileProjection(json).build(instance(),model,target,spec,snapshot,metadata(),profile);
         return new Preview(spec,plan,PublicationJson.digest(json.valueToTree(List.of(spec,plan,runtime.requireModelActive(model),configurationDigest(target)))));
     }
     public PolicyView policy(String model,String targetKey,AuthorizationSubject subject) {
@@ -57,6 +60,7 @@ public class ArchitecturePublicationService {
             runtime.requireRunning();
             if (approval==null || approval.policy()==null || approval.expectedVersion()<0) throw new Failure(400,"INVALID_PUBLICATION_APPROVAL");
             var reviewed=preview(model,targetKey,subject,approval.policy());
+            if(reviewed.plan().diagnostics().stream().anyMatch(d -> d.severity()==PublicationProfile.Severity.CONFLICT)) throw new Failure(409,"PUBLICATION_PROFILE_CONFLICTS");
             if (!reviewed.digest().equals(approval.previewDigest())) throw new Failure(409,"PUBLICATION_PREVIEW_STALE");
             var data=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",model).put("targetKey",targetKey)
                     .put("targetInstanceId",reviewed.plan().targetInstanceId()).put("approvedBy",subject.userId()).put("modelGeneration",runtime.requireModelActive(model)).put("configurationDigest",configurationDigest(authorize(model,targetKey,subject)));
@@ -126,6 +130,7 @@ public class ArchitecturePublicationService {
             var target=authorize(plan.modelId(),plan.targetKey(),new AuthorizationSubject(approver,Set.of()));
             if (!configurationDigest(target).equals(load(DocumentKind.PUBLICATION_POLICY,policyId(plan.modelId(),plan.targetKey())).orElseThrow().data().path("configurationDigest").asText())) throw new Failure(409,"PUBLICATION_CONFIGURATION_CHANGED");
             runtime.validateTarget(plan.targetKey()); delivery.requireWriterLease();
+            resolveProfile(plan.profile());
             if (!plan.mappingVersion().equals(target.mapping().version()) || !plan.targetInstanceId().equals(target.instanceId())) throw new Failure(409,"MAPPING_OR_TARGET_MIGRATION_REQUIRED");
             document=saveJob(document,"RUNNING",null);
             var writer=runtime.writer(plan.targetKey()); var endpoints=new HashMap<String,String>();
@@ -305,6 +310,11 @@ public class ArchitecturePublicationService {
         return target;
     }
     private String configurationDigest(IntegrationConfiguration.Target target) { return IntegrationConfigurationDigest.target(target); }
+    private PublicationProfile.Definition resolveProfile(PublicationProfile.Pin pin) {
+        if(pin==null) return null;
+        if(profiles==null) throw new Failure(403,"PUBLICATION_PROFILES_DISABLED");
+        return profiles.resolve(pin);
+    }
     private boolean current(StateDocument job,Plan plan) {
         var policy=load(DocumentKind.PUBLICATION_POLICY,policyId(plan.modelId(),plan.targetKey()));
         var pointer=load(DocumentKind.CHECKPOINT,scopeId(plan.modelId(),plan.targetKey()));

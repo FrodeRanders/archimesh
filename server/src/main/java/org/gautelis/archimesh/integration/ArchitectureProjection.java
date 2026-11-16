@@ -15,6 +15,10 @@ public final class ArchitectureProjection {
 
     public Plan build(String instance,String modelId,IntegrationConfiguration.Target target,PolicySpec policy,JsonNode snapshot,
                       IntegrationStateRepository metadata) {
+        return buildMapped(instance,modelId,target,policy,snapshot,metadata,Map.of(),Map.of(),Map.of());
+    }
+    Plan buildMapped(String instance,String modelId,IntegrationConfiguration.Target target,PolicySpec policy,JsonNode snapshot,
+                      IntegrationStateRepository metadata,Map<String,String> elementMappings,Map<String,String> relationMappings,Map<String,Set<String>> selectedFields) {
         if (policy.mode()==Mode.DISABLED) return new Plan(modelId,target.key(),target.instanceId(),policy.ref(),0,target.mapping().version(),List.of());
         long revision=snapshot.path("headRevision").asLong(-1);
         if (revision<1) throw new Failure(409,"ACCEPTED_SNAPSHOT_REQUIRED");
@@ -27,7 +31,9 @@ public final class ArchitectureProjection {
             var key=new ModelElementKey(instance,modelId,EntityKind.ELEMENT,id);
             var bound=metadata.findPublicationIdentity(key);
             var candidates=target.mapping().cardTypes().entrySet().stream().filter(e -> e.getValue().equals(localType)
-                    && target.publicationAccess().cardTypes().contains(e.getKey())).map(Map.Entry::getKey).toList();
+                    && target.publicationAccess().cardTypes().contains(e.getKey())
+                    && (!elementMappings.containsKey(id) || elementMappings.get(id).equals(e.getKey()))).map(Map.Entry::getKey).toList();
+            if(elementMappings.containsKey(id) && bound.isPresent() && !bound.get().remoteType().equals(elementMappings.get(id))) throw new Failure(409,"PROFILE_BOUND_TYPE_CONFLICT");
             String remote=bound.map(PublicationIdentity::remoteType).filter(candidates::contains).orElseGet(() -> {
                 if (candidates.size()!=1) throw new Failure(409,"AMBIGUOUS_OR_UNMAPPED_CARD_TYPE"); return candidates.getFirst();
             });
@@ -37,6 +43,7 @@ public final class ArchitectureProjection {
             var fields=new TreeMap<String,JsonNode>();
             for (var entry:target.mapping().fieldsFor(remote,identity.canonical().canonicalId()).entrySet()) {
                 var mapping=entry.getValue();
+                if(selectedFields.containsKey(id) && !selectedFields.get(id).contains(mapping.remoteField())) continue;
                 if (mapping.authority()!=InformationAuthorityPolicy.Authority.ARCHIMESH_MASTER
                         || !target.publicationAccess().fields().contains(mapping.remoteField())) continue;
                 JsonNode value=entry.getKey().startsWith("property:") ? property(snapshot,id,entry.getKey().substring(9)) : element.get(entry.getKey());
@@ -69,6 +76,7 @@ public final class ArchitectureProjection {
             if (!cards.containsKey(sourceId) || !cards.containsKey(targetId)) throw new Failure(409,"SELECT_RELATION_ENDPOINTS_FIRST");
             var mappings=target.mapping().relationTypes().entrySet().stream().filter(e -> {
                 var m=e.getValue(); if (!target.publicationAccess().relationTypes().contains(e.getKey()) || !m.archimateType().equals(relationship.path("archimateType").asText())) return false;
+                if(relationMappings.containsKey(id) && !relationMappings.get(id).equals(e.getKey())) return false;
                 return m.sourceType().equals(cards.get(m.reversed() ? targetId : sourceId).remoteType())
                         && m.targetType().equals(cards.get(m.reversed() ? sourceId : targetId).remoteType());
             }).toList();

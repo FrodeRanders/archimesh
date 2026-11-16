@@ -7,7 +7,9 @@ import static org.gautelis.archimesh.integration.IntegrationStateRepository.Publ
 public final class PublicationModel {
     private PublicationModel() { }
     public enum Mode { DISABLED, HEAD, TAG }
-    public record PolicySpec(Mode mode,String ref,List<String> elements,List<String> relationships,Set<String> stewards) {
+    public record PolicySpec(Mode mode,String ref,List<String> elements,List<String> relationships,Set<String> stewards,
+                             @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) PublicationProfile.Pin profile) {
+        public PolicySpec(Mode mode,String ref,List<String> elements,List<String> relationships,Set<String> stewards) { this(mode,ref,elements,relationships,stewards,null); }
         public PolicySpec {
             if (mode==null) throw new IllegalArgumentException("Publication mode required");
             IntegrationIdentity.required(ref);
@@ -30,8 +32,11 @@ public final class PublicationModel {
         public Resource { fields=Collections.unmodifiableSortedMap(new TreeMap<>(fields)); }
     }
     public record Plan(String modelId,String targetKey,String targetInstanceId,String ref,long revision,
-                       String mappingVersion,List<Resource> resources) {
-        public Plan { resources=List.copyOf(resources); }
+                       String mappingVersion,List<Resource> resources,
+                       @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL) PublicationProfile.Pin profile,
+                       @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_EMPTY) List<PublicationProfile.Diagnostic> diagnostics) {
+        public Plan(String model,String target,String instance,String ref,long revision,String mapping,List<Resource> resources) { this(model,target,instance,ref,revision,mapping,resources,null,List.of()); }
+        public Plan { resources=List.copyOf(resources); diagnostics=diagnostics==null ? List.of() : List.copyOf(diagnostics); }
     }
     public record Preview(PolicySpec policy,Plan plan,String digest) { }
     public record Approval(PolicySpec policy,long expectedVersion,String previewDigest) { }
