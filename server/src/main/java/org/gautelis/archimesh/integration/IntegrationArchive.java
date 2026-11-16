@@ -54,6 +54,7 @@ public final class IntegrationArchive {
                 || n.label().equals("IntegrationStateDocument") && ("IDENTITY_PROOF".equals(n.properties().get("kind")) || n.properties().getOrDefault("kind","").toString().startsWith("FEDERATION_")) || "ENTITY".equals(n.properties().get("resourceKind")))))
             throw new Failure(400,"ARCHIVE_LEGACY_EXTENSION_INVALID");
         validate(instance,nodes,json);
+        if(LEGACY_FORMAT.equals(format)) PublicationProfileArchive.validate(format,instance,nodes,json);
     }
     public static void validate(String instance,List<Node> nodes,ObjectMapper json) {
         IntegrationIdentity.required(instance);
@@ -118,6 +119,7 @@ public final class IntegrationArchive {
         }
         for (var node:nodes) if (!node.label().equals("IntegrationCanonicalObject") && node.properties().containsKey("canonicalId") && !canonical.contains(node.properties().get("canonicalId"))) throw new Failure(400,"ARCHIVE_CANONICAL_REFERENCE_MISSING");
         FederationMutationArchive.validate(instance,nodes,json);
+        PublicationProfileArchive.validate(FORMAT,instance,nodes,json);
         var neutral=new HashSet<String>();
         for (var node:nodes) if (node.label().equals("IntegrationCanonicalObject") && node.properties().containsKey("semanticKind")) neutral.add((String)node.properties().get("canonicalId"));
         for (var node:nodes) if (node.label().equals("IntegrationExternalBinding") && neutral.contains(node.properties().get("canonicalId"))
@@ -155,6 +157,10 @@ public final class IntegrationArchive {
                             if (kind.equals("MODEL_SCOPE")) data.put("paused",true).put("restored",true);
                             if (Set.of("JOB","PUBLICATION_JOB","CENTRAL_EDIT","INBOUND_POLICY","PUBLICATION_POLICY").contains(kind) && data.has("modelGeneration")) {
                                 data.set("archivedModelGeneration",data.get("modelGeneration")); data.put("modelGeneration",restoredGeneration).put("restoredCapability",true);
+                            }
+                            if(kind.equals("ASSERTION_CLAIM") && !data.path("status").asText().equals("WITHDRAWN")) {
+                                data.set("archivedStatus",data.path("status")); data.put("status","QUARANTINED").put("code","RESTORED_CLAIM_REQUIRES_NEW_APPROVAL");
+                                data.set("archivedModelGeneration",data.path("modelGeneration")); data.put("modelGeneration",restoredGeneration);
                             }
                             if (kind.equals("INBOUND_POLICY")) data.put("enabled",false);
                             if (kind.equals("PUBLICATION_POLICY") && data.path("policy").isObject()) { data.set("archivedPolicy",data.path("policy").deepCopy()); ((ObjectNode)data.path("policy")).put("mode","DISABLED"); }

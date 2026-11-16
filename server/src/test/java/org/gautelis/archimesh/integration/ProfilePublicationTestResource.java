@@ -24,6 +24,7 @@ public class ProfilePublicationTestResource extends PublicationTestResource {
         var json=new ObjectMapper(); var root=(ObjectNode)json.readTree(Files.readString(Path.of("examples/publication-profiles.example.json")));
         var profile=(ObjectNode)root.path("profiles").get(0); profile.put("derivationsEnabled",true);
         var data=(ObjectNode)profile.path("elements").get(1); data.putArray("fields"); data.put("allowCreate",false).put("referenceOnly",true);
+        ((ArrayNode)root.path("profiles")).add(profile.deepCopy().put("version","2.0.0"));
         catalog=Files.createTempFile("archimesh-profile-it-",".json"); Files.writeString(catalog,root.toString());
         return Map.of("app.publication.profiles-enabled","true","app.publication.profiles-configuration",catalog.toString());
     }

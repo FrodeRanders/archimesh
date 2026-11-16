@@ -4,6 +4,16 @@ This module implements the Archimesh server described in the repository architec
 
 The optional [Turbo EA M1 foundation](../docs/turboea/m1-foundation.md) provides a server-only read connector, versioned mapping and independent integration metadata. [M2](../docs/turboea/m2-import.md) adds scoped catalog/preview/import/link/status endpoints under `/models/{modelId}/external-objects`. Both integration enablement and explicit shared-catalog approval are required for M2. [M3](../docs/turboea/m3-publication.md) adds separately approved outbound publication under `/admin/models/{modelId}/publication`, with a disabled-by-default target policy, snapshot projection, durable jobs and drift/ambiguity review. [M4](../docs/turboea/m4-inbound.md) adds separately approved SSE/polling inbound synchronization, scoped external-change acceptance and pre-merge field ownership checks. [M5](../docs/turboea/m5-central-edits.md) adds separately scoped central-edit requests and approval under `/models/{modelId}/central-edits`, durable uncertainty fences and per-model verified delivery. [M6](../docs/turboea/m6-operations.md) adds named operator controls and metrics under `/admin/integrations`, full scans, model generation fencing and a separately versioned paused integration restore.
 
+[Publication Profiles](../docs/publication-profiles.md) extend the existing M3
+administration with immutable profile pins, bounded selectors and evidenced
+logical READ/WRITE assertions. Both `ARCHIMESH_PUBLICATION_PROFILES_ENABLED`
+and the target's existing publication permissions remain disabled by default.
+Set `ARCHIMESH_PUBLICATION_PROFILES_CONFIGURATION` to a validated profile catalog;
+see the [catalog](examples/publication-profiles.example.json) and separately
+restricted [target example](examples/publication-profiles-target.example.json).
+Legacy policies without a profile retain explicit-selection behavior. Outbound
+publication remains TAG-only.
+
 ## Includes
 
 - WebSocket endpoint: `ws://localhost:8081/models/{modelId}/stream`

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "instanceId": "archimesh-development",
+  "operators": [],
+  "targets": [{
+    "key": "development",
+    "instanceId": "turboea-development",
+    "baseUrl": "http://localhost:8920",
+    "tokenEnvironment": "TURBO_EA_TOKEN",
+    "expectedApiVersion": "2.203.2",
+    "timeoutMillis": 10000,
+    "maxResponseBytes": 2097152,
+    "mapping": {
+      "version": "logical-access-v1",
+      "cardTypes": {"Application":"ApplicationComponent", "LogicalData":"DataObject"},
+      "relationTypes": {
+        "ApplicationDataAccess": {"archimateType":"AccessRelationship", "sourceType":"Application", "targetType":"LogicalData", "cardinality":"n:m", "reversed":false}
+      },
+      "fields": {
+        "Application": {"name":{"remoteField":"name", "valueType":"STRING", "authority":"TURBO_EA_MASTER"}},
+        "LogicalData": {"name":{"remoteField":"name", "valueType":"STRING", "authority":"ARCHIMESH_MASTER"}}
+      }
+    },
+    "catalogAccess": {"approved":false, "readers":[], "importers":[], "cardTypes":["Application"], "fields":["name"]},
+    "publicationAccess": {
+      "enabled": false,
+      "publishers": [],
+      "cardTypes": ["Application", "LogicalData"],
+      "relationTypes": ["ApplicationDataAccess"],
+      "fields": ["name", "attributes.operations"],
+      "acceptUnconditionalWriteRisk": false,
+      "completeAttributeReadsApproved": false
+    }
+  }]
+}

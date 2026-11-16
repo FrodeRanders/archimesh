@@ -279,7 +279,7 @@ public class ArchitecturePublicationService {
             var state=load(DocumentKind.PUBLICATION_RESOURCE,resourceId(plan,resource));
             var external=metadata().findExternal(resource.identity().canonical().canonicalId(),"turboea",plan.targetInstanceId(),resource.identity().model().entityKind()==EntityKind.ELEMENT ? ResourceKind.CARD : ResourceKind.RELATION);
             resources.add(new ResourceView(resource.identity().model().entityId(),resource.identity().canonical().canonicalId(),
-                    state.map(s -> s.data().path("resourceId").asText(null)).orElseGet(() -> external.map(ExternalResourceKey::resourceId).orElse(null)),state.map(s -> s.data().path("state").asText()).orElse("PENDING"),
+                    state.map(s -> s.data().path("resourceId").asText(null)).orElseGet(() -> external.map(ExternalResourceKey::resourceId).orElse(null)),state.map(s -> s.data().path("state").asText()).orElse(resource.provenance()!=null && resource.provenance().referenceOnly() && external.isPresent() ? job.get().data().path("state").asText().equals("SYNCED") ? "REFERENCE_VERIFIED" : "REFERENCE_PENDING_VERIFICATION" : "PENDING"),
                     state.map(s -> s.data().path("code").asText(null)).orElse(null),state.map(s -> s.data().path("baseline")).orElse(null)));
         }
         var summary=(ObjectNode)job.get().data(); summary.remove("plan"); summary.put("id",job.get().id());
@@ -327,7 +327,7 @@ public class ArchitecturePublicationService {
         } finally { execution.unlock(); }
     }
 
-    private IntegrationConfiguration.Target authorize(String model,String key,AuthorizationSubject subject) {
+    IntegrationConfiguration.Target authorize(String model,String key,AuthorizationSubject subject) {
         if (!runtime.enabled()) throw new Failure(404,"INTEGRATION_DISABLED"); required(model);
         authorization.requireSubjectAllowed(subject,AuthorizationAction.ADMIN_MODEL_PUBLICATION,model,"HEAD");
         var acl=models.findModelAccessControl(model).orElseThrow(() -> new Failure(404,"MODEL_NOT_FOUND"));

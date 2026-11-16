@@ -1,6 +1,6 @@
 # ADR 0003: Pinned publication profiles and evidenced architecture assertions
 
-Date: 2026-11-16. Status: accepted implementation direction. Baseline:
+Date: 2026-11-16. Status: accepted; implemented in milestones P0–P5. Baseline:
 `77ee9f086b3b8dbb0ee47367f1cb465d51823d1b` on `codex/turboea-m0`.
 Delivery brief: [Publication Profiles](../archimesh-publication-profiles-codex.md).
 Milestone evidence: [publication-profiles.md](../publication-profiles.md).

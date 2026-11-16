@@ -1,5 +1,11 @@
 # Project handoff - 2026-10-28
 
+Publication Profiles follow-up (2026-11-16, `codex/turboea-m0`): see the
+[current delivery log and operator workflow](publication-profiles.md) and
+[ADR 0003](adr/0003-publication-profiles.md). They supersede older HEAD-publication
+assumptions; unpinned M3 policies and the M0–M6 integration boundaries remain
+compatible. The historical checkpoint/recovery handoff below is retained.
+
 Archimesh is at a tested stopping point for the current checkpoint, delivery, recovery, and shared-topic work. This is a development handoff, not a claim of production certification or exhaustive fault coverage.
 
 ## Code and branch state

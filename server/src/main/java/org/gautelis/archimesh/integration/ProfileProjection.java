@@ -43,6 +43,9 @@ public final class ProfileProjection {
             if(!selector.allowCreate() && (bound.isEmpty() || metadata.findExternal(bound.get().canonical().canonicalId(),"turboea",target.instanceId(),ResourceKind.CARD).isEmpty())) {
                 diagnostics.add(new Diagnostic(Severity.CONFLICT,id,"PROFILE_EXISTING_BINDING_REQUIRED",null)); continue;
             }
+            if(!selector.referenceOnly() && selector.fields().stream().anyMatch(field -> !target.publicationAccess().fields().contains(field)
+                    || target.mapping().fieldsFor(selector.mappingRef(),bound.map(b -> b.canonical().canonicalId()).orElse(null)).values().stream().noneMatch(f -> f.remoteField().equals(field) && f.authority()==InformationAuthorityPolicy.Authority.ARCHIMESH_MASTER)))
+                diagnostics.add(new Diagnostic(Severity.SKIP,id,"FIELD_OMITTED_OUTSIDE_EFFECTIVE_AUTHORITY",null));
             chosen.put(id,selector);
         }
         for(String id:policy.relationships()) {

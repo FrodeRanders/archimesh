@@ -14,6 +14,19 @@ import java.util.function.Supplier;
 public class PublicationEndpoint {
     @Inject ArchitecturePublicationService publication;
     @Inject AuthorizationService authorization;
+    @Inject PublicationProfileAdministration profiles;
+    @GET @Path("/profiles/v1") public Response profiles(@PathParam("modelId") String model,@PathParam("targetKey") String target,@Context HttpHeaders headers,@Context SecurityContext context) {
+        return invoke(() -> profiles.available(model,target,authorization.currentRestSubject(headers,context)));
+    }
+    @GET @Path("/profiles/v1/{profileId}/{version}") public Response profile(@PathParam("modelId") String model,@PathParam("targetKey") String target,@PathParam("profileId") String id,@PathParam("version") String version,@Context HttpHeaders headers,@Context SecurityContext context) {
+        return invoke(() -> profiles.read(model,target,authorization.currentRestSubject(headers,context),id,version));
+    }
+    @POST @Path("/profiles/v1/validate") public Response validate(@PathParam("modelId") String model,@PathParam("targetKey") String target,PublicationProfile.Pin pin,@Context HttpHeaders headers,@Context SecurityContext context) {
+        return invoke(() -> profiles.validate(model,target,authorization.currentRestSubject(headers,context),pin));
+    }
+    @POST @Path("/explain/v1") public Response explain(@PathParam("modelId") String model,@PathParam("targetKey") String target,PolicySpec spec,@Context HttpHeaders headers,@Context SecurityContext context) {
+        return invoke(() -> profiles.explain(model,target,authorization.currentRestSubject(headers,context),spec));
+    }
     @GET public Response status(@PathParam("modelId") String model,@PathParam("targetKey") String target,@Context HttpHeaders headers,@Context SecurityContext context) {
         return invoke(() -> publication.status(model,target,authorization.currentRestSubject(headers,context)));
     }

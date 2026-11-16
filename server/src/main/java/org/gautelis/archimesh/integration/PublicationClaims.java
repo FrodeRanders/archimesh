@@ -33,13 +33,13 @@ final class PublicationClaims {
         var selected=new TreeMap<String,Resource>();
         plan.resources().stream().filter(PublicationClaims::derived).forEach(r -> selected.put(claimId(plan,r),r));
         if(prior.isEmpty() && selected.isEmpty()) return List.of();
-        var changes=new ArrayList<StateDocument>(); var removed=new ArrayList<Resource>();
+        var changes=new ArrayList<StateDocument>(); var removed=new ArrayList<Resource>(); var withdrawn=new LinkedHashSet<String>();
         if(prior.isPresent()) for(var id:prior.get().data().path("claims")) {
             if(selected.containsKey(id.asText())) continue;
             var old=metadata.load(instance,DocumentKind.ASSERTION_CLAIM,id.asText()).orElseThrow(() -> new Failure(409,"ASSERTION_CLAIM_MISSING"));
             var data=(ObjectNode)old.data(); data.put("status","WITHDRAWN").put("withdrawnAtRevision",plan.revision());
             changes.add(new StateDocument(instance,old.kind(),old.id(),old.version(),data));
-            removed.add(json.convertValue(data.path("resource"),Resource.class));
+            removed.add(json.convertValue(data.path("resource"),Resource.class)); withdrawn.add(old.id());
         }
         for(var entry:selected.entrySet()) {
             var old=metadata.load(instance,DocumentKind.ASSERTION_CLAIM,entry.getKey());
@@ -51,6 +51,8 @@ final class PublicationClaims {
             changes.add(new StateDocument(instance,DocumentKind.ASSERTION_CLAIM,entry.getKey(),old.map(StateDocument::version).orElse(0L),data));
         }
         var data=json.createObjectNode().put("schemaVersion",1).put("sourceModelId",plan.modelId()).put("targetInstanceId",plan.targetInstanceId());
+        if(prior.isPresent()) for(var id:prior.get().data().path("withdrawnClaims")) if(!selected.containsKey(id.asText())) withdrawn.add(id.asText());
+        data.set("withdrawnClaims",json.valueToTree(withdrawn.stream().limit(20).toList()));
         data.set("claims",json.valueToTree(selected.keySet()));
         changes.add(new StateDocument(instance,DocumentKind.ASSERTION_SCOPE,scope,prior.map(StateDocument::version).orElse(0L),data));
         metadata.saveAtomically(changes);

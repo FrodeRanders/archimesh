@@ -327,3 +327,20 @@ Important consequence:
   - materialized state
   - tags
 - compaction removes old commits and merge metadata below the safe retention horizon
+
+
+## Publication Profiles integration metadata
+
+Profiles add no core graph labels, model entities, revisions or CRDT operations.
+`IntegrationStateDocument` uses the additional kinds `PUBLICATION_PROFILE`
+(immutable normalized definition and pin), `ASSERTION_SCOPE` (bounded per-model
+claim index) and `ASSERTION_CLAIM` (per-model desired/active/withdrawn evidence).
+Their payloads use `sourceModelId`. They are independent of model snapshot,
+checkpoint, delete and rebuild traversals.
+
+Canonical derived assertions and exact Turbo EA relation bindings reuse
+`IntegrationCanonicalObject`, `IntegrationExternalBinding` and `IDENTITY_PROOF`.
+They do not create synthetic `IntegrationModelBinding` records. Resource
+baselines and durable uncertainty stay in `PUBLICATION_RESOURCE`. M6 v2 archives
+validate definition/pin/evidence closure and restore claims quarantined, policies
+disabled and model scopes paused. See [operations](../docs/publication-profiles.md).
