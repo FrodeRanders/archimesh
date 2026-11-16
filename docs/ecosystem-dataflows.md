@@ -2,8 +2,8 @@
 
 Diagrammet finns som redigerbar [Mermaid-fil](diagrams/ecosystem-dataflows.mmd),
 [PNG](diagrams/ecosystem-dataflows.png) och [SVG](diagrams/ecosystem-dataflows.svg).
-Det beskriver den logiska samverkan mellan systemen utifrån projektets
-dokumentation, avläst 2026-11-16. Det är ingen inventering av en produktionsmiljö.
+Det beskriver den implementerade samverkan inklusive Publication Profiles,
+avläst 2026-11-16. Den startbara Northstar-demon använder syntetiska data. Det är ingen inventering av en produktionsmiljö.
 
 Heldragna pilar visar implementerade flöden som kräver rätt konfiguration och
 godkännanden. Streckade pilar är märkta **PLANERAT** när flödet ingår i projektets
@@ -40,8 +40,13 @@ inte att verksamhetsdata eller databasernas innehåll kopieras mellan systemen.
    Senare uppdateringar går till länkade, godkända HEAD-modeller. Archi får
    ändringarna genom sin vanliga anslutning till ArchiMesh. Placering i en vy är
    ett separat modelleringssteg.
-3. **ArchiMesh till TurboEA.** Utvalda lokalt ägda fält och relationer kan
-   publiceras från en uttryckligen godkänd, oföränderlig tagg. Ändringar av centralt
+3. **ArchiMesh till TurboEA.** Publication Profiles väljer inom modellens
+   uttryckligen godkända urval. ApplicationComponent → Assignment →
+   ApplicationFunction → Access → logiskt DataObject kan ge en konsoliderad
+   READ/WRITE-relation, med källmodell, tagg, revision och funktions-/relations-ID
+   som belägg. Publicering sker från en uttryckligen godkänd, oföränderlig tagg.
+   Befintliga identiteter återanvänds; varje modell behåller sitt eget bidrag.
+   Borttaget bidrag raderar inte andra modellers eller manuellt ägda relationer. Ändringar av centralt
    ägda fält har ett separat flöde för förslag eller tillåten direkt begäran;
    efter verifierad skrivning återförs ändringen till länkade HEAD-modeller.
 4. **Application till DataHub.** Den godkända synken läser TurboEA och skapar,
@@ -92,13 +97,47 @@ Pilen DataHub → TurboEA visar ett logiskt integrationsflöde via datasetbrygga
 Workern styr urval och körning; API-anrop till TurboEA och den auktoritativa
 registerhanteringen ligger idag i ArchiMesh-servern. Det finns ett gemensamt
 identitetsregister för bryggan och modellimporten. Webbadministrationen används
-för konfiguration, godkännande och uppföljning och är utelämnad ur översiktsbilden.
+för profilval, förhandsvisning, godkännande och uppföljning och är utelämnad ur översiktsbilden.
 
 ArchiMesh använder **Neo4j** för modeller, historik och integrationsmetadata samt
 **Kafka** för distribution av accepterade modellhändelser. Dessa interna
 komponenter är utelämnade ur översiktsbilden; se den befintliga
 [systemkontexten](manual/diagrams/system-context.mmd). DataHubs egna interna
 lagrings- och meddelandetjänster är separata.
+
+## Visa flödena i en demo
+
+Starta hela den syntetiska miljön med `./scripts/demo.sh up --open` från
+projektroten. Befintlig förberedd miljö återupptas med `./scripts/demo.sh start
+--open`. [Presentatörsguiden](../examples/order-management/DEMO.md) beskriver en
+15–20 minuters demo och vilka ändringar som görs i respektive master.
+
+![Demons sekvens och masterriktningar](diagrams/demo-walkthrough.png)
+
+Sekvensen finns som [Mermaid](diagrams/demo-walkthrough.mmd) och
+[SVG](diagrams/demo-walkthrough.svg). En bra ordning är:
+
+1. Ändra ett datasets **beskrivning i DataHub**. Se samma metadata i TurboEA och
+   i det redan länkade modellelementet i ArchiMesh/Archi. Identiteterna består.
+2. Ändra ett **applikationsnamn i TurboEA**. Se dess DataHub Application uppdateras;
+   Application-kopplingar till dataset bevaras. DataHub är fortsatt master för
+   datasetet och egna Application-fält.
+3. Ändra **funktionens Access-egenskap i Archi**: `demo.accessType`, exempelvis
+   `Read` eller `ReadWrite`. Se ändringen i ArchiMesh HEAD. TurboEA behåller den
+   tidigare godkända projektionen tills en ny tagg har granskats och godkänts.
+4. Kör `./scripts/demo.sh publish` för demon, eller gör granskningen manuellt i
+   administratörens Publication-sida. Se READ/WRITE och belägg för den nya taggen
+   i den särskilda logiska relationen i TurboEA. Diagramlayout och interna
+   funktioner blir inte nya katalogkort; CREATE/DELETE och lineage härleds inte.
+5. Kör publiceringen igen och visa samma kort-/relations-ID. En källändring i
+   HEAD skriver inte om en gammal tagg. Stopp/start behåller miljön och identiteterna.
+
+`./scripts/demo.sh walkthrough` gör en automatisk, återställande masterändring
+på det förlänkade datasetet och verifierar flödet, Application-synken,
+produktupptäckt och upprepad profilpublicering. Den fungerar utan en öppen
+Archi-klient. Archi med installerad plugin visar samma accepterade ändringar.
+CMDB och verkliga verksamhetssystem startas inte: deras avsedda roll visas i
+översikten, medan demon använder fixturedata.
 
 ## Exportera till PNG eller SVG
 
@@ -119,6 +158,10 @@ mmdc -i docs/diagrams/ecosystem-dataflows.mmd -o docs/diagrams/ecosystem-dataflo
 
 # SVG behåller skärpan vid förstoring.
 mmdc -i docs/diagrams/ecosystem-dataflows.mmd -o docs/diagrams/ecosystem-dataflows.svg -b white -w 2400
+
+# Samma export för demons sekvensdiagram.
+mmdc -i docs/diagrams/demo-walkthrough.mmd -o docs/diagrams/demo-walkthrough.png -b white -w 2200 -s 2
+mmdc -i docs/diagrams/demo-walkthrough.mmd -o docs/diagrams/demo-walkthrough.svg -b white -w 2400
 ```
 
 Spara `.mmd` som original och regenerera bilderna efter ändringar. PNG passar
@@ -134,4 +177,5 @@ pixelförlust.
   [taggbaserad publicering](turboea/m3-publication.md),
   [inkommande uppdateringar](turboea/m4-inbound.md) och
   [centrala ändringsbegäranden](turboea/m5-central-edits.md).
+- [Publication Profiles, rättigheter och återställning](publication-profiles.md).
 - [ArchiMesh internarkitektur](../architecture.md).

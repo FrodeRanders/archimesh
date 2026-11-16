@@ -17,6 +17,8 @@ import urllib.request
 
 import local
 import live
+import publication
+import webbrowser
 from turbo_version import VERSION, REVISION, SOURCE_SHA256
 from datahub_local.order_demo import save
 from datahub_local.probe import require, wait_for
@@ -199,6 +201,10 @@ def access(state):
         print("Service sessions are renewed by ./scripts/demo.sh start (demo sessions last one day).",flush=True)
     else:
         print("Turbo EA catalog in Archi: disabled; enable this existing demo with ./scripts/demo.sh enable-live",flush=True)
+    if publication.enabled(state):
+        print("Publication Profiles: enabled — ArchiMesh admin -> Publication; target turboea.",flush=True)
+        print("Publish current HEAD as a reviewed immutable tag: ./scripts/demo.sh publish",flush=True)
+        print("Presenter guide: examples/order-management/DEMO.md",flush=True)
     print("Private access details: " + str(local.directory(state) / "access.json"),flush=True)
     executable = os.environ.get("ARCHI_EXECUTABLE", "/Applications/Archi.app/Contents/MacOS/Archi" if sys.platform == "darwin" else "Archi")
     launch = ["env", "ARCHIMESH_BOOTSTRAP_USER=northstar-demo-admin", "ARCHIMESH_BOOTSTRAP_ROLES=admin",
@@ -221,7 +227,8 @@ def inventory(state):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action",nargs="?",default="up",choices=["up","test","start","status","connection","enable-live","live-test","upgrade","seed","verify","restart","down"])
+    parser.add_argument("action",nargs="?",default="up",choices=["up","test","start","status","connection","enable-live","live-test","enable-publication","publish","publication-status","walkthrough","upgrade","seed","verify","restart","down"])
+    parser.add_argument("--open",action="store_true",help="Open the three demo web UIs after startup")
     parser.add_argument("--run",help="Run ID; defaults to the last up created by this bootstrap")
     parser.add_argument("--volumes",action="store_true",help="Explicitly remove this demo's volumes on down")
     args = parser.parse_args()
@@ -243,19 +250,37 @@ def main():
             if args.action in ("up","test"):
                 build(state)
                 local.up(state,skip_build=True,retain=args.action!="test")
+                publication.configure(state)
                 live.enable(state)
+                publication.prepare(state)
                 inventory(state)
-                if args.action=="test": live.probe(state)
+                if args.action=="test":
+                    publication.master_flow(state)
+                    live.probe(state)
+                    publication.probe(state)
             elif args.action == "start":
                 local.compose(state,"up","-d","neo4j","kafka","turbo-db","turbo","turbo-ui")
                 local.dh.up(local.datahub(state))
                 local.server_start(state)
                 if live.enabled(state): live.enable(state,build=False)
                 local.verify(state)
+                if publication.enabled(state): publication.prepare(state)
             elif args.action == "enable-live":
                 build(state)
                 live.enable(state)
                 inventory(state)
+            elif args.action == "enable-publication":
+                build(state)
+                publication.configure(state)
+                live.enable(state)
+                publication.prepare(state)
+                inventory(state)
+            elif args.action == "publish": publication.publish(state)
+            elif args.action == "publication-status": publication.verify(state)
+            elif args.action == "walkthrough":
+                publication.master_flow(state)
+                live.probe(state)
+                publication.probe(state)
             elif args.action == "live-test": live.probe(state)
             elif args.action == "upgrade":
                 import upgrade
@@ -264,7 +289,9 @@ def main():
             elif args.action == "seed":
                 local.seed(state)
                 local.verify(state)
-            elif args.action == "verify": local.verify(state)
+            elif args.action == "verify":
+                local.verify(state)
+                if publication.enabled(state): publication.verify(state)
             elif args.action == "down": local.down(state,args.volumes)
             elif args.action == "status":
                 print(local.compose(state,"ps").stdout)
@@ -279,9 +306,13 @@ def main():
                 local.server_start(state)
                 if live.enabled(state): live.enable(state,build=False)
                 local.verify(state,"after-restart")
+                if publication.enabled(state): publication.verify(state)
             if args.action not in ("down","status"):
                 verify_pages(state)
-                if args.action!="test": access(state)
+                if args.action!="test":
+                    access(state)
+                    if args.open:
+                        for url in json.loads((local.directory(state)/"access.json").read_text())["endpoints"].values(): webbrowser.open(url)
         finally:
             if args.action == "test": local.down(state,volumes=True)
         if args.action=="test": print("Demo test passed; its containers and volumes were removed",flush=True)

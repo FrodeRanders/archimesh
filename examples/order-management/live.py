@@ -23,7 +23,7 @@ MODEL="northstar-order-management-demo-v1"
 def enabled(state): return (local.directory(state)/"live-integration.json").exists()
 
 
-def documents(state,applications=()):
+def documents(state,applications=(),publication_enabled=False):
     owner="archimesh-demo-"+state["run"]; target="turboea-demo-"+state["run"]
     def fields(authority):
         return {"name":{"remoteField":"name","valueType":"STRING","authority":authority},
@@ -75,6 +75,9 @@ def documents(state,applications=()):
             "principals":[PRINCIPAL],"nativeIds":ids,"adoptions":{app["nativeId"]:app["urn"] for app in applications},
             "approved":True,"acceptUnconditionalWriteRisk":True,"approvalVersion":"synthetic-native-application-equivalence-v1"}]
         bridge["applications"]=[{"profile":APPLICATION_PROFILE,"nativeIds":ids}]
+    if publication_enabled:
+        import publication
+        publication.target_configuration(definition)
     return targets,federation,bridge
 
 
@@ -86,7 +89,13 @@ def overlay(state):
         ARCHIMESH_PUBLICATION_WORKER_ENABLED="false",ARCHIMESH_CENTRAL_EDITS_WORKER_ENABLED="false",
         ARCHIMESH_INBOUND_INTERVAL_SECONDS="5",KAFKA_BOOTSTRAP_SERVERS="archimesh-kafka:9092")
     server["env_file"]=[str(directory/"integration-secrets.env")]
-    server["volumes"]=[str(directory/"live"/name)+":/configuration/"+name+":ro" for name in ("targets.json","sources.json")]
+    files=["targets.json","sources.json"]
+    if (directory/"publication-enabled.json").exists():
+        files.append("publication-profiles.json")
+        server["environment"].update(ARCHIMESH_PUBLICATION_PROFILES_ENABLED="true",
+            ARCHIMESH_PUBLICATION_PROFILES_CONFIGURATION="/configuration/publication-profiles.json",
+            ARCHIMESH_PUBLICATION_WORKER_ENABLED="true",ARCHIMESH_PUBLICATION_INTERVAL_SECONDS="5")
+    server["volumes"]=[str(directory/"live"/name)+":/configuration/"+name+":ro" for name in files]
     server["networks"]={"default":{},"datahub":{}}
     document["services"]["kafka"]={"networks":{"default":{"aliases":["archimesh-kafka"]}}}
     document["networks"]={"datahub":{"external":True,"name":local.datahub(state)["project"]+"_default"}}
@@ -126,6 +135,10 @@ def enable(state,*,build=True,resume_operations=False):
     wait_for(lambda:Api(local.datahub(state),"datahub").request("GET","/health"),
              lambda response:response[0]==200,"DataHub after start/restart",300)
     api=local.turbo_api(state)
+    publication_enabled=(directory/"publication-enabled.json").exists()
+    if publication_enabled:
+        import publication
+        publication.metamodel(api)
     types={item["key"]:item for item in api("GET","/api/v1/metamodel/types")}
     for key,label in ((TYPE,"DataHub Dataset"),(PRODUCT_TYPE,"DataHub Data Product")):
         if key not in types:
@@ -147,7 +160,7 @@ def enable(state,*,build=True,resume_operations=False):
     secret=directory/"integration-secrets.env"
     with open(secret,"w",opener=lambda p,flags:os.open(p,flags,0o600)) as stream:
         stream.write("DEMO_LIVE_TURBO_TOKEN="+login["access_token"]+"\nDEMO_LIVE_DATAHUB_TOKEN="+token+"\nDEMO_LIVE_APPLICATION_TOKEN="+application_token+"\n")
-    for name,body in zip(("targets.json","sources.json","bridge.json"),documents(state,applications)):
+    for name,body in zip(("targets.json","sources.json","bridge.json"),documents(state,applications,publication_enabled)):
         local.save(config/name,body); (config/name).chmod(0o644)  # Non-secret config read by unprivileged containers.
     if build:
         with (directory/"build.log").open("a") as log:

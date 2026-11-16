@@ -188,3 +188,21 @@ These scripts are the supported release gate entrypoints. [The sanity checklist]
 | [docs/manual/](docs/manual/archimesh-manual.pdf) | Illustrated project manual, LaTeX/Mermaid sources, and [build instructions](docs/manual/README.md). |
 
 This project was created using Codex, but the process has been highly iterative with a lot of trials, fails and sequential human decisions. I would not have been able to make progress like this without my Codex "team", but I have been along the whole trip.
+
+
+## Run the full local integration demo
+
+With Docker Compose (about 16 GB for Docker) and Python 3:
+
+```bash
+./scripts/demo.sh up --open
+```
+
+This builds/starts DataHub OSS, Turbo EA, ArchiMesh/admin UI and their dedicated
+infrastructure, seeds Northstar examples, enables both federation directions,
+links a dataset/product into the shared model, and publishes the pinned logical
+READ/WRITE profile. Use `./scripts/demo.sh start --open` to resume the same run.
+See the [presenter walkthrough](examples/order-management/DEMO.md) for edits in
+DataHub, Turbo EA and Archi and the [updated system diagram](docs/ecosystem-dataflows.md).
+`./scripts/demo.sh walkthrough` verifies real master edits and observed propagation;
+`./scripts/demo.sh down` stops the demo while retaining its data.

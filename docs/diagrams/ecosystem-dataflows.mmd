@@ -5,17 +5,17 @@
 flowchart LR
     SRC["Datakällor och pipelines<br/>Databaser, datalager, ETL och BI"]
     CMDB[("CMDB och leveransinformation<br/>Konfigurationsobjekt och driftsättningar")]
-    DH["DataHub OSS<br/><b>MASTER: dataset och dataprodukter</b><br/>Application från TurboEA<br/>Kopplar applikationer till data"]
+    DH["DataHub OSS<br/><b>MASTER: dataset och dataprodukter</b><br/>Application från TurboEA<br/>Schema, ägarskap och teknisk lineage<br/>Kopplar applikationer till data"]
     TE["TurboEA<br/><b>MASTER: applikationer</b><br/>Förmågor och arkitekturrelationer"]
-    AM["ArchiMesh<br/>Gemensamma modeller och historik<br/>Integrations-API och identitetsregister"]
+    AM["ArchiMesh<br/>MASTER: formella modeller och historik<br/>Publication Profiles och modellbidrag<br/>Integrations-API och identitetsregister"]
     AR["Archi + ArchiMesh-plugin<br/>Modellering, vyer och layout"]
 
     SRC -.->|"FÖRSLAG: metadataingest"| DH
     CMDB -.->|"AVSEDD KOPPLING:<br/>applikationsunderlag"| TE
     DH -->|"Dataset och dataprodukter<br/>Metadata via bryggan"| TE
     TE -->|"Synka Application<br/>Identitet och utvalda fält"| DH
-    TE -->|"Katalogimport och uppdatering<br/>av länkade modellelement"| AM
-    AM -->|"Godkänd publicering från tagg<br/>eller begärd central ändring"| TE
+    TE -->|"Katalogimport och uppdatering<br/>av länkade HEAD-modellelement"| AM
+    AM -->|"Publication Profiles från godkänd TAG<br/>Direkt urval + härledd READ / WRITE<br/>Central ändring kräver separat godkännande"| TE
     DH -.->|"PLANERAT: direktimport<br/>och modelluppdatering"| AM
     AR -->|"Modelländringar och<br/>integrationsbegäran"| AM
     AM -->|"Utcheckning och<br/>accepterade ändringar"| AR

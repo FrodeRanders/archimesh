@@ -1,5 +1,50 @@
 # Local demo validation
 
+## 2026-11-16 complete Publication Profiles workshop
+
+Run `cf3a854e0312` was created from this workspace with `./scripts/demo.sh up`.
+Docker built the current ArchiMesh/admin UI and pinned Turbo EA 2.203.2; DataHub
+OSS v1.8.0 and the dedicated Neo4j/Kafka stack started successfully. The run is
+retained for presentation, with dynamic loopback URLs in its `access.json`.
+
+The bootstrap installed the custom logical-access metamodel and immutable
+Northstar profile, reused seven exact existing endpoint cards via normal link
+and baseline-review APIs, imported the order-header dataset and Order Book
+product, and published six logical READ/WRITE assertions from tag
+`demo-publication-r196`. No endpoint cards were created by the profile; the seeded
+CRUD edges were retained separately.
+
+`./scripts/demo.sh walkthrough --run cf3a854e0312` passed after correcting
+restoration of a previously absent curated description: an explicit empty
+curated value overrides the ingested description, so restoration must preserve
+the original displayed text. The successful walkthrough verified:
+
+- DataHub curated description -> Turbo EA -> already-linked HEAD model, then
+  restoration through the same source/workers; stable identities and unchanged
+  historical tag.
+- Post-start dataset discovery/import/update/reversion and bridge worker restart.
+- Turbo EA Application rename/reversion in DataHub, preserved local fields and
+  data associations, blocked mirror drift and denied dataset writes by the
+  application-only principal.
+- New DataHub product discovery/update, with unchanged native/canonical IDs.
+- Explicit reviewed publication at tag `demo-publication-r205`, followed by
+  repeated publication with the same six remote assertion IDs.
+
+`./scripts/demo.sh restart --run cf3a854e0312` and `verify` passed without reseeding.
+All six profile relations, catalog links, model history and graph/commit integrity
+survived restart and service-session renewal. Twenty-three example/bootstrap/
+configuration tests passed. Mermaid overview and demo sequence were rendered to
+SVG/PNG with CLI 11.12.0 and visually inspected.
+
+Evidence: `/tmp/archimesh-demo-{full,walkthrough-verified,restart,verify,unit}.log`
+and `.run/order-management/cf3a854e0312/artifacts/` (`master-edit-demo.json`,
+`live-integration-probe.json`, `publication-preview.json`,
+`publication-verification.json`, `publication-probe.json`, `after-restart.json`).
+Only synthetic demo data was edited. Desktop Archi interaction and browser login
+were not automated by these API checks; the presenter guide explains the optional
+client and the exact custom Access property to edit.
+
+
 ## 2026-11-16 two-direction federation
 
 `./scripts/demo.sh test` passed run `d3bfde98538b` against actual DataHub OSS

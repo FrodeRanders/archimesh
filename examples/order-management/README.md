@@ -46,6 +46,30 @@ its separate DrawIO distribution is omitted from this compact demo image. Archi
 models and the synthesized view are supplied separately above. Archi desktop is an
 optional client, not installed by the script.
 
+## Publication Profiles and the presenter walkthrough
+
+For a 15–20 minute demonstration combining edits in DataHub/Turbo EA with changes
+in Archi and approved architectural publication, follow [DEMO.md](DEMO.md).
+New `up` runs now prepare that entire workshop, including a pinned profile, the
+custom READ/WRITE relation metamodel, registry-backed links to existing endpoint
+cards, and pre-imported dataset/product occurrences. Six derived logical access
+relations are published from an approved immutable tag without altering the
+seeded enterprise CRUD relations.
+
+```bash
+./scripts/demo.sh up --open       # all services, fixtures, live bridges and profiles
+./scripts/demo.sh walkthrough     # change/observe/restore in the real master APIs
+./scripts/demo.sh publish         # review current HEAD as a new immutable tag
+./scripts/demo.sh publication-status
+```
+
+The automated walkthrough edits the already-linked dataset in DataHub, checks
+Turbo EA/model propagation and tag immutability, then restores its description.
+It also verifies application/product flows and stable IDs on repeat publication.
+`publish` performs preview/approval/queueing only for the dedicated synthetic demo;
+the server's ordinary defaults remain unchanged. Existing stopped runs use
+`start --open`; existing live-only runs can opt in with `enable-publication`.
+
 ## Upgrade an existing demo
 
 The reviewed source pin is Turbo EA **2.203.2**, commit
@@ -130,7 +154,7 @@ and does not load the demo model or configure a Turbo EA catalog.
 
 The plugin fetches the central snapshot into a server-backed model and connects
 for subsequent updates. HEAD is writable; a named tag opens a read-only snapshot.
-The demo model has no diagrams: expand its Application, Relations and Technology
+The initial demo model has no diagrams: expand its Application, Relations and Technology
 folders to inspect its semantic content. A local file with the same content is
 not automatically associated with this server timeline.
 
@@ -169,7 +193,7 @@ Neither directory is committed or mounted from an agency/home credential directo
 | System | Demo content | Authority represented |
 | --- | --- | --- |
 | DataHub OSS v1.8.0 | 9 datasets with field schemas; 3 data products; Trade domain; 3 synthetic team principals; ownership; dataset lineage; 6 application references | Catalog metadata belongs to DataHub. Application names, descriptions and native source IDs are read back from Turbo EA before projecting them. |
-| Turbo EA 2.203.2 | 6 applications (2 in-house, 4 COTS), 6 logical data objects, 6 infrastructure services; 15 CRUD and 12 infrastructure relations | Enterprise applications, architectural access and infrastructure dependencies belong to Turbo EA. |
+| Turbo EA 2.203.2 | 6 applications (2 in-house, 4 COTS), 6 logical data objects, 6 infrastructure services; 15 seeded CRUD and 12 infrastructure relations; 6 separately derived logical READ/WRITE relations | Enterprise application fields and seeded facts belong to Turbo EA; profile usage assertions retain ArchiMesh evidence. |
 | Archi/ArchiMesh | 26 elements, 49 relationships; 6 order-management functions, 2 application services; assignments, functional flows, access, realization, serving and deployment associations | Model occurrences and formal relationships belong to Archi/ArchiMesh. The source model contains **no views**. |
 
 The datasets cover customer accounts, product prices, order headers and lines,
@@ -369,11 +393,11 @@ an exact-URN policy. These scopes do not establish production disclosure or
 least-privilege controls. Use `./scripts/demo.sh connection` for current addresses
 and credential file locations; ports vary by run.
 
-Continuous data-product publication and the reverse Turbo EA → DataHub application
-lane remain outstanding. The seeded applications/products are still fixture data.
-Ordinary model publication is separately disabled in this demo; when configured,
-it requires an explicitly approved immutable tag. Central field proposals retain
-their separate approval flow.
+Dataset/product publication and Turbo EA → DataHub Application synchronization
+are live in the prepared demo. New runs also enable the bounded Northstar
+Publication Profile and its explicit TAG approval. An ordinary HEAD edit does not
+change the approved architecture projection until `publish` or the equivalent
+manual review. Central field proposals retain their separate approval flow.
 
 ## Module boundary
 

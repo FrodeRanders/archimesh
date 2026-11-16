@@ -210,28 +210,41 @@ def verify(state, label="verification"):
     fixture = json.loads((out / "metadata.json").read_text())
     journal = json.loads((directory(state) / "turbo-journal.json").read_text())
     api = turbo_api(state)
+    publication_file=directory(state)/"publication-demo.json"
+    if publication_file.exists():
+        # In the workshop, names are editable in their master; IDs/types and seeded relations remain checked.
+        fixture=json.loads(json.dumps(fixture))
+        for group in ("applications","logicalData","infrastructure"):
+            for item in fixture[group]: item["name"]=api("GET","/api/v1/cards/"+journal["bindings"][group+":"+item["id"]])["name"]
     apps = turbo_verify(api,fixture,journal)
     cards = len(fixture["applications"]) + len(fixture["logicalData"]) + len(fixture["infrastructure"])
     expected_aspects=aspects(fixture,apps,state["project"])
     if live_enabled:
         # Dataset names/descriptions are now intentionally editable at the original source.
-        expected_aspects=[record for record in expected_aspects if not (record[0].startswith("urn:li:dataset:") and record[1]=="datasetProperties")]
+        expected_aspects=[record for record in expected_aspects if not ((record[0].startswith("urn:li:dataset:") and record[1]=="datasetProperties" or record[0].startswith("urn:li:dataProduct:") and record[1]=="dataProductProperties"))]
     report = {"run":state["run"],"turbo":{"cards":cards,
               "relations":len(journal["bindings"]) - cards}, "datahub":datahub_verify(datahub(state),expected_aspects)}
     expected = json.loads((out / "archimesh-model.json").read_text())
     model = expected["model"]["modelId"]
     exported = archimesh(state,"GET","/admin/models/" + model + "/export")
+    linked={b["elementId"]:b["cardId"] for b in json.loads(publication_file.read_text())["bindings"]} if publication_file.exists() else {}
     for key in ("elements","relationships"):
         actual = {e["id"]:e for e in exported["snapshot"][key]}
         wanted = expected["snapshot"][key]
         require((len(actual)>=len(wanted) if live_enabled else len(actual)==len(wanted)), "ArchiMesh " + key + " count")
         for item in wanted:
-            require(all(actual[item["id"]].get(k) == v for k,v in item.items() if k != "accessType"), "ArchiMesh " + key + " semantic readback")
+            expected_item=dict(item)
+            if key=="elements" and item["id"] in linked:
+                master=api("GET","/api/v1/cards/"+linked[item["id"]])
+                expected_item.update(name=master["name"],documentation=master.get("description") or "")
+            require(all(actual[item["id"]].get(k) == v for k,v in expected_item.items() if k != "accessType"), "ArchiMesh " + key + " semantic readback")
     require((exported["model"]["headRevision"]>=expected["model"]["headRevision"] if live_enabled else exported["model"]["headRevision"]==expected["model"]["headRevision"]), "full ArchiMesh revision history")
     require(exported["opBatches"][:len(expected["opBatches"])] == expected["opBatches"] if live_enabled else exported["opBatches"]==expected["opBatches"], "persisted operations and causal metadata")
     wanted_properties = [op for op in expected["opBatches"][0]["ops"] if op["type"] == "SetProperty"]
     for op in wanted_properties:
-        require(op in exported["snapshot"]["propertyState"], "persisted demo access annotation")
+        if publication_file.exists():
+            require(any(p.get("type")=="SetProperty" and p.get("targetId")==op["targetId"] and p.get("key")==op["key"] for p in exported["snapshot"]["propertyState"]),"persisted editable demo access annotation")
+        else: require(op in exported["snapshot"]["propertyState"], "persisted demo access annotation")
     if not live_enabled: require(not exported["snapshot"]["views"], "viewless formal model")
     integrity = archimesh(state,"GET","/admin/models/" + model + "/integrity")
     require(integrity["ok"], "ArchiMesh graph integrity")
