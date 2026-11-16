@@ -60,12 +60,19 @@ public class DatasetProjectionTestResource extends PublicationTestResource {
             var type=catalog.putObject("types").putObject("dataset").put("semanticKind","catalog.dataset").put("archimateType","ApplicationComponent");
             var selected=type.putObject("fields"); selected.putObject("name").put("aspect","datasetProperties").put("path","/name");
             selected.putObject("documentation").put("aspect","datasetProperties").put("path","/description");
+            var product=type.deepCopy().put("semanticKind","catalog.data-product");
+            ((ObjectNode)product.path("fields").path("name")).put("aspect","dataProductProperties");
+            ((ObjectNode)product.path("fields").path("documentation")).put("aspect","dataProductProperties");
+            ((ObjectNode)catalog.path("types")).set("dataProduct",product);
             var grant=root.putArray("grants").addObject().put("principal","bridge").put("requiredRole","federation_bridge");
             grant.putArray("operations").add("READ"); grant.putObject("resources").putArray("catalog").add("urn:li:dataset:(urn:li:dataPlatform:postgres,test,DEV)");
             var profile=root.putArray("projections").addObject().put("key","datasets").put("sourceKey","catalog").put("externalType","dataset")
                 .put("targetKey","fixture").put("targetType","Application").put("approved",true).put("acceptUnconditionalWriteRisk",true).put("approvalVersion","test-v1");
             profile.putArray("principals").add("bridge"); profile.putArray("nativePrefixes").add("urn:li:dataset:(");
             profile.putArray("descriptionFields").add("documentation");
+            var productProfile=profile.deepCopy().put("key","products").put("externalType","dataProduct");
+            productProfile.putArray("nativePrefixes").add("urn:li:dataProduct:");
+            ((ArrayNode)root.path("projections")).add(productProfile);
             configuration=Files.createTempFile("dataset-projection-",".json"); Files.writeString(configuration,root.toString());
             result.put("app.federation.enabled","true"); result.put("app.federation.configuration",configuration.toString());
             result.put("app.integrations.inbound.worker-enabled","false");

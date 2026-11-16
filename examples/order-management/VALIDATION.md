@@ -1,4 +1,26 @@
-# Local demo validation — 2026-11-12
+# Local demo validation
+
+## 2026-11-16 two-direction federation
+
+`./scripts/demo.sh test` passed run `d3bfde98538b` against actual DataHub OSS
+v1.8.0 and TurboEA 2.203.2. It verified new dataset discovery/import/update/revert,
+native Application adoption, TurboEA name changes and reversion in DataHub,
+preserved local fields and dataset associations, blocked mirror drift, denied
+dataset writes by the application-only principal, new product discovery/update,
+worker restarts and a full-stack restart without reseeding. Only this test's
+containers and volumes were removed. Seventeen example tests also passed.
+
+The shared registry/ledger application cases and product projection are covered
+by the full isolated server gate: 363 discovered, 359 passed, zero failures/errors,
+four opt-in skips. See the
+[implementation and evidence](../../integrations/datahub-turboea/docs/application-bridge.md).
+This supersedes the older seed-only Application/product observations below.
+
+The [2026-11-13 Turbo EA 2.203.2 upgrade](../../docs/turboea/upgrade-2.203.2.md)
+adds clean-stack, migration-copy, retained-ID and live bridge evidence.
+The 2.194.0 results below remain the historical baseline.
+
+## 2026-11-12 baseline
 
 ## Clean-checkout Docker bootstrap
 

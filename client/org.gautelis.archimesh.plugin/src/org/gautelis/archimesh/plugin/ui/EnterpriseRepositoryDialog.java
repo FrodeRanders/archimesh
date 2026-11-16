@@ -127,12 +127,12 @@ public final class EnterpriseRepositoryDialog extends TitleAreaDialog {
                     setErrorMessage(error.getMessage()==null ? "The repository request failed." : error.getMessage());
                     if (error instanceof EnterpriseRepositoryClient.RequestFailure denied && denied.status()<500) pending=null;
                 }
-                updateButtons();
+                if (getShell()!=null && !getShell().isDisposed()) updateButtons();
             });
         });
     }
     private void updateButtons() {
-        if (search==null) return;
+        if (search==null || search.isDisposed()) return;
         boolean editable=!busy && pending==null;
         target.setEnabled(editable); type.setEnabled(editable); query.setEnabled(editable); results.setEnabled(editable); existing.setEnabled(editable);
         search.setEnabled(editable && type.getSelectionIndex()>=0); previewButton.setEnabled(editable && results.getSelectionIndex()>=0);

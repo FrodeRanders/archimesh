@@ -8,26 +8,29 @@ import uuid
 from urllib.parse import quote
 
 import local
-from datahub_local.probe import Api, require, wait_for
+from datahub_local.probe import Api, require, wait_for, unwrap
 
 TARGET="turboea"
 TYPE="DataHubDataset"
 PROFILE="datahub-datasets"
 PRINCIPAL="northstar-dataset-bridge"
+APPLICATION_PROFILE="turboea-applications"
+PRODUCT_TYPE="DataHubDataProduct"
+PRODUCT_PROFILE="datahub-products"
 MODEL="northstar-order-management-demo-v1"
 
 
 def enabled(state): return (local.directory(state)/"live-integration.json").exists()
 
 
-def documents(state):
+def documents(state,applications=()):
     owner="archimesh-demo-"+state["run"]; target="turboea-demo-"+state["run"]
     def fields(authority):
         return {"name":{"remoteField":"name","valueType":"STRING","authority":authority},
                 "documentation":{"remoteField":"description","valueType":"STRING","authority":authority}}
     targets={"schemaVersion":1,"instanceId":owner,"operators":["northstar-demo-admin"],"targets":[{
         "key":TARGET,"instanceId":target,"baseUrl":"http://turbo:8000","approvedPlainHttp":True,
-        "tokenEnvironment":"DEMO_LIVE_TURBO_TOKEN","expectedApiVersion":"2.194.0","timeoutMillis":10000,"maxResponseBytes":2097152,
+        "tokenEnvironment":"DEMO_LIVE_TURBO_TOKEN","expectedApiVersion":local.deployed_version(state),"timeoutMillis":10000,"maxResponseBytes":2097152,
         "catalogAccess":{"approved":True,"readers":["northstar-demo-admin"],"importers":["northstar-demo-admin"],
                          "cardTypes":["Application","DataObject",TYPE],"fields":["name","description"]},
         "inboundAccess":{"enabled":True,"administrators":["northstar-demo-admin"],"cardTypes":["Application","DataObject",TYPE],
@@ -51,6 +54,27 @@ def documents(state):
     bridge={"schemaVersion":1,"owner":{"baseUrl":"http://127.0.0.1:8081","bootstrapUser":PRINCIPAL},
             "datahub":{"baseUrl":"http://gms:8080","approvedPlainHttp":True,"tokenEnvironment":"DEMO_LIVE_DATAHUB_TOKEN"},
             "profile":PROFILE,"nativePrefixes":["urn:li:dataset:("],"intervalSeconds":5}
+    definition=targets["targets"][0]
+    definition["mapping"]["cardTypes"][PRODUCT_TYPE]="DataObject"
+    definition["mapping"]["fields"][PRODUCT_TYPE]=fields("DATAHUB_MASTER")
+    for access in ("catalogAccess","inboundAccess"): definition[access]["cardTypes"].append(PRODUCT_TYPE)
+    federation["sources"][0]["types"]["dataProduct"]={"semanticKind":"catalog.data-product","archimateType":"DataObject","fields":{
+        "name":{"aspect":"dataProductProperties","path":"/name"},"documentation":{"aspect":"dataProductProperties","path":"/description"}}}
+    federation["projections"].append({"key":PRODUCT_PROFILE,"sourceKey":"datahub","externalType":"dataProduct","targetKey":TARGET,"targetType":PRODUCT_TYPE,
+        "principals":[PRINCIPAL],"nativePrefixes":["urn:li:dataProduct:"],"descriptionFields":["documentation"],"approved":True,
+        "acceptUnconditionalWriteRisk":True,"approvalVersion":"synthetic-whole-instance-products-v1"})
+    bridge["catalogs"]=[{"datahub":dict(bridge["datahub"]),"externalType":"dataProduct","profile":PRODUCT_PROFILE,"nativePrefixes":["urn:li:dataProduct:"]}]
+    if applications:
+        ids=[app["nativeId"] for app in applications]
+        federation["sources"].append({"key":"ea","repository":{"system":"turboea","instance":target},"turboTargetKey":TARGET,
+            "timeoutMillis":10000,"maxResponseBytes":2097152,"types":{"Application":{"semanticKind":"enterprise.application","archimateType":"ApplicationComponent",
+            "fields":{"name":{"aspect":"card","path":"/name"},"documentation":{"aspect":"card","path":"/description"}}}}})
+        federation["datahubTargets"]=[{"key":"applications","repository":dict(federation["sources"][0]["repository"]),
+            "baseUrl":"http://gms:8080","approvedPlainHttp":True,"tokenEnvironment":"DEMO_LIVE_APPLICATION_TOKEN","timeoutMillis":10000,"maxResponseBytes":2097152}]
+        federation["applicationProjections"]=[{"key":APPLICATION_PROFILE,"sourceKey":"ea","externalType":"Application","targetKey":"applications",
+            "principals":[PRINCIPAL],"nativeIds":ids,"adoptions":{app["nativeId"]:app["urn"] for app in applications},
+            "approved":True,"acceptUnconditionalWriteRisk":True,"approvalVersion":"synthetic-native-application-equivalence-v1"}]
+        bridge["applications"]=[{"profile":APPLICATION_PROFILE,"nativeIds":ids}]
     return targets,federation,bridge
 
 
@@ -89,21 +113,41 @@ def approve_model(state,model):
     wait_for(approve,bool,"inbound policy coordination",60)
 
 
-def enable(state,*,build=True):
+def enable(state,*,build=True,resume_operations=False):
     require(state.get("mode")=="compose","live demo requires containerized run")
     directory=local.directory(state); config=directory/"live"; config.mkdir(exist_ok=True)
+    def turbo_health():
+        try: return local.request_json(state["env"]["DEMO_TURBO_PORT"],"GET","/api/health")
+        except local.ApiError as failure:
+            if failure.status<500: raise
+            return {}
+    expected_version=documents(state)[0]["targets"][0]["expectedApiVersion"]
+    wait_for(turbo_health,lambda health:health.get("version")==expected_version,"TurboEA after start/restart",180)
+    wait_for(lambda:Api(local.datahub(state),"datahub").request("GET","/health"),
+             lambda response:response[0]==200,"DataHub after start/restart",300)
     api=local.turbo_api(state)
     types={item["key"]:item for item in api("GET","/api/v1/metamodel/types")}
-    if TYPE not in types:
-        api("POST","/api/v1/metamodel/types",{"key":TYPE,"label":"DataHub Dataset","description":"Technical datasets whose metadata is authoritative in this demo DataHub instance.",
-                                             "color":"#0277bd","icon":"table_chart","fields_schema":[]})
-    else: require(types[TYPE]["label"]=="DataHub Dataset","compatible dedicated dataset metamodel type")
+    for key,label in ((TYPE,"DataHub Dataset"),(PRODUCT_TYPE,"DataHub Data Product")):
+        if key not in types:
+            api("POST","/api/v1/metamodel/types",{"key":key,"label":label,"description":"DataHub-owned catalog representation in this synthetic demo.",
+                                                 "color":"#0277bd","icon":"table_chart","fields_schema":[]})
+        else: require(types[key]["label"]==label,"compatible dedicated catalog metamodel type")
     login=local.request_json(state["env"]["DEMO_TURBO_PORT"],"POST","/api/v1/auth/login",{"email":state["turboEmail"],"password":state["turboPassword"]})
     token=local.dh.session_token(local.datahub(state),"datahub",lifetime_seconds=86400)
+    fixture=json.loads((directory/"artifacts/metadata.json").read_text())
+    journal=json.loads((directory/"turbo-journal.json").read_text())
+    applications=[{"nativeId":journal["bindings"]["applications:"+app["id"]],"urn":app["urn"]} for app in fixture["applications"]]
+    writer="northstar-application-writer"; admin=Api(local.datahub(state),"datahub")
+    require(admin.upsert("urn:li:corpuser:"+writer,"corpUserInfo",{"active":True,"displayName":"Synthetic application projection writer"})[0]<300,"create scoped demo writer")
+    policy={"displayName":"Northstar application projections","description":"Only reviewed synthetic application representations", "type":"METADATA","state":"ACTIVE",
+        "actors":{"users":["urn:li:corpuser:"+writer]},"privileges":["VIEW_ENTITY_PAGE","GET_ENTITY_PRIVILEGE","EDIT_ENTITY"],
+        "resources":{"filter":{"criteria":[{"field":"URN","condition":"EQUALS","values":[app["urn"] for app in applications]}]}}}
+    require(admin.upsert("urn:li:dataHubPolicy:northstar-application-writer","dataHubPolicyInfo",policy)[0]<300,"scope demo application writer")
+    application_token=local.dh.session_token(local.datahub(state),writer,lifetime_seconds=86400)
     secret=directory/"integration-secrets.env"
     with open(secret,"w",opener=lambda p,flags:os.open(p,flags,0o600)) as stream:
-        stream.write("DEMO_LIVE_TURBO_TOKEN="+login["access_token"]+"\nDEMO_LIVE_DATAHUB_TOKEN="+token+"\n")
-    for name,body in zip(("targets.json","sources.json","bridge.json"),documents(state)):
+        stream.write("DEMO_LIVE_TURBO_TOKEN="+login["access_token"]+"\nDEMO_LIVE_DATAHUB_TOKEN="+token+"\nDEMO_LIVE_APPLICATION_TOKEN="+application_token+"\n")
+    for name,body in zip(("targets.json","sources.json","bridge.json"),documents(state,applications)):
         local.save(config/name,body); (config/name).chmod(0o644)  # Non-secret config read by unprivileged containers.
     if build:
         with (directory/"build.log").open("a") as log:
@@ -118,12 +162,15 @@ def enable(state,*,build=True):
     except RuntimeError:
         local.compose(state,"logs","--no-color","--tail","120","archimesh",check=False)
         raise
+    if resume_operations:
+        reviewed=local.archimesh(state,"POST","/admin/integrations/probe")
+        local.archimesh(state,"POST","/admin/integrations/resume",{"expectedVersion":reviewed["details"]["controlVersion"],"digest":reviewed["digest"]})
     approve_model(state,MODEL)
     local.compose(state,"up","-d","--force-recreate","dataset-bridge")
     local.save(directory/"live-integration.json",{"schemaVersion":1,"profile":PROFILE,"target":TARGET,"datasetType":TYPE,
         "enabled":True,"scope":"All datasets in this synthetic DataHub instance", "credentialsIssuedAt":int(time.time()),
         "credentialRenewal":"./scripts/demo.sh start (regenerates the demo's one-day service sessions)"})
-    print("Live DataHub dataset bridge and Archi Enterprise Repository catalog enabled.",flush=True)
+    print("Live DataHub datasets/products, TurboEA applications and Archi Enterprise Repository catalog enabled.",flush=True)
 
 
 def request(state,method,path,body=None):
@@ -178,6 +225,74 @@ def probe(state):
     require(after["state"]=="VERIFIED" and after["canonicalId"]==imported["canonicalId"] and after["targetId"]==card["id"],"worker restart preserves the same target/canonical")
     report={"modelId":model,"datahubUrn":urn,"turboNativeId":card["id"],"canonicalId":imported["canonicalId"],"elementId":imported["elementId"],
             "postStartDiscovery":True,"sourceUpdate":True,"sourceReversion":True,"repeatImport":True,"workerRestart":True}
+    report["applications"]=probe_applications(state)
+    report["products"]=probe_products(state)
     local.save(local.directory(state)/"artifacts/live-integration-probe.json",report)
     print(json.dumps(report,indent=2),flush=True)
     return report
+
+
+def probe_applications(state):
+    """Real TurboEA source, native OSS Application target, preserved data links and application-only credentials."""
+    directory=local.directory(state); fixture=json.loads((directory/"artifacts/metadata.json").read_text())
+    journal=json.loads((directory/"turbo-journal.json").read_text()); app=fixture["applications"][0]
+    native_id=journal["bindings"]["applications:"+app["id"]]; urn=app["urn"]
+    api=local.turbo_api(state); catalog=Api(local.datahub(state),"datahub")
+    original=api("GET","/api/v1/cards/"+native_id)
+    source={"profile":APPLICATION_PROFILE,"nativeId":native_id,"correlation":str(uuid.uuid4())}
+    def verified():
+        try: return request(state,"POST","/federation/v1/application-projections/prepare",source)
+        except local.ApiError as error:
+            if error.code not in ("SOURCE_AUTHORIZATION","SOURCE_TRANSIENT","SOURCE_RATE_LIMIT"): raise
+            return {"state":"WAITING"}
+    plan=wait_for(verified,lambda p:p["state"]=="VERIFIED","reviewed native Application adoption",240)
+    require(plan["targetId"]==urn,"existing DataHub Application URN retained")
+    _,before=catalog.aspect(urn,"applicationProperties"); before=unwrap(before)
+    dataset=fixture["datasets"][0]["urn"]
+    _,association=catalog.aspect(dataset,"applications"); association=unwrap(association)
+    before.setdefault("customProperties",{})["local.liveProbe"]="preserve"
+    require(catalog.upsert(urn,"applicationProperties",before)[0]<300,"local Application field")
+    changed=original["name"]+" (live application sync)"
+    try:
+        api("PATCH","/api/v1/cards/"+native_id,{"name":changed})
+        _,actual=wait_for(lambda:catalog.aspect(urn,"applicationProperties"),
+            lambda r:r[0]==200 and unwrap(r[1]).get("name")==changed,"TurboEA rename in native DataHub Application",240)
+        require(unwrap(actual)["customProperties"]["local.liveProbe"]=="preserve","unowned Application metadata preserved")
+        _,after_association=catalog.aspect(dataset,"applications")
+        require(unwrap(after_association)==association,"application-to-dataset association preserved")
+        # A changed mirror must block, even while the original source has not changed.
+        drift=unwrap(actual); drift["name"]="Manual mirror drift"
+        require(catalog.upsert(urn,"applicationProperties",drift)[0]<300,"synthetic Application drift")
+        try:
+            verified(); raise RuntimeError("Application drift was not blocked")
+        except local.ApiError as error: require(error.code=="APPLICATION_TARGET_DRIFT_OR_REMOVED","mirror drift detected")
+        drift["name"]=changed; require(catalog.upsert(urn,"applicationProperties",drift)[0]<300,"restore mirror baseline")
+        writer=Api(local.datahub(state),"northstar-application-writer")
+        require(writer.upsert(dataset,"datasetProperties",{"name":"FORBIDDEN APPLICATION WRITER"})[0]==403,"application writer cannot edit dataset metadata")
+    finally:
+        api("PATCH","/api/v1/cards/"+native_id,{"name":original["name"]})
+    wait_for(lambda:catalog.aspect(urn,"applicationProperties"),lambda r:r[0]==200 and unwrap(r[1]).get("name")==original["name"],"Application source-name reversion",240)
+    after=wait_for(verified,lambda p:p["state"]=="VERIFIED","verified Application source reversion",240)
+    require(after["canonicalId"]==plan["canonicalId"] and after["targetId"]==urn,"stable Application identity")
+    local.compose(state,"restart","dataset-bridge")
+    after=wait_for(verified,lambda p:p["state"]=="VERIFIED","Application worker restart",120)
+    require(after["canonicalId"]==plan["canonicalId"],"Application restart preserves canonical identity")
+    return {"turboNativeId":native_id,"datahubUrn":urn,"canonicalId":plan["canonicalId"],"sourceRename":True,
+        "sourceReversion":True,"mirrorDriftBlocked":True,"dataAssociationsPreserved":True,"applicationWriterDatasetDenied":True,"workerRestart":True}
+
+
+def probe_products(state):
+    catalog=Api(local.datahub(state),"datahub"); suffix=uuid.uuid4().hex[:10]
+    urn="urn:li:dataProduct:northstar-live-"+suffix; name="Live data product "+suffix
+    require(catalog.upsert(urn,"dataProductProperties",{"name":name,"description":"DataHub-owned product"})[0]<300,"new source data product")
+    require(catalog.upsert(urn,"status",{"removed":False})[0]<300,"new product lifecycle")
+    source={"profile":PRODUCT_PROFILE,"nativeId":urn,"correlation":str(uuid.uuid4())}
+    def verified(): return request(state,"POST","/federation/v1/projections/prepare",source)
+    plan=wait_for(verified,lambda p:p["state"]=="VERIFIED","post-start product discovery and projection",240)
+    native_id=plan["targetId"]; changed=name+" revised"
+    require(catalog.upsert(urn,"dataProductProperties",{"name":changed,"description":"DataHub-owned product"})[0]<300,"product source change")
+    api=local.turbo_api(state)
+    wait_for(lambda:api("GET","/api/v1/cards/"+native_id),lambda card:card["name"]==changed,"product source update in TurboEA",240)
+    after=wait_for(verified,lambda p:p["state"]=="VERIFIED","product readback",120)
+    require(after["targetId"]==native_id and after["canonicalId"]==plan["canonicalId"],"stable product identity")
+    return {"datahubUrn":urn,"turboNativeId":native_id,"canonicalId":plan["canonicalId"],"postStartDiscovery":True,"sourceUpdate":True}

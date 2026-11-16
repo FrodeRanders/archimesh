@@ -18,13 +18,13 @@
       "volumes": ["model_events:/var/lib/redpanda/data"]
     },
     "turbo-db": {
-      "image": "ghcr.io/vincentmakes/turbo-ea/db:m1-local-6d9220e",
+      "image": "ghcr.io/vincentmakes/turbo-ea/db:m1-local-2223d50",
       "environment": {"POSTGRES_DB":"turboea", "POSTGRES_USER":"turboea", "POSTGRES_PASSWORD":"${DEMO_DB_PASSWORD}", "PGDATA":"/var/lib/postgresql/data"},
       "volumes": ["turbo_data:/var/lib/postgresql/data"],
       "healthcheck": {"test":["CMD", "pg_isready", "-U", "turboea"], "interval":"3s", "timeout":"5s", "retries":40}
     },
     "turbo": {
-      "image": "ghcr.io/vincentmakes/turbo-ea/backend:m1-local-6d9220e",
+      "image": "ghcr.io/vincentmakes/turbo-ea/backend:m1-local-2223d50",
       "environment": {
         "POSTGRES_HOST":"turbo-db", "POSTGRES_PORT":"5432", "POSTGRES_DB":"turboea", "POSTGRES_USER":"turboea",
         "POSTGRES_PASSWORD":"${DEMO_DB_PASSWORD}", "SECRET_KEY":"${DEMO_TURBO_SECRET}",

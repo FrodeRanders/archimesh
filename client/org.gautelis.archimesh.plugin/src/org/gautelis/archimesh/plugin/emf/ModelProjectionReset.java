@@ -10,6 +10,7 @@ import com.archimatetool.editor.ui.services.EditorManager;
 import com.archimatetool.model.FolderType;
 import com.archimatetool.model.IArchimateConcept;
 import com.archimatetool.model.IArchimateModel;
+import com.archimatetool.model.IArchimateRelationship;
 import com.archimatetool.model.IDiagramModel;
 import com.archimatetool.model.IFolder;
 
@@ -49,9 +50,14 @@ public final class ModelProjectionReset {
             EcoreUtil.delete(view, true);
         }
 
-        for(EObject concept : concepts) {
+        // Remove relationships from the model before clearing their inverse references.
+        // Otherwise deleting an element leaves live relationships with missing endpoints
+        // and Archi's validation listeners report a broken model during every reset.
+        for(EObject concept : concepts) if(concept instanceof IArchimateRelationship) {
+            EcoreUtil.remove(concept);
             EcoreUtil.delete(concept, true);
         }
+        for(EObject concept : concepts) if(!(concept instanceof IArchimateRelationship)) EcoreUtil.delete(concept, true);
 
         List<IFolder> userFolders = new ArrayList<>();
         for(var iter = model.eAllContents(); iter.hasNext();) {

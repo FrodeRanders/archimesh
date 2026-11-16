@@ -28,6 +28,11 @@ class OwnerTest(unittest.TestCase):
                 self.assertEqual(source.native_id,calls[0][1]["nativeId"])
                 self.assertEqual(calls[1],calls[2]); self.assertEqual({"source","correlation"},set(calls[1][1]))
                 self.assertTrue(all(path.startswith("/federation/v1/") for path,body in calls))
+                client.prepare_application("apps","application-1",correlation)
+                client.execute_application("apps","application-1",correlation,{"intentId":"intent-1","version":1})
+                self.assertEqual("/federation/v1/application-projections/prepare",calls[-2][0])
+                self.assertEqual({"profile","nativeId","correlation"},set(calls[-2][1]))
+                self.assertEqual("/federation/v1/application-projections/execute",calls[-1][0])
             finally: server.shutdown(); worker.join()
 
     def test_unsafe_urls_credentials_and_identifier_rewrites_are_rejected(self):

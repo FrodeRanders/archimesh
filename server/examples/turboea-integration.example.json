@@ -8,7 +8,7 @@
       "instanceId": "turboea-development",
       "baseUrl": "http://localhost:8920",
       "tokenEnvironment": "TURBO_EA_TOKEN",
-      "expectedApiVersion": "2.194.0",
+      "expectedApiVersion": "2.203.2",
       "timeoutMillis": 10000,
       "maxResponseBytes": 2097152,
       "catalogAccess": {

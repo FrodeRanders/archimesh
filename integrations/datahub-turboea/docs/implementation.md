@@ -7,8 +7,10 @@ adds authenticated source dispatch, model-independent registration and local fie
 protection. The [target-intent ledger](d1-target-intents.md) adds durable dispatch
 fences and atomic verified binding. The [dataset slice](dataset-bridge.md) adds
 standing scoped approval, polling, governed target execution and mirror-backed
-ArchiMesh import/refresh. Products, direct DataHub model import and the reverse
-application lane remain pending; this does not complete D2–D4.
+ArchiMesh import/refresh. The [application/product increment](application-bridge.md)
+adds the reverse native Application lane and catalog data-product projections.
+Direct DataHub model import, relationship transfer and broader lifecycle/recovery
+administration remain separate; this does not complete D2–D4.
 
 This project takes responsibility for the DataHub–Turbo EA integration as well
 as integration of both repositories with Archi/ArchiMesh. It extends the

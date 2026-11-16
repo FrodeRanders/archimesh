@@ -25,6 +25,7 @@ class DatasetProjectionIT {
     @Inject org.gautelis.archimesh.service.ArchimeshService models;
     @Inject ExternalObjectCatalogService catalog;
     @Inject ExternalChangeIngestService inbound;
+    @Inject DatasetProjectionService projections;
     private String model;
     @TestHTTPResource URI base;
     @org.eclipse.microprofile.config.inject.ConfigProperty(name="test.projection.source") String source;
@@ -76,6 +77,17 @@ class DatasetProjectionIT {
         control(source,json.createObjectNode().put("name","Order book"));
         var reverted=request(URN); assertEquals(id,execute(reverted,prepare(reverted),200).path("targetId").asText());
         assertEquals(1,control(remote,null).path("cards").size()); assertEquals(3,control(remote,null).path("writes").asInt());
+    }
+    @Test void dataProductKeepsItsOwnIdentityAndVerifiedSourceWhenUsingTheSameTargetCardType() throws Exception {
+        var dataset=request(URN); var a=execute(dataset,prepare(dataset),200);
+        var product=request("urn:li:dataProduct:orders").put("profile","products");
+        var b=execute(product,prepare(product),200);
+        assertNotEquals(a.path("canonicalId"),b.path("canonicalId")); assertNotEquals(a.path("targetId"),b.path("targetId"));
+        var binding=runtime.metadata().identities(runtime.settings().instanceId()).find(new Resource(new Repository("datahub",runtime.settings().instanceId()+"-datahub"),ResourceKind.OBJECT,"urn:li:dataProduct:orders")).orElseThrow();
+        assertEquals("catalog.data-product",binding.canonical().semanticKind());
+        assertEquals(b.path("targetId"),prepare(product).path("targetId"));
+        var card=runtime.connector("fixture").getObject(b.path("targetId").asText());
+        projections.verifyMirror(runtime.settings().targets().getFirst(),card);
     }
     @Test void committedCreateWithLostReplyKeepsDurableUncertaintyAndCannotPostAgain() throws Exception {
         var request=request(URN); var plan=prepare(request); control(remote,json.createObjectNode().put("fault","commit-503"));

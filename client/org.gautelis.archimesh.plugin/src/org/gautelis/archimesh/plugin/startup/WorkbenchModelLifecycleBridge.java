@@ -9,6 +9,7 @@ import org.eclipse.ui.PlatformUI;
 
 import org.gautelis.archimesh.plugin.ArchimeshPlugin;
 import org.gautelis.archimesh.plugin.ws.ArchimeshSessionManager;
+import org.gautelis.archimesh.plugin.emf.RemoteApplyGuard;
 import com.archimatetool.editor.actions.ModelSelectionHandler;
 import com.archimatetool.model.IArchimateModel;
 
@@ -61,6 +62,9 @@ public class WorkbenchModelLifecycleBridge implements IWindowListener, ModelSele
 
     @Override
     public void updateState() {
+        // Closing diagram editors during a snapshot emits transient null selections.
+        // Keep the session attached until the guarded projection rebuild finishes.
+        if(RemoteApplyGuard.isRemoteApply()) return;
         IArchimateModel model = modelSelectionHandler != null ? modelSelectionHandler.getActiveArchimateModel() : null;
 
         if(model == attachedModel) {

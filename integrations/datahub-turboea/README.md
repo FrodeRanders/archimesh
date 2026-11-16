@@ -11,6 +11,10 @@ The [target-intent ledger](docs/d1-target-intents.md) adds durable shared write
 fences, atomic verified binding and quarantined archive recovery.
 The [dataset bridge](docs/dataset-bridge.md) adds bounded polling and approved
 DataHub → Turbo EA dataset projection through the shared registry owner.
+The [application/product increment](docs/application-bridge.md) adds governed
+TurboEA → native DataHub Application synchronization, reviewed existing-URN
+adoption, explicit read-only outcome verification and DataHub data-product
+projections. Both directions share the identity registry and mutation ledger.
 D0 tooling alone does not enable synchronization or change ArchiMesh models.
 The [first D1 increment](docs/d1-contracts.md) adds an independently reusable
 [shared core](../../shared/federation-core/README.md) and ArchiMesh canonical field
@@ -18,6 +22,10 @@ enforcement. The core lives outside this subproject; D0 commands do not build it
 The [durable registry/classification increment](docs/d1-registry-migration.md)
 adds model-independent bindings and reviewed v1/v2 recovery. Application references
 in DataHub derive from Turbo EA; dataset/product projections derive from DataHub.
+
+The optional three-system demo pins Turbo EA 2.203.2. Its database backup and
+scoped migration-trial helper lives in `tools/datahub_local/turbo_upgrade.py`; see
+the [upgrade evidence](../../docs/turboea/upgrade-2.203.2.md).
 
 ## Boundaries
 

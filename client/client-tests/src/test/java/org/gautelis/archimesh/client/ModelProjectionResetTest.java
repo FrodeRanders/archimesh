@@ -57,6 +57,22 @@ class ModelProjectionResetTest {
         }
     }
 
+    @Test void transientEditorSelectionDuringSnapshotDoesNotDetachTheSession() throws Exception {
+        var model=IArchimateFactory.eINSTANCE.createArchimateModel();model.setDefaults();
+        var detaches=new java.util.concurrent.atomic.AtomicInteger();
+        var session=new ArchimeshSessionManager() {
+            @Override public void detachModel() { detaches.incrementAndGet();super.detachModel(); }
+        };
+        var attached=ArchimeshSessionManager.class.getDeclaredField("attachedModel");attached.setAccessible(true);attached.set(session,model);
+        var bridge=new org.gautelis.archimesh.plugin.startup.WorkbenchModelLifecycleBridge(session);
+        var selected=bridge.getClass().getDeclaredField("attachedModel");selected.setAccessible(true);selected.set(bridge,model);
+        // Closing the active diagram during reset reports a null active model.
+        RemoteApplyGuard.runAsRemoteApply(bridge::updateState);
+        assertEquals(0,detaches.get());assertSame(model,session.getAttachedModel());
+        // A genuine selection change outside remote apply must still detach.
+        bridge.updateState();assertEquals(1,detaches.get());assertNull(session.getAttachedModel());
+    }
+
     @Test void resettingLocalProjectionNeverSubmitsDeletesOrEndpointEdits() {
         var model = IArchimateFactory.eINSTANCE.createArchimateModel();
         var application = IArchimateFactory.eINSTANCE.createFolder();
@@ -68,6 +84,15 @@ class ModelProjectionResetTest {
         application.getElements().add(source); application.getElements().add(target);
         var relation = IArchimateFactory.eINSTANCE.createAssociationRelationship(); relation.setId("relation");
         relation.setSource(source); relation.setTarget(target); relations.getElements().add(relation);
+        model.eAdapters().add(new org.eclipse.emf.ecore.util.EContentAdapter() {
+            @Override public void notifyChanged(org.eclipse.emf.common.notify.Notification notification) {
+                super.notifyChanged(notification);
+                if(notification.getNotifier() instanceof IArchimateRelationship live
+                        && live.getArchimateModel()==model && notification.getOldValue() instanceof IArchimateElement
+                        && notification.getNewValue()==null)
+                    fail("Reset exposed a relationship with a missing endpoint inside the live model");
+            }
+        });
         List<String> submissions = new ArrayList<>();
         var session = new ArchimeshSessionManager() {
             @Override public String getCurrentModelId() { return "test-model"; }

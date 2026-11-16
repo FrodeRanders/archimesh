@@ -1,0 +1,28 @@
+%%{init: {"theme": "base", "fontFamily": "Arial, Helvetica, sans-serif", "themeVariables": {"fontFamily": "Arial, Helvetica, sans-serif", "fontSize": "17px", "lineColor": "#526277", "primaryTextColor": "#172b3a", "edgeLabelBackground": "#ffffff"}, "flowchart": {"htmlLabels": true, "curve": "linear", "nodeSpacing": 45, "rankSpacing": 70}}}%%
+%% Logisk systemoversikt. Integrations-API och identitetsregister ags idag av ArchiMesh.
+%% Heldragen pil = implementerat flode, efter konfiguration/godkannande.
+%% Streckad pil = planerat flode eller avsedd/foreslagen koppling enligt etiketten.
+flowchart LR
+    SRC["Datakällor och pipelines<br/>Databaser, datalager, ETL och BI"]
+    CMDB[("CMDB och leveransinformation<br/>Konfigurationsobjekt och driftsättningar")]
+    DH["DataHub OSS<br/><b>MASTER: dataset och dataprodukter</b><br/>Application från TurboEA<br/>Kopplar applikationer till data"]
+    TE["TurboEA<br/><b>MASTER: applikationer</b><br/>Förmågor och arkitekturrelationer"]
+    AM["ArchiMesh<br/>Gemensamma modeller och historik<br/>Integrations-API och identitetsregister"]
+    AR["Archi + ArchiMesh-plugin<br/>Modellering, vyer och layout"]
+
+    SRC -.->|"FÖRSLAG: metadataingest"| DH
+    CMDB -.->|"AVSEDD KOPPLING:<br/>applikationsunderlag"| TE
+    DH -->|"Dataset och dataprodukter<br/>Metadata via bryggan"| TE
+    TE -->|"Synka Application<br/>Identitet och utvalda fält"| DH
+    TE -->|"Katalogimport och uppdatering<br/>av länkade modellelement"| AM
+    AM -->|"Godkänd publicering från tagg<br/>eller begärd central ändring"| TE
+    DH -.->|"PLANERAT: direktimport<br/>och modelluppdatering"| AM
+    AR -->|"Modelländringar och<br/>integrationsbegäran"| AM
+    AM -->|"Utcheckning och<br/>accepterade ändringar"| AR
+
+    classDef source fill:#f1f5f9,stroke:#64748b,color:#172b3a
+    classDef catalog fill:#e8f3fc,stroke:#3173a3,color:#172b3a
+    classDef modeling fill:#e7f4ed,stroke:#3d8260,color:#172b3a
+    class SRC,CMDB source
+    class DH,TE catalog
+    class AM,AR modeling

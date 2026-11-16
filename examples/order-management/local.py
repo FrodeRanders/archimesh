@@ -18,6 +18,7 @@ import time
 import uuid
 
 from generate import generate
+from turbo_version import VERSION, deployed_version, images
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
@@ -65,15 +66,13 @@ def initialize(containerized=False):
         while str(candidate) in ports: candidate = dh.free_port()
         ports.add(str(candidate))
         return str(candidate)
-    state = {"run":run,"project":"northstar-demo-" + run,
+    state = {"run":run,"project":"northstar-demo-" + run,"turboVersion":VERSION,
              "env":{"DEMO_DB_PASSWORD":secrets.token_hex(24),"DEMO_TURBO_SECRET":secrets.token_hex(32),
                     "DEMO_BOLT_PORT":port(),"DEMO_KAFKA_PORT":port(),"DEMO_TURBO_PORT":port(),"DEMO_ARCHIMESH_PORT":port()},
              "turboEmail":"demo-admin@northstar.example.org", "turboPassword":"Demo1-" + secrets.token_hex(24)}
     if containerized:
         state["mode"] = "compose"
-        state["env"].update(DEMO_TURBO_UI_PORT=port(),DEMO_ARCHIMESH_IMAGE="northstar-demo-archimesh:" + run,
-            DEMO_TURBO_IMAGE="northstar-demo-turbo-backend:6d9220e",DEMO_TURBO_DB_IMAGE="northstar-demo-turbo-db:6d9220e",
-            DEMO_TURBO_UI_IMAGE="northstar-demo-turbo-ui:6d9220e")
+        state["env"].update(DEMO_TURBO_UI_PORT=port(),DEMO_ARCHIMESH_IMAGE="northstar-demo-archimesh:" + run,**images())
     save(directory / "state.json", state)
     print("Demo run: " + run, flush=True)
     return state
@@ -174,7 +173,7 @@ def server_stop(state):
 def turbo_api(state, register=False):
     port = state["env"]["DEMO_TURBO_PORT"]
     health = wait_for(lambda:request_json(port,"GET","/api/health"),lambda r:bool(r),"Turbo EA demo readiness",180)
-    require(health["version"] == "2.194.0", "pinned Turbo EA API version")
+    require(health["version"] == deployed_version(state), "pinned Turbo EA API version")
     endpoint = "register" if register else "login"
     body = {"email":state["turboEmail"],"password":state["turboPassword"]}
     if register: body["display_name"] = "Northstar Demo Administrator"

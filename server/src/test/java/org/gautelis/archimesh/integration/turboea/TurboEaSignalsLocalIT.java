@@ -12,11 +12,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class TurboEaSignalsLocalIT {
     @Test void cookieAuthenticatedSseInvalidatesAfterVerifiedCardPatch() throws Exception {
         Assumptions.assumeTrue("true".equalsIgnoreCase(System.getenv("RUN_TURBO_EA_SIGNAL_IT")));
+        String expectedVersion=System.getenv().getOrDefault("TURBO_EA_EXPECTED_VERSION","2.203.2");
         var json=new ObjectMapper(); var base=URI.create(System.getenv("TURBO_EA_BASE_URL"));
-        try (var client=new TurboEaClient(base,"2.194.0",() -> System.getenv("TURBO_EA_TOKEN"),Duration.ofSeconds(10),2097152,json);
+        try (var client=new TurboEaClient(base,expectedVersion,() -> System.getenv("TURBO_EA_TOKEN"),Duration.ofSeconds(10),2097152,json);
              var stream=new TurboEaSignals(base,() -> System.getenv("TURBO_EA_TOKEN"),json,Duration.ofSeconds(5));
              var worker=Executors.newSingleThreadExecutor()) {
-            assertEquals("2.194.0",client.healthVersion());
+            assertEquals(expectedVersion,client.healthVersion());
             var card=client.createObject(json.createObjectNode().put("type","Application").put("name","M4 synthetic SSE fixture").put("external_id","urn:uuid:"+UUID.randomUUID()).put("strict_attributes",true));
             var ids=new LinkedBlockingQueue<String>();
             var listening=worker.submit(() -> stream.listen(ids::add,Duration.ofSeconds(15)));

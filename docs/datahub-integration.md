@@ -36,5 +36,8 @@ now supplies durable shared mutation lanes and verified completion. Inbound
 baseline policy and governed bridge execution are implemented for the
 [dataset projection slice](../integrations/datahub-turboea/docs/dataset-bridge.md).
 The default local demo enables that slice; broader production rollout and the
-remaining lanes require their own approvals. Application references in DataHub will use Turbo EA as
-their source; datasets/products represented in Turbo EA retain DataHub authority.
+remaining lanes require their own approvals. The
+[application/product increment](../integrations/datahub-turboea/docs/application-bridge.md)
+now implements native DataHub Application synchronization from TurboEA and
+DataHub-owned data-product metadata projections. Both use the same registry and
+target-mutation ledger. Direct DataHub model import remains unimplemented.

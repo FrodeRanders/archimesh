@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "owner": {
+    "baseUrl": "https://archimesh.example.invalid",
+    "tokenEnvironment": "ARCHIMESH_BRIDGE_TOKEN"
+  },
+  "applications": [
+    {
+      "profile": "turboea-applications",
+      "nativeIds": [
+        "replace-with-approved-native-application-card-id"
+      ]
+    }
+  ],
+  "intervalSeconds": 30
+}

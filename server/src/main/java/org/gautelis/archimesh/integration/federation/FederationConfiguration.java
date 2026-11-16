@@ -6,11 +6,42 @@ import org.gautelis.federation.Identity;
 import org.gautelis.federation.Identity.Repository;
 import org.gautelis.federation.http.SourceReader.Field;
 
-/** Separate, explicit source-read/identity scopes. No bridge scheduler or projection jobs. */
+/** Explicit source, identity and separately approved target scopes; scheduling stays in the bridge. */
 public record FederationConfiguration(int schemaVersion,String ownerInstanceId,List<Source> sources,List<Grant> grants,
-                                      List<Projection> projections) {
+                                      List<Projection> projections,List<DataHubTarget> datahubTargets,
+                                      List<ApplicationProjection> applicationProjections) {
     public FederationConfiguration(int schemaVersion,String owner,List<Source> sources,List<Grant> grants) {
-        this(schemaVersion,owner,sources,grants,List.of());
+        this(schemaVersion,owner,sources,grants,List.of(),List.of(),List.of());
+    }
+    public FederationConfiguration(int schemaVersion,String owner,List<Source> sources,List<Grant> grants,List<Projection> projections) {
+        this(schemaVersion,owner,sources,grants,projections,List.of(),List.of());
+    }
+    /** Separate application writer credential; never reuse the DataHub dataset-reader credential. */
+    public record DataHubTarget(String key,Repository repository,URI baseUrl,String tokenEnvironment,
+                                int timeoutMillis,int maxResponseBytes,boolean approvedPlainHttp) {
+        public DataHubTarget {
+            Identity.text(key,128); Objects.requireNonNull(repository);
+            if(!repository.system().equals("datahub") || baseUrl==null || tokenEnvironment==null
+                    || !tokenEnvironment.matches("[A-Z][A-Z0-9_]{0,127}") || timeoutMillis<1 || timeoutMillis>120000
+                    || maxResponseBytes<1024 || maxResponseBytes>16_777_216) throw new IllegalArgumentException("Invalid DataHub application target");
+        }
+    }
+    public record ApplicationProjection(String key,String sourceKey,String externalType,String targetKey,
+                                         Set<String> principals,Set<String> nativeIds,Map<String,String> adoptions,
+                                         String lifecycleField,boolean approved,boolean acceptUnconditionalWriteRisk,
+                                         String approvalVersion) {
+        public ApplicationProjection {
+            for(String value:List.of(key,sourceKey,externalType,targetKey,approvalVersion)) Identity.text(value,128);
+            principals=Set.copyOf(principals); nativeIds=Set.copyOf(nativeIds);
+            adoptions=adoptions==null ? Map.of() : Map.copyOf(adoptions);
+            if(principals.isEmpty() || principals.size()>32 || nativeIds.isEmpty() || nativeIds.size()>256
+                    || !nativeIds.containsAll(adoptions.keySet()) || new HashSet<>(adoptions.values()).size()!=adoptions.size())
+                throw new IllegalArgumentException("Explicit bounded application scope required");
+            principals.forEach(p -> Identity.text(p,256)); nativeIds.forEach(id -> Identity.text(id,8192));
+            adoptions.values().forEach(urn -> { Identity.text(urn,8192); if(!urn.startsWith("urn:li:application:")
+                || urn.length()=="urn:li:application:".length()) throw new IllegalArgumentException("Application URN required"); });
+            if(lifecycleField!=null) Identity.text(lifecycleField,512);
+        }
     }
     /** Reviewed standing approval for a bounded source type/audience and its owned target fields. */
     public record Projection(String key,String sourceKey,String externalType,String targetKey,String targetType,
@@ -20,11 +51,12 @@ public record FederationConfiguration(int schemaVersion,String ownerInstanceId,L
             for(String value:List.of(key,sourceKey,externalType,targetKey,targetType,approvalVersion)) Identity.text(value,128);
             principals=Set.copyOf(principals); nativePrefixes=Set.copyOf(nativePrefixes);
             descriptionFields=descriptionFields==null ? List.of("documentation") : List.copyOf(descriptionFields);
-            if(!externalType.equals("dataset") || principals.isEmpty() || principals.size()>32
+            if(!Set.of("dataset","dataProduct").contains(externalType) || principals.isEmpty() || principals.size()>32
                     || nativePrefixes.isEmpty() || nativePrefixes.size()>32 || descriptionFields.isEmpty() || descriptionFields.size()>4)
-                throw new IllegalArgumentException("Explicit bounded dataset projection scope required");
+                throw new IllegalArgumentException("Explicit bounded dataset/product projection scope required");
             principals.forEach(p -> Identity.text(p,256));
-            nativePrefixes.forEach(p -> { Identity.text(p,2048); if(!p.startsWith("urn:li:dataset:(")) throw new IllegalArgumentException("Dataset URN prefix required"); });
+            String urnPrefix=externalType.equals("dataset") ? "urn:li:dataset:(" : "urn:li:dataProduct:";
+            nativePrefixes.forEach(p -> { Identity.text(p,2048); if(!p.startsWith(urnPrefix)) throw new IllegalArgumentException("Matching dataset/product URN prefix required"); });
         }
     }
     public enum Operation { READ, REGISTER_SOURCE }
@@ -63,6 +95,9 @@ public record FederationConfiguration(int schemaVersion,String ownerInstanceId,L
     public FederationConfiguration {
         Identity.text(ownerInstanceId,512); sources=List.copyOf(sources); grants=List.copyOf(grants);
         projections=projections==null ? List.of() : List.copyOf(projections);
+        datahubTargets=datahubTargets==null ? List.of() : List.copyOf(datahubTargets);
+        applicationProjections=applicationProjections==null ? List.of() : List.copyOf(applicationProjections);
+        if(datahubTargets.size()>20 || applicationProjections.size()>64 || projections.size()>64) throw new IllegalArgumentException("Too many projection scopes");
         if (schemaVersion!=1 || sources.isEmpty() || sources.size()>20 || grants.isEmpty() || grants.size()>256) throw new IllegalArgumentException("Invalid federation configuration");
         var keys=new HashSet<String>(); var repositories=new HashSet<Repository>();
         sources.forEach(source -> { if (!keys.add(source.key()) || !repositories.add(source.repository())) throw new IllegalArgumentException("Duplicate source"); });
@@ -74,7 +109,25 @@ public record FederationConfiguration(int schemaVersion,String ownerInstanceId,L
             var source=sources.stream().filter(s -> s.key().equals(projection.sourceKey())).findFirst().orElseThrow();
             var type=source.types().get(projection.externalType());
             if(!source.repository().system().equals("datahub") || type==null || !type.fields().keySet().containsAll(projection.descriptionFields()))
-                throw new IllegalArgumentException("Projection must use configured DataHub dataset fields");
+                throw new IllegalArgumentException("Projection must use configured DataHub dataset/product fields");
+            if(!type.semanticKind().equals(projection.externalType().equals("dataset") ? "catalog.dataset" : "catalog.data-product"))
+                throw new IllegalArgumentException("Dataset and product semantic identities must remain distinct");
+        }
+        var targetKeys=new HashSet<String>(); var targetRepositories=new HashSet<Repository>();
+        for(var target:datahubTargets) if(!targetKeys.add(target.key()) || !targetRepositories.add(target.repository()))
+            throw new IllegalArgumentException("Duplicate DataHub target");
+        for(var projection:applicationProjections) {
+            if(!profiles.add(projection.key()) || !keys.contains(projection.sourceKey()) || !targetKeys.contains(projection.targetKey()))
+                throw new IllegalArgumentException("Unknown or duplicate application projection");
+            var source=sources.stream().filter(s -> s.key().equals(projection.sourceKey())).findFirst().orElseThrow();
+            var type=source.types().get(projection.externalType());
+            if(!source.repository().system().equals("turboea") || type==null || !type.semanticKind().equals("enterprise.application")
+                    || !type.archimateType().equals("ApplicationComponent") || !type.fields().containsKey("documentation")
+                    || projection.lifecycleField()!=null && !type.fields().containsKey(projection.lifecycleField()))
+                throw new IllegalArgumentException("Application projection requires explicit Turbo EA application fields");
+            var target=datahubTargets.stream().filter(t -> t.key().equals(projection.targetKey())).findFirst().orElseThrow();
+            if(sources.stream().anyMatch(s -> s.repository().equals(target.repository()) && target.tokenEnvironment().equals(s.tokenEnvironment())))
+                throw new IllegalArgumentException("Application writer requires a separate credential environment");
         }
     }
 }

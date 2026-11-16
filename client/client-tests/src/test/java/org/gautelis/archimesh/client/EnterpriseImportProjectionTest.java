@@ -56,6 +56,45 @@ class EnterpriseImportProjectionTest {
         assertEquals("Updated central app",((IDiagramModelArchimateObject)second.getChildren().getFirst()).getArchimateElement().getName());
         assertEquals(1,folder.getElements().size()); assertFalse(unguarded.get());
     }
+    @Test void remotelyImportedElementCanBePlacedInTwoViewsWithoutRecreatingOrEditingIt() throws Exception {
+        var model=IArchimateFactory.eINSTANCE.createArchimateModel(); model.setDefaults();
+        var submissions=new java.util.ArrayList<String>();
+        var session=new ArchimeshSessionManager() {
+            @Override public IArchimateModel getAttachedModel() { return model; }
+            @Override public String getCurrentModelId() { return "demo"; }
+            @Override public boolean isConnected() { return true; }
+            @Override public void sendSubmitOps(String json) { submissions.add(json); }
+        };
+        var capture=new EmfChangeCapture(session); model.eAdapters().add(capture);
+        var applier=new RemoteOpApplier(session);
+        try {
+            invokeGuarded(applier,"""
+                {"payload":{"opBatch":{"assignedRevisionRange":{"from":1,"to":3},"ops":[
+                {"type":"CreateElement","element":{"id":"elem:imported","archimateType":"ApplicationComponent","name":"Find stuck orders"}},
+                {"type":"MoveElementToFolder","elementId":"elem:imported","folderId":"folder:root-application"},
+                {"type":"SetProperty","targetId":"elem:imported","key":"archimesh.external.canonicalId","value":"urn:uuid:imported"}
+                ]}}}
+                """);
+            assertTrue(submissions.isEmpty());
+            var element=(IArchimateElement)model.getFolder(FolderType.APPLICATION).getElements().getFirst();
+            for(int i=0;i<2;i++) {
+                var view=IArchimateFactory.eINSTANCE.createArchimateDiagramModel();view.setId("view-"+i);
+                model.getFolder(FolderType.DIAGRAMS).getElements().add(view);
+                submissions.clear();
+                var object=IArchimateFactory.eINSTANCE.createDiagramModelArchimateObject();object.setId("object-"+i);object.setArchimateElement(element);
+                view.getChildren().add(object);
+                assertEquals(1,submissions.size());
+                String payload=SimpleJson.asJsonObject(SimpleJson.readRawField(submissions.getFirst(),"payload"));
+                var ops=SimpleJson.readArrayObjectElements(payload,"ops");
+                assertEquals(1,ops.size(),"Placing a committed object must not emit semantic writes: "+submissions);
+                assertEquals("CreateViewObject",SimpleJson.readStringField(ops.getFirst(),"type"));
+                assertEquals("elem:imported",SimpleJson.readStringField(SimpleJson.asJsonObject(SimpleJson.readRawField(ops.getFirst(),"viewObject")),"representsId"));
+                assertSame(element,object.getArchimateElement());
+            }
+            assertEquals(1,model.getFolder(FolderType.APPLICATION).getElements().size());
+        } finally { model.eAdapters().remove(capture);capture.close(); }
+    }
+
     private void invokeGuarded(RemoteOpApplier apply,String envelope) throws Exception {
         Method method=RemoteOpApplier.class.getDeclaredMethod("applyOp",String.class); method.setAccessible(true);
         String payload=SimpleJson.asJsonObject(SimpleJson.readRawField(envelope,"payload"));

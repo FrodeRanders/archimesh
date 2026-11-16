@@ -70,10 +70,11 @@ service accounts and one-day sessions are for local demonstration. Use
 The acceptance probe creates a dataset after startup, imports it, updates and
 reverts its name, repeats import and restarts the worker while asserting stable IDs.
 
-Remaining scope: continuous data products, Turbo EA applications → DataHub,
-direct DataHub model import, broader lifecycle/reconciliation UX and deployment
-specific least-privilege/disclosure approvals. Seeded products/application references
-do not prove those lanes.
+The [application/product increment](application-bridge.md) now adds continuous
+data-product metadata projections and TurboEA → native DataHub Application sync.
+Remaining scope includes direct DataHub model import, relationship transfer,
+broader lifecycle/reconciliation UX and deployment-specific least-privilege/
+disclosure approvals. Seeded records alone do not prove synchronization.
 
 ## Acceptance evidence — 2026-11-13
 

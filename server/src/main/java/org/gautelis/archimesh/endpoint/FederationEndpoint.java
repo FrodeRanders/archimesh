@@ -14,6 +14,7 @@ import org.gautelis.federation.http.RepositoryFailure;
 public class FederationEndpoint {
     @Inject FederationOwnerService owner;
     @Inject DatasetProjectionService projections;
+    @Inject ApplicationProjectionService applications;
     @Inject AuthorizationService authorization;
     @Context HttpHeaders headers;
     @Context SecurityContext context;
@@ -22,6 +23,9 @@ public class FederationEndpoint {
     @POST @Path("/sources/reserve") public Response reserve(Reservation request) { return invoke(() -> owner.reserve(authorization.currentRestSubject(headers,context),request)); }
     @POST @Path("/projections/prepare") public Response prepare(DatasetProjectionService.Request request) { return invoke(() -> projections.prepare(authorization.currentRestSubject(headers,context),request)); }
     @POST @Path("/projections/execute") public Response execute(DatasetProjectionService.Execution request) { return invoke(() -> projections.execute(authorization.currentRestSubject(headers,context),request)); }
+    @POST @Path("/application-projections/prepare") public Response prepareApplication(ApplicationProjectionService.Request request) { return invoke(() -> applications.prepare(authorization.currentRestSubject(headers,context),request)); }
+    @POST @Path("/application-projections/execute") public Response executeApplication(ApplicationProjectionService.Execution request) { return invoke(() -> applications.execute(authorization.currentRestSubject(headers,context),request)); }
+    @POST @Path("/application-projections/verify-outcome") public Response verifyApplication(ApplicationProjectionService.Execution request) { return invoke(() -> applications.verifyOutcome(authorization.currentRestSubject(headers,context),request)); }
     private Response invoke(Supplier<?> action) {
         try { return Response.ok(action.get()).header("Cache-Control","no-store").build(); }
         catch (PublicationModel.Failure failure) { return error(failure.status(),failure.getMessage()); }

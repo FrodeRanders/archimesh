@@ -17,14 +17,13 @@ import urllib.request
 
 import local
 import live
+from turbo_version import VERSION, REVISION, SOURCE_SHA256
 from datahub_local.order_demo import save
 from datahub_local.probe import require, wait_for
 
 HERE, REPO = local.HERE, local.REPO
 CACHE = REPO / ".run/demo-build"
-REVISION = "6d9220e52d47b41f9d79351ec3233ded1f76fdc6"
 SOURCE_URL = "https://codeload.github.com/vincentmakes/turbo-ea/tar.gz/" + REVISION
-SOURCE_SHA256 = "ae3dc880bda752b5ba11ad21fe87bce271f23aef12f3fc926decda8300347103"
 CURRENT = local.RUNS / "demo-current"
 
 
@@ -63,7 +62,7 @@ def extract_source(archive, destination):
             with source.extractfile(member) as input_, target.open("wb") as output:
                 shutil.copyfileobj(input_,output)
             files[relative] = sha256(target)
-    require((destination / "VERSION").read_text().strip() == "2.194.0","pinned source version")
+    require((destination / "VERSION").read_text().strip() == VERSION,"pinned source version")
     save(destination / "source-manifest.json",{"revision":REVISION,"archiveSha256":SOURCE_SHA256,"files":files})
 
 
@@ -151,7 +150,22 @@ def verify_pages(state):
         wait_for(lambda:page(port,path),lambda r:r[0] == 200 and b"<html" in r[1].lower(),"demo web page " + path,120)
     # Verify the Turbo EA UI's same-origin API proxy, rather than just its HTML shell.
     health = local.request_json(state["env"]["DEMO_TURBO_UI_PORT"],"GET","/api/health")
-    require(health["version"] == "2.194.0","Turbo EA frontend API proxy")
+    require(health["version"] == local.deployed_version(state),"Turbo EA frontend API proxy")
+
+
+def demo_credentials(state,dh_state):
+    # Read the saved run, not a generated default or an in-memory candidate.
+    saved=json.loads((local.directory(state)/"state.json").read_text())
+    turbo={"username":saved["turboEmail"],"password":saved["turboPassword"]}
+    entries={}
+    for line in (Path(dh_state["directory"])/"user.props").read_text().splitlines():
+        if line.lstrip().startswith(("#","!")): continue
+        key,separator,value=line.partition("=")
+        if separator: entries[key.strip()]=value
+    require(bool(entries.get("datahub")),"DataHub demo account in user.props")
+    require(all(isinstance(value,str) and value for value in turbo.values()),"Turbo EA credentials in state.json")
+    return {"archimesh":{"username":"northstar-demo-admin","password":"not used (local bootstrap; roles: admin)"},
+            "turboea":turbo,"datahub":{"username":"datahub","password":entries["datahub"]}}
 
 
 def access(state):
@@ -167,8 +181,13 @@ def access(state):
         "turboCredentials":"state.json", "datahubCredentials":str(Path(dh_state["directory"]) / "user.props"),
         "archimeshBootstrapUser":"northstar-demo-admin","archimeshBootstrapRoles":"admin",
         "archiConnection":archi_connection})
+    credentials=demo_credentials(state,dh_state)
     print("\nDemo connection details — run " + state["run"],flush=True)
-    for name,url in endpoints.items(): print(name + " web UI: " + url,flush=True)
+    for name,url in endpoints.items():
+        print("\n"+name+" web UI: "+url,flush=True)
+        print("  Username: "+credentials[name]["username"],flush=True)
+        print("  Password: "+credentials[name]["password"],flush=True)
+    print("",flush=True)
     print("Archi: Tools -> Open Archimesh Model from Server...",flush=True)
     print("  WebSocket Base URL: " + archi_connection["wsBaseUrl"],flush=True)
     print("  Model: " + model_id + " (HEAD)",flush=True)
@@ -202,7 +221,7 @@ def inventory(state):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action",nargs="?",default="up",choices=["up","test","start","status","connection","enable-live","live-test","seed","verify","restart","down"])
+    parser.add_argument("action",nargs="?",default="up",choices=["up","test","start","status","connection","enable-live","live-test","upgrade","seed","verify","restart","down"])
     parser.add_argument("--run",help="Run ID; defaults to the last up created by this bootstrap")
     parser.add_argument("--volumes",action="store_true",help="Explicitly remove this demo's volumes on down")
     args = parser.parse_args()
@@ -238,6 +257,10 @@ def main():
                 live.enable(state)
                 inventory(state)
             elif args.action == "live-test": live.probe(state)
+            elif args.action == "upgrade":
+                import upgrade
+                upgrade.run(state,build)
+                inventory(state)
             elif args.action == "seed":
                 local.seed(state)
                 local.verify(state)

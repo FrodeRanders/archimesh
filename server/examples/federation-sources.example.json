@@ -4,7 +4,10 @@
   "sources": [
     {
       "key": "catalog",
-      "repository": {"system":"datahub", "instance":"datahub-development"},
+      "repository": {
+        "system": "datahub",
+        "instance": "datahub-development"
+      },
       "turboTargetKey": null,
       "baseUrl": "http://127.0.0.1:18080",
       "tokenEnvironment": "DATAHUB_TOKEN",
@@ -16,23 +19,38 @@
           "semanticKind": "catalog.dataset",
           "archimateType": "DataObject",
           "fields": {
-            "name": {"aspect":"datasetProperties", "path":"/name"},
-            "documentation": {"aspect":"datasetProperties", "path":"/description"}
+            "name": {
+              "aspect": "datasetProperties",
+              "path": "/name"
+            },
+            "documentation": {
+              "aspect": "datasetProperties",
+              "path": "/description"
+            }
           }
         },
         "dataProduct": {
           "semanticKind": "catalog.data-product",
           "archimateType": "BusinessObject",
           "fields": {
-            "name": {"aspect":"dataProductProperties", "path":"/name"},
-            "documentation": {"aspect":"dataProductProperties", "path":"/description"}
+            "name": {
+              "aspect": "dataProductProperties",
+              "path": "/name"
+            },
+            "documentation": {
+              "aspect": "dataProductProperties",
+              "path": "/description"
+            }
           }
         }
       }
     },
     {
       "key": "ea",
-      "repository": {"system":"turboea", "instance":"turboea-development"},
+      "repository": {
+        "system": "turboea",
+        "instance": "turboea-development"
+      },
       "turboTargetKey": "development",
       "baseUrl": null,
       "tokenEnvironment": null,
@@ -44,8 +62,14 @@
           "semanticKind": "enterprise.application",
           "archimateType": "ApplicationComponent",
           "fields": {
-            "name": {"aspect":"card", "path":"/name"},
-            "documentation": {"aspect":"card", "path":"/description"}
+            "name": {
+              "aspect": "card",
+              "path": "/name"
+            },
+            "documentation": {
+              "aspect": "card",
+              "path": "/description"
+            }
           }
         }
       }
@@ -55,14 +79,51 @@
     {
       "principal": "catalog-bridge",
       "requiredRole": "federation_bridge",
-      "operations": ["READ", "REGISTER_SOURCE"],
+      "operations": [
+        "READ",
+        "REGISTER_SOURCE"
+      ],
       "resources": {
         "catalog": [
           "urn:li:dataset:(urn:li:dataPlatform:postgres,northstar_demo.oms.sales_order,DEV)",
           "urn:li:dataProduct:northstar-demo-order-book"
         ],
-        "ea": ["replace-with-approved-native-application-card-id"]
+        "ea": [
+          "replace-with-approved-native-application-card-id"
+        ]
       }
+    }
+  ],
+  "datahubTargets": [
+    {
+      "key": "datahub-applications",
+      "repository": {
+        "system": "datahub",
+        "instance": "datahub-development"
+      },
+      "baseUrl": "http://127.0.0.1:18080",
+      "tokenEnvironment": "DATAHUB_APPLICATION_WRITER_TOKEN",
+      "timeoutMillis": 10000,
+      "maxResponseBytes": 2097152,
+      "approvedPlainHttp": false
+    }
+  ],
+  "applicationProjections": [
+    {
+      "key": "turboea-applications",
+      "sourceKey": "ea",
+      "externalType": "Application",
+      "targetKey": "datahub-applications",
+      "principals": [
+        "catalog-bridge"
+      ],
+      "nativeIds": [
+        "replace-with-approved-native-application-card-id"
+      ],
+      "adoptions": {},
+      "approved": false,
+      "acceptUnconditionalWriteRisk": false,
+      "approvalVersion": "review-native-application-equivalence-v1"
     }
   ]
 }

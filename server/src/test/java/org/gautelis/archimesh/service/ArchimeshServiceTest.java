@@ -1371,8 +1371,8 @@ class ArchimeshServiceTest {
         ArrayNode connections = objectMapper.createArrayNode();
         connections.add(objectMapper.createObjectNode()
                 .put("id", "conn:c1")
-                .put("sourceId", "vo:o1")
-                .put("targetId", "vo:missing"));
+                .put("sourceViewObjectId", "vo:o1")
+                .put("targetViewObjectId", "vo:missing"));
         snapshot.set("elements", elements);
         snapshot.set("relationships", relationships);
         snapshot.set("views", views);
@@ -1390,6 +1390,21 @@ class ArchimeshServiceTest {
         Assertions.assertEquals(1, report.missingViewContainerCount());
         Assertions.assertEquals(4, report.issueCount());
         Assertions.assertFalse(report.issues().getFirst().suggestedAction().isBlank());
+    }
+
+    @Test void diagramIntegrityUsesCanonicalViewObjectEndpointFields() throws Exception {
+        var service=baseService();var neo=(RecordingNeo4jRepository)service.neo4jRepository;
+        neo.snapshotToReturn=objectMapper.readTree("""
+            {"elements":[{"id":"elem:a"},{"id":"elem:b"}],
+             "relationships":[{"id":"rel:r","sourceId":"elem:a","targetId":"elem:b"}],
+             "views":[{"id":"view:v"}],
+             "viewObjects":[{"id":"vo:a","viewId":"view:v","representsId":"elem:a"},{"id":"vo:b","viewId":"view:v","representsId":"elem:b"}],
+             "connections":[{"id":"conn:c","viewId":"view:v","representsId":"rel:r","sourceViewObjectId":"vo:a","targetViewObjectId":"vo:b"}]}
+            """);
+        Assertions.assertTrue(service.getAdminIntegrity("demo").ok());
+        ((ObjectNode)neo.snapshotToReturn.path("connections").get(0)).put("targetViewObjectId","vo:missing");
+        var report=service.getAdminIntegrity("demo");
+        Assertions.assertEquals(1,report.issueCount());Assertions.assertEquals("CONN_MISSING_TARGET",report.issues().getFirst().code());
     }
 
     @Test

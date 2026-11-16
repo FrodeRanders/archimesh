@@ -31,7 +31,12 @@ Maven, Node, a sibling Turbo EA checkout and prebuilt application images are not
 required. First use needs internet access to public source/package/image registries;
 all running services and data remain local. Subsequent builds reuse the local cache.
 
-The command prints the three web URLs and the location of private access details.
+The command prints one block per system with its web URL, username and password.
+Turbo EA credentials are read from the run's `state.json`; DataHub's `datahub`
+account is read from its `user.props`. ArchiMesh uses the printed bootstrap identity
+and no password. These are local demo credentials. Redirect output only to a
+private file if recording a session; `access.json` retains the credential file
+locations rather than duplicating passwords.
 It also prints the Archi connection URL, model ID, bootstrap identity and a launch
 command that opens the prepared server model. Ports belong to each run and are
 allocated dynamically; the default Archi dialog URL on port 8081 is usually a
@@ -40,6 +45,42 @@ It leaves the demo running. The Turbo EA UI includes its normal catalog/navigati
 its separate DrawIO distribution is omitted from this compact demo image. Archi
 models and the synthesized view are supplied separately above. Archi desktop is an
 optional client, not installed by the script.
+
+## Upgrade an existing demo
+
+The reviewed source pin is Turbo EA **2.203.2**, commit
+`2223d50ef53f56ffe367e026c94ab01d70c263b2`. A run created before version tracking
+is treated as the original **2.194.0** baseline, and `start` retains that version.
+Start a stopped run with `./scripts/demo.sh start`, then upgrade explicitly:
+
+```bash
+./scripts/demo.sh upgrade
+```
+
+This is a demo-only upgrade from 2.194.0. It builds the pinned images, pauses the
+bridge/model server/Turbo EA UI/backend, saves a custom-format PostgreSQL dump,
+attachment tar, model exports, integration archive and original configuration
+under `.run/order-management/<run>/upgrade-2.203.2-<timestamp>/`. Backups stay private.
+It restores the dump into a uniquely named disposable Compose project, lets the
+new backend migrate that clone, compares all existing card/relation data and
+metamodel IDs, then checks login, pagination, POST/PATCH/readback and relations.
+Only after that trial passes does it migrate the existing demo's retained volumes.
+It updates the connector's exact expected version and renews demo service sessions.
+No seeding, name-based matching or ID regeneration takes place. The final checks
+compare model snapshots and canonical/external/model bindings. A `result.json`
+records success and the backup checksum. The trial deletes only its own volume.
+
+A failed trial resumes the old stack without changing its database. A failure
+after in-place migration begins pauses the writers and retains backups for review.
+For rollback, restore the database dump into an empty database and use the saved
+old configuration/images; simply running an old backend against a newer schema
+is not a rollback. Restore attachments from `attachments.tar` if needed. The model
+and registry exports supplement the database/files backup; restoring an integration
+archive quarantines execution capabilities and needs the normal reviewed recovery.
+
+`./scripts/demo.sh connection` reprints the grouped URLs and credentials at any time
+without Docker or restarting services. Run-local ports and model/target identities
+are retained by the upgrade.
 
 ## Open the shared model in Archi
 
@@ -128,7 +169,7 @@ Neither directory is committed or mounted from an agency/home credential directo
 | System | Demo content | Authority represented |
 | --- | --- | --- |
 | DataHub OSS v1.8.0 | 9 datasets with field schemas; 3 data products; Trade domain; 3 synthetic team principals; ownership; dataset lineage; 6 application references | Catalog metadata belongs to DataHub. Application names, descriptions and native source IDs are read back from Turbo EA before projecting them. |
-| Turbo EA 2.194.0 | 6 applications (2 in-house, 4 COTS), 6 logical data objects, 6 infrastructure services; 15 CRUD and 12 infrastructure relations | Enterprise applications, architectural access and infrastructure dependencies belong to Turbo EA. |
+| Turbo EA 2.203.2 | 6 applications (2 in-house, 4 COTS), 6 logical data objects, 6 infrastructure services; 15 CRUD and 12 infrastructure relations | Enterprise applications, architectural access and infrastructure dependencies belong to Turbo EA. |
 | Archi/ArchiMesh | 26 elements, 49 relationships; 6 order-management functions, 2 application services; assignments, functional flows, access, realization, serving and deployment associations | Model occurrences and formal relationships belong to Archi/ArchiMesh. The source model contains **no views**. |
 
 The datasets cover customer accounts, product prices, order headers and lines,
@@ -201,9 +242,9 @@ The baseline uses the same locally built Turbo EA images as the M0–M6 probes:
 
 ```bash
 # Only needed if these two images are not already present.
-# ../turbo-ea must be checked out at 6d9220e52d47b41f9d79351ec3233ded1f76fdc6.
-docker build --target db -t ghcr.io/vincentmakes/turbo-ea/db:m1-local-6d9220e ../turbo-ea
-docker build --target backend -t ghcr.io/vincentmakes/turbo-ea/backend:m1-local-6d9220e ../turbo-ea
+# ../turbo-ea must be checked out at 2223d50ef53f56ffe367e026c94ab01d70c263b2.
+docker build --target db -t ghcr.io/vincentmakes/turbo-ea/db:m1-local-2223d50 ../turbo-ea
+docker build --target backend -t ghcr.io/vincentmakes/turbo-ea/backend:m1-local-2223d50 ../turbo-ea
 
 python3 examples/order-management/local.py up
 ```
@@ -272,22 +313,25 @@ In this demo, DataHub's native Application represents the business asset groupin
 for one Turbo EA enterprise application. That is an explicit **demo-only** semantic
 profile, not a universal software-service mapping. Logical “Sales order” in Turbo
 EA/Archi is related to order tables/topics; those physical datasets have distinct
-canonical identities. Data products remain DataHub-native: the loader does not
-silently represent a data product as a Turbo EA DataObject.
+canonical identities. The seed loader keeps data products DataHub-native. The
+approved running bridge adds explicit `DataHubDataProduct` representations with
+their own source/canonical/target identities.
 
 Technical dataset lineage is specified only for the synthetic event publication
 and analytical transformations. DataHub application membership does not imply
 PRODUCES/CONSUMES or CRUD. Turbo EA CRUD and Archi Access are separately declared
 architectural assertions. See the [authority directions](../../integrations/datahub-turboea/docs/authority-directions.md).
 
-The default `./scripts/demo.sh up` now enables a polling dataset bridge and the
-Turbo EA Enterprise Repository catalog. To enable it on an existing demo without
+The default `./scripts/demo.sh up` enables polling dataset/product projections,
+TurboEA → DataHub native Application synchronization and the Turbo EA Enterprise
+Repository catalog. To enable these on an existing demo without
 reseeding or replacing the model, run `./scripts/demo.sh enable-live`. If the
 existing demo is stopped, first run `./scripts/demo.sh start`.
 
 Create a dataset in this demo DataHub, then open **Tools → Enterprise Repository**
 in Archi, connected as `northstar-demo-admin`. Choose target `turboea` and type
-`DataHubDataset`, search and import. Discovery and linked-model refresh run every
+`DataHubDataset`, search and import. Data products use `DataHubDataProduct`.
+Discovery and linked-model refresh run every
 five seconds; DataHub search indexing can add delay. Import is explicit. Later
 source name/description changes reach the linked writable model through normal
 accepted operations; historical tags remain unchanged.
@@ -300,15 +344,28 @@ ingested description. DataHub owns these fields even when accessed via Turbo EA.
 Target drift, source removal or ambiguous writes block further action and require
 review; the bridge does not hard-delete assets or infer equivalence by name.
 
+The six seeded Application URNs are explicitly reviewed for adoption from their
+exact TurboEA card IDs. The running bridge then synchronizes names/descriptions
+while preserving DataHub-specific properties and dataset application associations.
+Its separate Application writer is limited to those approved URNs and cannot edit
+dataset metadata. New source applications require a reviewed exact-ID scope;
+there is no automatic adoption by name. The source remains TurboEA, including
+when DataHub contains a native Application entity. See the
+[application/product configuration and recovery guide](../../integrations/datahub-turboea/docs/application-bridge.md).
+
 `./scripts/demo.sh live-test` creates an additional probe dataset and model and
 checks post-start discovery, explicit import, update/reversion, repeated import
-and worker restart. Evidence is saved in `artifacts/live-integration-probe.json`.
+and worker restart. It also verifies Application rename/reversion, preserved data
+associations, mirror-drift rejection, writer permission denial and post-start
+product discovery/update. Evidence is saved in `artifacts/live-integration-probe.json`.
 `./scripts/demo.sh test` runs this in disposable storage and removes its own stack.
 
-Approval covers all datasets in this dedicated synthetic DataHub instance. Service
+Approval covers all datasets/products and the six reviewed applications in this
+dedicated synthetic instance. Service
 sessions are generated into the mode-600 `integration-secrets.env` inside the run
 directory. They last one day; `./scripts/demo.sh start` renews them. These demo
-accounts have broad permissions and do not establish production disclosure or
+catalog/bootstrap accounts have broad permissions; the Application writer uses
+an exact-URN policy. These scopes do not establish production disclosure or
 least-privilege controls. Use `./scripts/demo.sh connection` for current addresses
 and credential file locations; ports vary by run.
 

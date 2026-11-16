@@ -11,6 +11,7 @@ import java.util.concurrent.TimeUnit;
 import org.eclipse.emf.common.notify.Notification;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EStructuralFeature;
+import org.eclipse.emf.ecore.EReference;
 import org.eclipse.emf.ecore.util.EContentAdapter;
 
 import org.gautelis.archimesh.plugin.ArchimeshPlugin;
@@ -87,6 +88,7 @@ public class EmfChangeCapture extends EContentAdapter {
                 + " feature=" + featureName(notification));
 
         if(RemoteApplyGuard.isRemoteApply()) {
+            trackRemoteMembership(notification);
             // Prevent rebroadcast loops while applying server-originated mutations
             ArchimeshPlugin.logTrace("EMF event ignored: remote apply guard active");
             return;
@@ -122,6 +124,43 @@ public class EmfChangeCapture extends EContentAdapter {
                 ArchimeshPlugin.logTrace("EMF event ignored: unsupported event type " + notification.getEventType());
             }
         }
+    }
+
+    /** Remote imports/snapshots are already committed, but still seed local identity tracking. */
+    private void trackRemoteMembership(Notification notification) {
+        if("id".equals(featureName(notification)) && notification.getNotifier() instanceof EObject object) {
+            rememberRemoteObject(object, false, notification.getOldValue() instanceof String id ? id : null);
+            rememberRemoteObject(object, true, null);
+            return;
+        }
+        if(!(notification.getFeature() instanceof EReference reference) || !reference.isContainment()) return;
+        switch(notification.getEventType()) {
+            case Notification.ADD, Notification.ADD_MANY -> trackRemoteObjects(notification.getNewValue(), true);
+            case Notification.REMOVE, Notification.REMOVE_MANY -> trackRemoteObjects(notification.getOldValue(), false);
+            case Notification.SET, Notification.UNSET -> {
+                trackRemoteObjects(notification.getOldValue(), false);
+                trackRemoteObjects(notification.getNewValue(), true);
+            }
+            default -> { }
+        }
+    }
+
+    private void trackRemoteObjects(Object value, boolean added) {
+        if(value instanceof Collection<?> values) { values.forEach(item -> trackRemoteObjects(item, added)); return; }
+        if(!(value instanceof EObject object)) return;
+        rememberRemoteObject(object, added, null);
+        for(var contents=object.eAllContents(); contents.hasNext();) rememberRemoteObject(contents.next(), added, null);
+    }
+
+    private void rememberRemoteObject(EObject object, boolean added, String previousId) {
+        if(!(object instanceof IIdentifier identifier)) return;
+        String id=previousId==null ? identifier.getId() : previousId;
+        if(id==null || id.isBlank()) return;
+        java.util.Set<String> known=object instanceof IArchimateRelationship ? knownRelationshipIds
+                : object instanceof IArchimateElement ? knownElementIds
+                : object instanceof IArchimateDiagramModel ? knownViewIds
+                : object instanceof IFolder ? knownFolderIds : null;
+        if(known!=null) { if(added) known.add(id); else known.remove(id); }
     }
 
     private void handleAddMany(Notification notification) {

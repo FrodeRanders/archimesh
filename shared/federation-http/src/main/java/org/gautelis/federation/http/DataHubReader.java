@@ -52,7 +52,7 @@ public final class DataHubReader implements SourceReader,AutoCloseable {
         var values=new TreeMap<Field,Value>(); fields.forEach(field -> values.put(field,Value.of(aspects.get(field.aspect()).at(field.path()))));
         return SourceReader.snapshot(representation,lifecycle,values);
     }
-    private JsonNode aspect(String urn,String aspect) {
+    JsonNode aspect(String urn,String aspect) {
         String encoded=URLEncoder.encode(urn,StandardCharsets.UTF_8).replace("+","%20");
         String path=base.toString().replaceFirst("/$","")+"/aspects/"+encoded+"?aspect="+aspect+"&version=0";
         String credential;

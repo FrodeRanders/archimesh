@@ -1142,8 +1142,8 @@ public class ArchimeshService {
         if (connections.isArray()) {
             for (JsonNode connection : connections) {
                 String connectionId = connection.path("id").asText("");
-                String sourceId = connection.path("sourceId").asText("");
-                String targetId = connection.path("targetId").asText("");
+                String sourceId = connection.path("sourceViewObjectId").asText("");
+                String targetId = connection.path("targetViewObjectId").asText("");
                 if (sourceId.isBlank() || !viewObjectIds.contains(sourceId)) {
                     missingConnectionEndpointCount++;
                     issues.add(new AdminIntegrityIssue(
@@ -1151,7 +1151,7 @@ public class ArchimeshService {
                             "error",
                             "connection",
                             connectionId,
-                            "Connection sourceId is missing or unknown: " + sourceId,
+                            "Connection sourceViewObjectId is missing or unknown: " + sourceId,
                             "Delete this connection or recreate the missing source view object."));
                 }
                 if (targetId.isBlank() || !viewObjectIds.contains(targetId)) {
@@ -1161,7 +1161,7 @@ public class ArchimeshService {
                             "error",
                             "connection",
                             connectionId,
-                            "Connection targetId is missing or unknown: " + targetId,
+                            "Connection targetViewObjectId is missing or unknown: " + targetId,
                             "Delete this connection or recreate the missing target view object."));
                 }
             }

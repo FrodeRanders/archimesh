@@ -45,7 +45,9 @@ public class DatasetProjectionService {
         var profile=profile(request.profile());
         if(subject==null || !subject.roles().contains("federation_bridge") || !profile.principals().contains(subject.userId())
                 || !profile.approved() || !profile.acceptUnconditionalWriteRisk()
-                || profile.nativePrefixes().stream().noneMatch(request.nativeId()::startsWith) || !request.nativeId().endsWith(")"))
+                || profile.nativePrefixes().stream().noneMatch(request.nativeId()::startsWith)
+                || profile.externalType().equals("dataset") && !request.nativeId().endsWith(")")
+                || profile.externalType().equals("dataProduct") && request.nativeId().length()<= "urn:li:dataProduct:".length())
             throw new Failure(403,"PROJECTION_SCOPE_DENIED");
         return read(profile,request.nativeId());
     }
@@ -196,8 +198,12 @@ public class DatasetProjectionService {
     public void verifyMirror(IntegrationConfiguration.Target target,ExternalRepositoryConnector.ExternalObject card) {
         boolean datahub=target.mapping().fieldsFor(card.type(),null).values().stream().anyMatch(f -> f.authority()==InformationAuthorityPolicy.Authority.DATAHUB_MASTER);
         if(!datahub) return;
-        var profile=federation.settings().projections().stream().filter(p -> p.approved() && p.targetKey().equals(target.key()) && p.targetType().equals(card.type())).findFirst().orElseThrow(() -> new Failure(409,"PROJECTION_SOURCE_POLICY_REQUIRED"));
         var canonical=integration.metadata().findCanonical(new IntegrationIdentity.ExternalResourceKey("turboea",target.instanceId(),IntegrationIdentity.ResourceKind.CARD,card.id())).orElseThrow(() -> new Failure(409,"PROJECTION_IDENTITY_PROOF_REQUIRED"));
+        var profiles=federation.settings().projections().stream().filter(p -> p.approved() && p.targetKey().equals(target.key()) && p.targetType().equals(card.type()))
+            .filter(p -> integration.metadata().findExternal(canonical.canonicalId(),"datahub",federation.source(p.sourceKey()).repository().instance(),IntegrationIdentity.ResourceKind.ENTITY)
+                .filter(ref -> ref.resourceId().startsWith("urn:li:"+p.externalType()+":") && p.nativePrefixes().stream().anyMatch(ref.resourceId()::startsWith)).isPresent()).toList();
+        if(profiles.size()!=1) throw new Failure(409,"PROJECTION_SOURCE_POLICY_REQUIRED");
+        var profile=profiles.getFirst();
         var source=federation.source(profile.sourceKey());
         var origin=integration.metadata().findExternal(canonical.canonicalId(),"datahub",source.repository().instance(),IntegrationIdentity.ResourceKind.ENTITY).orElseThrow(() -> new Failure(409,"PROJECTION_SOURCE_BINDING_REQUIRED"));
         if(profile.nativePrefixes().stream().noneMatch(origin.resourceId()::startsWith)) throw new Failure(403,"PROJECTION_SOURCE_SCOPE_CHANGED");

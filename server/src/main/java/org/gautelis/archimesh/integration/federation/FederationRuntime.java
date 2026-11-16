@@ -28,6 +28,7 @@ public class FederationRuntime {
     private FederationConfiguration configuration;
     private ReaderDispatch readers;
     private final List<DataHubReader> owned=new ArrayList<>();
+    private final Map<String,DataHubApplicationWriter> writers=new HashMap<>();
     @PostConstruct void start() {
         if (!enabled) return;
         try {
@@ -51,6 +52,14 @@ public class FederationRuntime {
                 }
             }
             readers=new ReaderDispatch(map);
+            for(var target:configuration.datahubTargets()) {
+                if(configuration.applicationProjections().stream().noneMatch(p -> p.approved() && p.targetKey().equals(target.key()))) continue;
+                String token=System.getenv(target.tokenEnvironment());
+                if(token==null || token.isBlank()) throw new IllegalArgumentException();
+                writers.put(target.key(),new DataHubApplicationWriter(target.repository(),target.baseUrl(),
+                    () -> System.getenv(target.tokenEnvironment()),Duration.ofMillis(target.timeoutMillis()),
+                    target.maxResponseBytes(),target.approvedPlainHttp()));
+            }
         } catch (Exception invalid) { stop(); throw new IllegalStateException("Invalid federation source configuration, owner or credentials"); }
     }
     public boolean enabled() { return enabled; }
@@ -68,5 +77,9 @@ public class FederationRuntime {
         return readers.read(representation,Set.copyOf(type(source,representation.externalType()).fields().values()));
     }
     public String digest() { return PublicationJson.digest(json.valueToTree(settings())); }
-    @PreDestroy void stop() { owned.forEach(DataHubReader::close); owned.clear(); }
+    public DataHubApplicationWriter applicationWriter(String key) {
+        settings(); var writer=writers.get(key);
+        if(writer==null) throw new Failure(403,"APPLICATION_TARGET_DENIED"); return writer;
+    }
+    @PreDestroy void stop() { owned.forEach(DataHubReader::close); owned.clear(); writers.values().forEach(DataHubApplicationWriter::close); writers.clear(); }
 }

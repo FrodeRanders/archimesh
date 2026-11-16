@@ -16,7 +16,10 @@ class BootstrapTest(unittest.TestCase):
     def test_connection_summary_contains_run_urls_and_matching_archi_launch_identity(self):
         state = {"run":"0123456789ab","env":{"DEMO_ARCHIMESH_PORT":"18081", "DEMO_TURBO_UI_PORT":"18920"}}
         with tempfile.TemporaryDirectory() as temp, patch.object(local,"directory",return_value=Path(temp)), \
-             patch.object(local,"datahub",return_value={"env":{"DATAHUB_FRONTEND_PORT":"19002"},"directory":"/private/demo-datahub"}):
+             patch.object(local,"datahub",return_value={"env":{"DATAHUB_FRONTEND_PORT":"19002"},"directory":str(Path(temp)/"datahub")}):
+            (Path(temp)/"datahub").mkdir()
+            (Path(temp)/"datahub/user.props").write_text("# synthetic fixture\ndatahub=datahub-demo-secret\n")
+            (Path(temp)/"state.json").write_text(json.dumps({"turboEmail":"demo@example.org","turboPassword":"turbo-demo-secret"}))
             (Path(temp)/"artifacts").mkdir()
             (Path(temp)/"artifacts/archimesh-model.json").write_text(json.dumps({"model":{"modelId":"prepared-model"}}))
             output = io.StringIO()
@@ -25,6 +28,13 @@ class BootstrapTest(unittest.TestCase):
             for text in ("http://127.0.0.1:18081/admin-ui/", "http://127.0.0.1:18920", "http://127.0.0.1:19002",
                          "ws://127.0.0.1:18081", "prepared-model (HEAD)", "catalog in Archi: disabled", "access.json"):
                 self.assertIn(text,summary)
+            turbo=summary.split("turboea web UI:")[1].split("datahub web UI:")[0]
+            datahub=summary.split("datahub web UI:")[1].split("Archi:")[0]
+            self.assertIn("Username: demo@example.org",turbo)
+            self.assertIn("Password: turbo-demo-secret",turbo)
+            self.assertIn("Username: datahub",datahub)
+            self.assertIn("Password: datahub-demo-secret",datahub)
+            self.assertIn("Password: not used (local bootstrap; roles: admin)",summary)
             launch = shlex.split(next(line.strip() for line in summary.splitlines() if line.startswith("  env ")))
             self.assertIn("ARCHIMESH_BOOTSTRAP_USER=northstar-demo-admin",launch)
             self.assertIn("ARCHIMESH_BOOTSTRAP_ROLES=admin",launch)
@@ -32,6 +42,8 @@ class BootstrapTest(unittest.TestCase):
             self.assertIn("ARCHIMESH_STARTUP_PULL_MODEL_ID=prepared-model",launch)
             access = json.loads((Path(temp)/"access.json").read_text())
             self.assertEqual("prepared-model",access["archiConnection"]["modelId"])
+            self.assertNotIn("turbo-demo-secret",json.dumps(access))
+            self.assertNotIn("datahub-demo-secret",json.dumps(access))
 
     def test_connection_command_does_not_require_docker_or_start_services(self):
         state = {"mode":"compose"}
@@ -47,7 +59,7 @@ class BootstrapTest(unittest.TestCase):
             member = tarfile.TarInfo("turbo-ea-" + bootstrap.REVISION + "/" + name)
             member.type = kind
             if kind == tarfile.REGTYPE:
-                body = b"2.194.0\n"
+                body = (bootstrap.VERSION+"\n").encode()
                 member.size = len(body)
                 stream.addfile(member,io.BytesIO(body))
             else:

@@ -41,6 +41,16 @@ class LiveConfigurationTest(unittest.TestCase):
         self.assertEqual(source["projections"][0]["nativePrefixes"],worker["nativePrefixes"])
         self.assertEqual("http://127.0.0.1:8081",worker["owner"]["baseUrl"])
         self.assertNotIn("access_token",json.dumps([target,source,worker]))
+        self.assertEqual("catalog.data-product",source["sources"][0]["types"]["dataProduct"]["semanticKind"])
+        self.assertEqual("DATAHUB_MASTER",fields[live.PRODUCT_TYPE]["name"]["authority"])
+
+    def test_application_projection_uses_reviewed_native_ids_and_separate_target_credential(self):
+        _,configuration,worker=live.documents(self.state(),[{"nativeId":"turbo-native-app","urn":"urn:li:application:existing"}])
+        profile=configuration["applicationProjections"][0]
+        self.assertEqual(["turbo-native-app"],profile["nativeIds"])
+        self.assertEqual({"turbo-native-app":"urn:li:application:existing"},profile["adoptions"])
+        self.assertNotEqual(configuration["sources"][0]["tokenEnvironment"],configuration["datahubTargets"][0]["tokenEnvironment"])
+        self.assertEqual([{"profile":live.APPLICATION_PROFILE,"nativeIds":["turbo-native-app"]}],worker["applications"])
 
     def test_overlay_keeps_bootstrap_loopback_and_avoids_datahub_kafka_collision(self):
         state=self.state()
